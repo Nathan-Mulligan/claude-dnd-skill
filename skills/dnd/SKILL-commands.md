@@ -904,10 +904,15 @@ Toggle autorun (taxi) mode — Claude drives the turn loop automatically when pl
 
 **On:**
 1. Write `autorun: true` to `state.md → ## Session Flags`.
-2. **Check Bash permissions** — read `~/.claude/settings.json`. If `permissions.allow` does not include `"Bash"` (or `"Bash(*)"` or similar), add it automatically:
-   - Read the file, merge `"Bash"` into `permissions.allow`, write it back.
-   - Tell the DM: *"Added Bash to permissions.allow in ~/.claude/settings.json — autorun won't prompt for each wait. Restart this session for it to take effect if it doesn't immediately."*
-   - If it was already present, skip silently.
+2. **Check Bash permissions — never edit settings without asking.** Autorun drives the turn loop unattended, so each turn runs several scripts (the wait block, `dice.py`, `tracker.py`, `send.py`, `push_stats.py`, `check_input.py`). Without a `Bash` allow rule those prompt individually, which interrupts play.
+
+   Read `permissions.allow` and **report what you find — never write it silently**:
+   - If a `Bash` rule is already present, say so plainly: *"Bash is already allowed in `<file>` — autorun won't prompt."* Do not skip this quietly; the DM should know the setting exists.
+   - If none is present, explain the tradeoff and **ask before changing anything**: autorun needs a broad `Bash` allow (a narrower prefix rule can't match the wait block's `AUTORUN=$(…)` assignment, and `Bash(python3:*)` is no narrower in practice since `python3 -c` runs arbitrary code).
+   - **Offer the project-scoped option first** — `.claude/settings.json` in the campaign's working directory confines the rule to this project. Only offer user-level `~/.claude/settings.json` if the DM asks for it, and say plainly that it applies to *every* project on the machine and persists until removed by hand.
+   - If the DM declines, **enable autorun anyway** and note they'll see a prompt per script call.
+
+   Never merge a `Bash` entry into any settings file without an explicit yes. This mirrors `scripts/install_autosave_hook.py`, the skill's other settings-touching path, which is opt-in by design: *"the skill never edits your settings without you running this."*
 3. Confirm to the DM: *"Autorun enabled. Players submit via the display; I'll pick up each action automatically. Send me a message at any time to take control of a turn."*
 4. If the user specified an interval (e.g. `/dm:dnd autorun on 45`), write `autorun_interval: 45` to `state.md → ## Session Flags`. Default is 60 if omitted.
 5. Immediately enter the autorun wait (see SKILL.md for the Bash block). If there's already something in `.input_queue`, pick it up as the current turn's player action.
@@ -917,7 +922,8 @@ The display shows a pie-clock countdown draining from full to empty over the int
 **Off:**
 1. Write `autorun: false` (or remove the line) to `state.md → ## Session Flags`.
 2. Confirm: *"Autorun disabled. Back to manual mode — press Enter or tell me to submit when players are ready."*
-3. Do NOT start the autorun wait after this response.
+3. **If a `Bash` allow rule was added for autorun, offer to remove it** — *"Want me to take the Bash allow back out of `<file>`? Autorun is the only thing here that needed it."* Remove it only on an explicit yes. A permission granted for a session shouldn't outlive it silently.
+4. Do NOT start the autorun wait after this response.
 
 **Check on `/dm:dnd load`:** If `autorun: true` is present in state.md, tell the DM autorun is active and begin the wait loop after the recap paragraph.
 
