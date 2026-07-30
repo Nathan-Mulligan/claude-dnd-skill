@@ -1,9 +1,22 @@
-"""Narrator TTS via Gemini Flash TTS (Google AI Studio API key).
+"""Narrator TTS with two interchangeable backends.
 
-Server-side wrapper called by /tts in dnd-display-app.py. Reads the API key
-from DND_TTS_KEY env var → GEMINI_API_KEY env var → ~/.config/claude-dnd/tts.key
-(in that order). Returns None on any failure so the caller can silently
-degrade to text-only narration.
+  local   — any OpenAI-compatible /v1/audio/speech server (Kokoro, Piper,
+            LocalAI…). No API key, no per-character cost, runs offline.
+  gemini  — Gemini Flash TTS via a Google AI Studio API key.
+
+Server-side wrapper called by /tts in dnd-display-app.py. Both backends return
+raw L16 PCM (24 kHz mono), so the caller cannot tell them apart.
+
+Backend selection (DND_TTS_BACKEND: auto | local | gemini; default auto):
+  auto    — use the local server when it answers, else Gemini when a key is
+            configured, else report "unset" and degrade to text-only narration.
+
+Local endpoint resolves from DND_TTS_LOCAL_URL env var →
+~/.config/claude-dnd/tts.url → http://127.0.0.1:8880. The Gemini key resolves
+from DND_TTS_KEY env var → GEMINI_API_KEY env var → ~/.config/claude-dnd/tts.key.
+
+Every failure path returns None from synthesize() so narration silently falls
+back to text.
 
 stdlib only — no requests, no google-cloud-sdk, no dependencies.
 Setup walkthrough: docs/SKILL-tts.md.
@@ -14,6 +27,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -21,25 +35,44 @@ from typing import Optional
 
 # ── Configuration ───────────────────────────────────────────────────────────
 
+CONFIG_DIR = Path.home() / ".config" / "claude-dnd"
+
 GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
 GEMINI_TTS_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_TTS_MODEL}:generateContent"
 )
 
-KEY_FILE = Path.home() / ".config" / "claude-dnd" / "tts.key"
+KEY_FILE = CONFIG_DIR / "tts.key"
 
 # Curated 9-voice catalog. The full Gemini API exposes 30 voices; this
 # subset keeps the per-block dropdown scannable. Extend VALID_VOICES and
 # the matching arrays in display/templates/index.html if you want the
 # full catalog.
-VALID_VOICES = frozenset({
-    # Male
-    "Charon", "Enceladus", "Fenrir", "Umbriel",
-    # Female
-    "Aoede", "Gacrux", "Kore", "Vindemiatrix", "Zephyr",
-})
-DEFAULT_VOICE = "Enceladus"
+GEMINI_VOICES_MALE = ("Charon", "Enceladus", "Fenrir", "Umbriel")
+GEMINI_VOICES_FEMALE = ("Aoede", "Gacrux", "Kore", "Vindemiatrix", "Zephyr")
+GEMINI_VALID_VOICES = frozenset(GEMINI_VOICES_MALE + GEMINI_VOICES_FEMALE)
+GEMINI_DEFAULT_VOICE = "Enceladus"
+
+# ── Local backend ───────────────────────────────────────────────────────────
+
+URL_FILE = CONFIG_DIR / "tts.url"
+LOCAL_DEFAULT_URL = "http://127.0.0.1:8880"
+
+# Curated to match the Gemini catalog's size so the dropdown stays scannable.
+# Kokoro ships ~67; list them all with `python3 tts.py --list-voices`, and use
+# any name the server accepts — validation is delegated to the server, not to
+# this tuple. Kokoro also blends voices with "+" (e.g. "bm_lewis+am_fenrir").
+LOCAL_VOICES_MALE = ("bm_fable", "bm_george", "bm_lewis", "am_fenrir", "am_onyx")
+LOCAL_VOICES_FEMALE = ("af_heart", "af_bella", "bf_alice", "bf_emma", "af_sky")
+LOCAL_VALID_VOICES = frozenset(LOCAL_VOICES_MALE + LOCAL_VOICES_FEMALE)
+LOCAL_DEFAULT_VOICE = "bm_fable"          # deep and measured — the Enceladus analogue
+
+# Reachability is probed rather than configured, so a stopped container simply
+# falls through to Gemini. Cached briefly to keep per-block synthesis from
+# re-probing on every call.
+_PROBE_TTL = 30.0
+_probe_cache: tuple[float, bool] | None = None
 
 # Gemini Flash TTS responses degrade in latency past this point and may
 # truncate. Bigger blocks should be chunked by the caller; the narration
@@ -67,17 +100,105 @@ def _get_api_key() -> Optional[str]:
     return None
 
 
-def key_source() -> str:
-    """Return a human description of where the key came from, for diagnostics.
+# ── Backend resolution ──────────────────────────────────────────────────────
 
-    Used by the verify path and the /dnd load surface — does not return the key.
+def local_url() -> str:
+    """Resolve the local TTS base URL. Env var takes precedence over the file."""
+    v = os.environ.get("DND_TTS_LOCAL_URL")
+    if v and v.strip():
+        return v.strip().rstrip("/")
+    if URL_FILE.exists():
+        try:
+            stored = URL_FILE.read_text(encoding="utf-8").strip()
+            if stored:
+                return stored.rstrip("/")
+        except OSError:
+            pass
+    return LOCAL_DEFAULT_URL
+
+
+def local_available(force: bool = False) -> bool:
+    """Return True when the local server answers, cached for _PROBE_TTL seconds."""
+    global _probe_cache
+    now = time.monotonic()
+    if not force and _probe_cache and now - _probe_cache[0] < _PROBE_TTL:
+        return _probe_cache[1]
+    try:
+        with urllib.request.urlopen(f"{local_url()}/v1/audio/voices", timeout=2.0) as r:
+            ok = r.status == 200
+    except (urllib.error.URLError, OSError, TimeoutError):
+        ok = False
+    _probe_cache = (now, ok)
+    return ok
+
+
+def active_backend() -> Optional[str]:
+    """Return 'local', 'gemini', or None when neither is usable.
+
+    An explicit DND_TTS_BACKEND is honored even if that backend is down, so a
+    misconfiguration surfaces as a clear error rather than a silent failover.
     """
-    for env in ("DND_TTS_KEY", "GEMINI_API_KEY"):
-        v = os.environ.get(env)
-        if v and v.strip():
-            return f"env:{env}"
-    if KEY_FILE.exists() and KEY_FILE.read_text(encoding="utf-8").strip():
-        return f"file:{KEY_FILE}"
+    choice = (os.environ.get("DND_TTS_BACKEND") or "auto").strip().lower()
+    if choice in ("local", "gemini"):
+        return choice
+    if local_available():
+        return "local"
+    if _get_api_key():
+        return "gemini"
+    return None
+
+
+def voice_catalog() -> dict:
+    """Return the active backend's voice lists, for the dropdown and /tts/voices."""
+    if active_backend() == "local":
+        return {
+            "backend": "local",
+            "male": list(LOCAL_VOICES_MALE),
+            "female": list(LOCAL_VOICES_FEMALE),
+            "default": LOCAL_DEFAULT_VOICE,
+        }
+    return {
+        "backend": "gemini",
+        "male": list(GEMINI_VOICES_MALE),
+        "female": list(GEMINI_VOICES_FEMALE),
+        "default": GEMINI_DEFAULT_VOICE,
+    }
+
+
+def __getattr__(name: str):
+    """Resolve VALID_VOICES / DEFAULT_VOICE against the active backend (PEP 562).
+
+    These stay module-level names so existing callers — `_tts.VALID_VOICES` and
+    `_tts.DEFAULT_VOICE` in dnd-display-app.py — keep working unchanged. They
+    cannot be plain constants because the right value depends on which backend
+    is live, and probing for that at import time would put a network call in
+    the import path.
+    """
+    if name == "VALID_VOICES":
+        return (LOCAL_VALID_VOICES if active_backend() == "local"
+                else GEMINI_VALID_VOICES)
+    if name == "DEFAULT_VOICE":
+        return (LOCAL_DEFAULT_VOICE if active_backend() == "local"
+                else GEMINI_DEFAULT_VOICE)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def key_source() -> str:
+    """Return a human description of the active backend, for diagnostics.
+
+    Used by the verify path and the /dnd load surface — never returns the key.
+    Callers treat the literal "unset" as "TTS is not configured".
+    """
+    backend = active_backend()
+    if backend == "local":
+        return f"local:{local_url()}"
+    if backend == "gemini":
+        for env in ("DND_TTS_KEY", "GEMINI_API_KEY"):
+            v = os.environ.get(env)
+            if v and v.strip():
+                return f"env:{env}"
+        if KEY_FILE.exists() and KEY_FILE.read_text(encoding="utf-8").strip():
+            return f"file:{KEY_FILE}"
     return "unset"
 
 
@@ -89,25 +210,86 @@ class TtsError(Exception):
 
 def synthesize_strict(
     text: str,
-    voice: str = DEFAULT_VOICE,
+    voice: Optional[str] = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> bytes:
-    """Call Gemini Flash TTS and return raw L16 PCM bytes (24 kHz mono).
+    """Synthesize via the active backend, returning raw L16 PCM (24 kHz mono).
 
     Raises TtsError for any failure. Use synthesize() for the silent-fail path.
-    """
-    key = _get_api_key()
-    if not key:
-        raise TtsError("no api key configured")
 
+    `voice` defaults to the active backend's default. Passing a voice the
+    backend doesn't know falls back to that default rather than erroring —
+    matching how the display treats an unknown voice from localStorage.
+    """
     text = (text or "").strip()
     if not text:
         raise TtsError("empty text")
     if len(text) > MAX_TEXT_CHARS:
         text = text[:MAX_TEXT_CHARS]
 
-    if voice not in VALID_VOICES:
-        voice = DEFAULT_VOICE
+    backend = active_backend()
+    if backend is None:
+        raise TtsError("no backend available (no local server, no api key)")
+
+    if backend == "local":
+        voice = voice or LOCAL_DEFAULT_VOICE
+        return _synthesize_local(text, voice, timeout)
+
+    voice = voice or GEMINI_DEFAULT_VOICE
+    return _synthesize_gemini(text, voice, timeout)
+
+
+def _synthesize_local(text: str, voice: str, timeout: float) -> bytes:
+    """Call an OpenAI-compatible /v1/audio/speech server for raw PCM.
+
+    Voice names are passed through untouched: the server owns its own catalog,
+    and Kokoro in particular accepts blends ("bm_lewis+am_fenrir") that no
+    fixed allow-list here could anticipate.
+    """
+    body = json.dumps({
+        "model": os.environ.get("DND_TTS_LOCAL_MODEL", "kokoro"),
+        "voice": voice,
+        "input": text,
+        "response_format": "pcm",
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        f"{local_url()}/v1/audio/speech",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                raise TtsError(f"http {resp.status}")
+            pcm = resp.read()
+    except urllib.error.HTTPError as e:
+        snippet = ""
+        try:
+            snippet = e.read().decode("utf-8", errors="replace")[:200]
+        except Exception:
+            pass
+        raise TtsError(f"http {e.code}: {snippet}") from e
+    except urllib.error.URLError as e:
+        raise TtsError(f"network: {e.reason}") from e
+    except Exception as e:
+        raise TtsError(f"unexpected: {e}") from e
+
+    if not pcm:
+        raise TtsError("empty pcm payload")
+    return pcm
+
+
+def _synthesize_gemini(text: str, voice: str, timeout: float) -> bytes:
+    """Call Gemini Flash TTS and return raw L16 PCM bytes (24 kHz mono)."""
+    key = _get_api_key()
+    if not key:
+        raise TtsError("no api key configured")
+
+    if voice not in GEMINI_VALID_VOICES:
+        voice = GEMINI_DEFAULT_VOICE
 
     body = {
         "contents": [{"role": "user", "parts": [{"text": text}]}],
@@ -162,7 +344,7 @@ def synthesize_strict(
     return pcm
 
 
-def synthesize(text: str, voice: str = DEFAULT_VOICE) -> Optional[bytes]:
+def synthesize(text: str, voice: Optional[str] = None) -> Optional[bytes]:
     """Silent-fail wrapper. Returns L16 PCM bytes or None on any failure."""
     try:
         return synthesize_strict(text, voice)
@@ -177,11 +359,11 @@ def _cli() -> int:
     import sys
 
     p = argparse.ArgumentParser(
-        description="Verify Gemini Flash TTS setup for the DnD display companion.",
+        description="Verify TTS setup for the DnD display companion.",
     )
     p.add_argument(
         "--test", action="store_true",
-        help="Check key source + run a synthesis call. Writes nothing.",
+        help="Check backend + run a synthesis call. Writes nothing.",
     )
     p.add_argument(
         "--speak", action="store_true",
@@ -192,27 +374,55 @@ def _cli() -> int:
         help="Override the default test phrase.",
     )
     p.add_argument(
-        "--voice", default=DEFAULT_VOICE,
-        help=f"Voice name (default: {DEFAULT_VOICE}). Valid: {sorted(VALID_VOICES)}",
+        "--voice", default=None,
+        help="Voice name (default: the active backend's default voice).",
+    )
+    p.add_argument(
+        "--list-voices", action="store_true",
+        help="List every voice the local server offers, then exit.",
     )
     args = p.parse_args()
+
+    if args.list_voices:
+        if not local_available(force=True):
+            print(f"No local TTS server at {local_url()}")
+            return 2
+        try:
+            with urllib.request.urlopen(f"{local_url()}/v1/audio/voices", timeout=10) as r:
+                payload = json.loads(r.read())
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            print(f"  FAIL: {e}")
+            return 1
+        raw = payload.get("voices", payload)
+        names = sorted(
+            v if isinstance(v, str) else (v.get("name") or v.get("id") or str(v))
+            for v in raw
+        )
+        print(f"{len(names)} voices at {local_url()}:")
+        for n in names:
+            print(f"  {n}")
+        return 0
 
     if not args.test:
         p.print_help()
         return 0
 
+    backend = active_backend()
     src = key_source()
-    print(f"API key source: {src}")
+    print(f"Backend: {backend or 'none'}")
+    print(f"Source:  {src}")
     if src == "unset":
-        print("  → no key found. See docs/SKILL-tts.md to configure one.")
+        print("  → no local server and no API key. See docs/SKILL-tts.md.")
         return 2
 
-    print(f"Model: {GEMINI_TTS_MODEL}")
-    print(f"Voice: {args.voice}")
-    print(f"Text:  {args.text!r}")
-    print("Calling Gemini Flash TTS…")
+    voice = args.voice or (LOCAL_DEFAULT_VOICE if backend == "local"
+                           else GEMINI_DEFAULT_VOICE)
+    print(f"Model:   {'local server' if backend == 'local' else GEMINI_TTS_MODEL}")
+    print(f"Voice:   {voice}")
+    print(f"Text:    {args.text!r}")
+    print("Synthesizing…")
     try:
-        pcm = synthesize_strict(args.text, args.voice)
+        pcm = synthesize_strict(args.text, voice)
     except TtsError as e:
         print(f"  FAIL: {e}")
         return 1

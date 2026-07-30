@@ -6266,8 +6266,11 @@ document.getElementById('speed-row').addEventListener('click', () => {
 // can toggle it on without affecting player phones.
 // ═══════════════════════════════════════════════════════════════════
 
-const _TTS_VOICES_MALE   = ['Charon', 'Enceladus', 'Fenrir', 'Umbriel'];
-const _TTS_VOICES_FEMALE = ['Aoede', 'Gacrux', 'Kore', 'Vindemiatrix', 'Zephyr'];
+// Fallback catalog, replaced at load by whatever /tts/voices reports for the
+// active backend. Kept as the Gemini names so a server without that endpoint
+// behaves exactly as before.
+let _TTS_VOICES_MALE   = ['Charon', 'Enceladus', 'Fenrir', 'Umbriel'];
+let _TTS_VOICES_FEMALE = ['Aoede', 'Gacrux', 'Kore', 'Vindemiatrix', 'Zephyr'];
 
 const _ttsAvailableMeta = document.querySelector('meta[name="tts-available"]');
 const _TTS_AVAILABLE = _ttsAvailableMeta && _ttsAvailableMeta.getAttribute('content') === '1';
@@ -6401,10 +6404,8 @@ function _ttsSaveVoice(voice) {
   });
 }
 
-function _ttsBuildVoiceMenu() {
-  const menu = document.createElement('div');
-  menu.className = 'tts-voice-menu';
-  menu.hidden = true;
+function _ttsFillVoiceMenu(menu) {
+  menu.replaceChildren();
 
   function _addGroup(label, voices) {
     const hdr = document.createElement('div');
@@ -6427,8 +6428,43 @@ function _ttsBuildVoiceMenu() {
   }
   _addGroup('Male',   _TTS_VOICES_MALE);
   _addGroup('Female', _TTS_VOICES_FEMALE);
+}
+
+function _ttsBuildVoiceMenu() {
+  const menu = document.createElement('div');
+  menu.className = 'tts-voice-menu';
+  menu.hidden = true;
+  _ttsFillVoiceMenu(menu);
   return menu;
 }
+
+// The local and Gemini backends share no voice names, so the catalog comes
+// from the server rather than being baked in. The constants above remain the
+// fallback for a server too old to expose /tts/voices.
+async function _ttsLoadVoiceCatalog() {
+  if (!_TTS_AVAILABLE) return;
+  try {
+    const resp = await fetch('/tts/voices', { headers: _authHeaders() });
+    if (!resp.ok) return;
+    const cat = await resp.json();
+    if (!Array.isArray(cat.male) || !Array.isArray(cat.female)) return;
+    if (!cat.male.length && !cat.female.length) return;
+
+    _TTS_VOICES_MALE   = cat.male;
+    _TTS_VOICES_FEMALE = cat.female;
+
+    // A voice remembered from the other backend won't exist here — fall back
+    // to that backend's default rather than sending a name it will reject.
+    const known = _TTS_VOICES_MALE.concat(_TTS_VOICES_FEMALE);
+    if (!known.includes(_ttsVoice)) {
+      _ttsVoice = cat.default || known[0];
+      localStorage.setItem('dnd_tts_voice', _ttsVoice);
+    }
+    document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+  } catch (_) { /* keep the built-in fallback */ }
+}
+
+_ttsLoadVoiceCatalog();
 
 function _addTtsBar(blockEl) {
   if (!_TTS_AVAILABLE || !blockEl) return;

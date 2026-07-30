@@ -1,8 +1,81 @@
 # Narrator TTS setup (optional)
 
-The display companion can read narrator and NPC blocks aloud via Google's Gemini Flash TTS. It's optional, off by default, and the rest of the skill works fine without it. This guide gets you a working setup in ~5 minutes using a free Google account.
+The display companion can read narrator and NPC blocks aloud. It's optional, off by default, and the rest of the skill works fine without it.
 
-If you skip this guide, the display still renders text exactly as it does today — no audio, no warnings, no behavior change.
+There are two backends. Pick either — the display can't tell them apart.
+
+| | **Local** | **Gemini Flash TTS** |
+|---|---|---|
+| Cost | Free | ~3¢ per 3-hour session |
+| API key | None | Google AI Studio key |
+| Network | Runs offline | Cloud |
+| Voices | Whatever your server ships (Kokoro: ~67) | 9 curated of 30 |
+| Setup | Start a container, ~5 min | Mint a key, ~5 min |
+| Languages | Depends on the model | 24, auto-detected |
+
+If you skip this guide entirely, the display still renders text exactly as it does today — no audio, no warnings, no behavior change.
+
+## Which backend runs
+
+Controlled by `DND_TTS_BACKEND`:
+
+| Value | Behavior |
+|---|---|
+| `auto` *(default)* | Use the local server if it answers; otherwise Gemini if a key is configured; otherwise stay silent. |
+| `local` | Always local. A stopped server is reported as an error rather than quietly failing over. |
+| `gemini` | Always Gemini, same. |
+
+`auto` means a running local server simply wins, and stopping it falls back to Gemini without touching config.
+
+Check what's live at any time:
+
+```bash
+python3 skills/dnd/display/tts.py --test
+```
+
+```
+Backend: local
+Source:  local:http://127.0.0.1:8880
+Model:   local server
+Voice:   bm_fable
+Text:    'Hello, narrator voice test. The torchlit hall awaits.'
+Synthesizing…
+  OK — received 191592 bytes of L16 PCM (24 kHz mono).
+```
+
+## Setup A — local server (free, no API key)
+
+Any server exposing OpenAI-compatible `/v1/audio/speech` works. [Kokoro](https://github.com/remsky/Kokoro-FastAPI) is the easiest and sounds good:
+
+```bash
+# CPU — fine on Apple Silicon (~0.27 real-time factor)
+docker run -d --name kokoro-tts --restart unless-stopped \
+  -p 127.0.0.1:8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+```
+
+That's the whole setup — `auto` finds it on `http://127.0.0.1:8880` with no further config. Verify:
+
+```bash
+python3 skills/dnd/display/tts.py --test --speak
+python3 skills/dnd/display/tts.py --list-voices    # all voices the server offers
+```
+
+To point at a different host or port — a server on another machine, say — set either:
+
+```bash
+export DND_TTS_LOCAL_URL=http://192.168.1.50:8880
+# …or persist it:
+mkdir -p ~/.config/claude-dnd && chmod 700 ~/.config/claude-dnd
+echo "http://192.168.1.50:8880" > ~/.config/claude-dnd/tts.url
+```
+
+`DND_TTS_LOCAL_MODEL` overrides the model name sent to the server (default `kokoro`) if yours expects something else.
+
+Voice names are passed through untouched, so anything your server accepts works — including Kokoro's blends, e.g. `bm_lewis+am_fenrir` for something that isn't quite one person.
+
+## Setup B — Gemini Flash TTS
+
+Below. Uses a free Google account and gets you running in ~5 minutes.
 
 ## What you get
 
@@ -77,6 +150,29 @@ Player input blocks, dice-roll blocks, and tutor/help blocks intentionally **don
 
 ## Voice catalog
 
+The dropdown asks the server which backend is live (`GET /tts/voices`) and lists that backend's voices, so the two catalogs never mix. A voice remembered from the other backend is replaced with the current backend's default rather than being sent to a server that would reject it.
+
+### Local (Kokoro)
+
+Curated to match the Gemini catalog's size so the dropdown stays scannable. The server accepts any of its ~67 voices — `--list-voices` prints them all, and anything you name in the ramp below works.
+
+| Group | Voice | Notes |
+|---|---|---|
+| Male | **bm_fable** *(default)* | Deep, measured — classic narrator |
+| Male | bm_george | Warm, older — mentors, innkeepers |
+| Male | bm_lewis | Dry, clipped — officials, sceptics |
+| Male | am_fenrir | Rough, growling — feral characters |
+| Male | am_onyx | Low, heavy — heavies and villains |
+| Female | af_heart | Clear, grounded — narrator alternate |
+| Female | af_bella | Bright, expressive — heroic |
+| Female | bf_alice | Crisp, formal — nobles, scholars |
+| Female | bf_emma | Mature, warm — elders |
+| Female | af_sky | Light, airy — fey, sprites |
+
+Blends work too: `"bm_lewis+am_fenrir"` gives a voice that isn't quite one person — useful for something wearing a body it didn't grow.
+
+### Gemini
+
 Curated 9-voice subset from Gemini's 30-voice catalog, scoped for narrative DM voices.
 
 | Group | Voice | Notes |
@@ -146,6 +242,11 @@ The `--api-target` restriction means a leaked key can only call `generativelangu
 
 | Symptom | Likely cause |
 |---|---|
+| `--test` says `Backend: none` / `Source: unset` | No local server reachable **and** no Gemini key. Start the container, or save a key to `~/.config/claude-dnd/tts.key`. |
+| `--test` picks `gemini` when you wanted local | The local server isn't answering — check `docker ps` and `curl $DND_TTS_LOCAL_URL/v1/audio/voices`. Set `DND_TTS_BACKEND=local` to make the failure explicit instead of silent. |
+| Local backend: "network: [Errno 61] Connection refused" | Server not running, or bound to a different port than `DND_TTS_LOCAL_URL`. |
+| Local backend: "http 400" mentioning voice | The server doesn't know that voice name — check `--list-voices`. |
+| Dropdown shows Gemini names against a local server | The display is cached; hard-reload the page. `/tts/voices` is fetched once at load. |
 | `python3 display/tts.py --test` says "API key: unset" | No env var **and** no key file — save your key to `~/.config/claude-dnd/tts.key`. |
 | Speaker button shows "TTS 401" | API key invalid or disabled — re-mint at https://aistudio.google.com/apikey. |
 | Speaker button shows "TTS 403" | Key not authorized for `generativelanguage.googleapis.com` (Path B keys), or billing not configured on a new AI Studio account. |
@@ -156,10 +257,13 @@ The `--api-target` restriction means a leaked key can only call `generativelangu
 
 ## How to disable
 
-Delete the key file:
+TTS goes quiet when neither backend is available, so remove whichever you configured:
 
 ```bash
-rm ~/.config/claude-dnd/tts.key
+rm ~/.config/claude-dnd/tts.key        # Gemini
+docker stop kokoro-tts                 # local
 ```
 
 The speaker buttons disappear from the display on next page load. Nothing else changes.
+
+To keep both configured but silence audio for one session, set `DND_TTS_BACKEND` to a backend you haven't set up — it reports as unconfigured rather than failing over.
