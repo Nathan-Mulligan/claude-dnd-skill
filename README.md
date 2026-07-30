@@ -428,6 +428,8 @@ Autorun is the primary way to run sessions with the companion UI. Once enabled, 
 
 The countdown is configurable per-campaign by setting `autorun_interval: N` in `state.md → ## Session Flags`. To interrupt autorun from the Claude Code CLI, press **Ctrl+C** during the wait.
 
+> **Permissions note.** Autorun runs several scripts per turn, so without a `Bash` allow rule in your Claude Code settings you'll get a permission prompt per call. `/dm:dnd autorun on` will offer to add one — it asks first, and proposes a **project-scoped** `.claude/settings.json` in your campaign's working directory so the rule doesn't apply to every project on your machine. Declining is fine: autorun still works, you'll just approve each prompt. `/dm:dnd autorun off` offers to remove the rule again.
+
 **N-player threshold** — by default autorun fires when all known players are ready. For multi-device groups you can require only N players:
 
 ```bash
