@@ -1896,6 +1896,23 @@ def tts_synthesize():
     )
 
 
+@app.route("/tts/voices", methods=["GET"])
+def tts_voices():
+    """Report the active backend's voice catalog so the dropdown can match it.
+
+    The local and Gemini backends share no voice names, so the browser cannot
+    hold a static list. Older clients that don't call this still work — they
+    fall back to their built-in Gemini names.
+
+    Response: {"backend": str, "male": [str], "female": [str], "default": str}
+    """
+    if _tts is None:
+        return jsonify({"error": "TTS module unavailable"}), 503
+    if not _token_ok():
+        return "Forbidden", 403
+    return jsonify(_tts.voice_catalog()), 200
+
+
 @app.route("/voice", methods=["POST"])
 def tts_voice():
     """Persist narrator voice selection for the active campaign.
