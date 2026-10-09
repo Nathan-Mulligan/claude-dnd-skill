@@ -6498,6 +6498,115 @@ let _ttsCtx = null;
 let _ttsActiveSource = null;
 let _ttsActivePlayBtn = null;
 
+// Free fallback: the browser's own speech synthesis, no API key needed.
+// Used when /tts has no key configured (503) or fails. Without this, a
+// keyless install got a play button that flashed "TTS 503" for three seconds
+// and never spoke -- the server path was the only path.
+let _ttsServerOk = true;
+let _ttsUtterance = null;
+const _TTS_HAS_BROWSER = 'speechSynthesis' in window;
+if (_TTS_HAS_BROWSER) {
+  // Chrome populates the voice list asynchronously; the first call primes it.
+  speechSynthesis.getVoices();
+  speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+}
+
+function _ttsPickBrowserVoice() {
+  const voices = speechSynthesis.getVoices() || [];
+  if (!voices.length) return null;
+  // Preference order: the page's declared language, then the browser's
+  // accept-language chain, then English, then any voice at all -- a voice in
+  // the wrong accent still beats silence. No single locale is hardcoded.
+  const prefs = [];
+  const want = t => {
+    t = String(t || '').slice(0, 2).toLowerCase();
+    if (t && !prefs.includes(t)) prefs.push(t);
+  };
+  want(document.documentElement.lang);
+  (navigator.languages && navigator.languages.length
+    ? navigator.languages : [navigator.language]).forEach(want);
+  want('en');
+  // Neural/online voices first: the local fallbacks are markedly flatter.
+  // Note these are usually NOT local — Chrome's "Google …" and Edge's
+  // "… Online (Natural)" voices synthesize on the vendor's servers. No key
+  // and no cost to the player, but not offline. `v.localService === true`
+  // is the flag to rank on instead if on-device ever has to be the default.
+  const rank = v => /natural|online|neural/i.test(v.name) ? 0
+                  : /google/i.test(v.name) ? 1 : 2;
+  for (const p of prefs) {
+    const pool = voices.filter(v => (v.lang || '').toLowerCase().startsWith(p));
+    if (pool.length) return pool.sort((a, b) => rank(a) - rank(b))[0];
+  }
+  return voices.slice().sort((a, b) => rank(a) - rank(b))[0];
+}
+
+const _TTS_CHUNK_MAX = 220;
+
+function _ttsChunkText(text) {
+  // Short utterances avoid Chrome's ~15s cut-off on a single long speech.
+  // The terminator set carries CJK and Arabic/Armenian stops as well as the
+  // Latin ones: a Japanese paragraph contains no ".!?" at all, so a
+  // Latin-only split returns the whole paragraph as one chunk and walks
+  // straight into the cut-off this function exists to avoid.
+  const parts = text.match(/[^.!?…。！？؟։]+[.!?…。！？؟։]*["»”」』]?\s*/g) || [text];
+  const chunks = [];
+  let cur = '';
+  for (const part of parts) {
+    // A single sentence longer than the cap still has to be broken, or
+    // scripts that do not punctuate every 220 characters are back to one
+    // oversized utterance.
+    let p = part;
+    while (p.length > _TTS_CHUNK_MAX) {
+      if (cur) { chunks.push(cur.trim()); cur = ''; }
+      let cut = p.lastIndexOf(' ', _TTS_CHUNK_MAX);
+      if (cut < _TTS_CHUNK_MAX * 0.5) cut = _TTS_CHUNK_MAX;   // CJK has no spaces
+      chunks.push(p.slice(0, cut).trim());
+      p = p.slice(cut);
+    }
+    if ((cur + p).length > _TTS_CHUNK_MAX && cur) { chunks.push(cur.trim()); cur = ''; }
+    cur += p;
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+  return chunks.filter(Boolean);
+}
+
+function _ttsBrowserSpeak(btn, text) {
+  speechSynthesis.cancel();
+  const voice = _ttsPickBrowserVoice();
+  const chunks = _ttsChunkText(text);
+  let last = null;
+  chunks.forEach(chunk => {
+    const u = new SpeechSynthesisUtterance(chunk);
+    // Leave lang unset when no voice matched: the browser default is a better
+    // guess than any locale this file could name.
+    if (voice) { u.voice = voice; u.lang = voice.lang; }
+    u.rate = 0.95;
+    speechSynthesis.speak(u);
+    last = u;
+  });
+  if (!last) return;
+
+  btn.innerHTML = _SVG_STOP;
+  btn.classList.remove('tts-loading');
+  btn.classList.add('tts-playing');
+  btn.setAttribute('aria-label', 'Stop narration');
+  _ttsActivePlayBtn = btn;
+  _ttsUtterance = last;
+
+  const done = () => {
+    if (_ttsUtterance !== last) return;      // a newer block took over
+    _ttsUtterance = null;
+    if (_ttsActivePlayBtn === btn) {
+      btn.innerHTML = _SVG_SPEAKER;
+      btn.classList.remove('tts-playing');
+      btn.setAttribute('aria-label', 'Listen to narration');
+      _ttsActivePlayBtn = null;
+    }
+  };
+  last.onend = done;
+  last.onerror = done;
+}
+
 function _getTtsCtx() {
   if (!_ttsCtx || _ttsCtx.state === 'closed') {
     _ttsCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -6514,6 +6623,10 @@ function _ttsStopActive() {
   if (_ttsActiveSource) {
     try { _ttsActiveSource.stop(); } catch (_) {}
     _ttsActiveSource = null;
+  }
+  if (_TTS_HAS_BROWSER && (_ttsUtterance || speechSynthesis.speaking || speechSynthesis.pending)) {
+    _ttsUtterance = null;
+    speechSynthesis.cancel();
   }
   if (_ttsActivePlayBtn) {
     _ttsActivePlayBtn.innerHTML = _SVG_SPEAKER;
@@ -6535,6 +6648,8 @@ async function _ttsPlayBlock(btn, blockEl) {
   _ttsStopActive();
   const text = _ttsExtractText(blockEl);
   if (!text) return;
+
+  if (!_ttsServerOk && _TTS_HAS_BROWSER) { _ttsBrowserSpeak(btn, text); return; }
 
   const ctx = _getTtsCtx();
   const resumeP = ctx.state !== 'running' ? ctx.resume() : Promise.resolve();
@@ -6585,6 +6700,14 @@ async function _ttsPlayBlock(btn, blockEl) {
     };
     source.start(0);
   } catch (err) {
+    if (_ttsActivePlayBtn === btn && _TTS_HAS_BROWSER) {
+      // 503 means no key is configured, so stop asking the server at all.
+      // Anything else (429, 502, a dropped connection) is transient: fall
+      // back for this block and try the server again on the next one.
+      if (err.message === 'TTS 503') _ttsServerOk = false;
+      _ttsBrowserSpeak(btn, text);
+      return;
+    }
     if (_ttsActivePlayBtn === btn) {
       const label = (err.message || 'ERR').slice(0, 12);
       btn.textContent = label;

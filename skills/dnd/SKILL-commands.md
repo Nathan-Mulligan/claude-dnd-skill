@@ -482,7 +482,7 @@ Exit the current session **without saving any state changes**. Use this when an 
 - `sync --check` → check upstream without rebuilding
 - `status` → `python3 ${CLAUDE_SKILL_DIR}/scripts/build_srd.py --status` — show current dataset metadata
 
-Dataset is bundled at `${CLAUDE_SKILL_DIR}/data/dnd5e_srd.json` (1453 records: spells, equipment, magic items, conditions, monsters, class features). No download required at runtime. Run `sync` only when you want to pull new upstream content.
+Dataset is bundled at `${CLAUDE_SKILL_DIR}/data/dnd5e_srd.json` (1467 records: spells, equipment, magic items, conditions, monsters, races, subraces, class features). No download required at runtime. Run `sync` only when you want to pull new upstream content.
 
 ---
 
@@ -561,7 +561,7 @@ Default to `Step by step` if the question is dismissed. Either path lands in the
 3. Ask: roll or point buy
    - Roll → `ability-scores.py roll`, present 3 arrays, player assigns
    - Point buy → `ability-scores.py pointbuy --check <scores>` to validate
-4. Apply racial bonuses. Run `character.py calc` to derive all secondary stats.
+4. Run `character.py calc --race <race> [--subrace <subrace>]` with the BASE ability array. **It applies the racial bonuses itself** and prints base / race / final, along with every secondary stat — do not add racial bonuses by hand first, and do not omit `--race`. An unknown race exits non-zero rather than applying nothing, so a typo cannot produce a sheet quietly missing its bonuses. `lookup.py race <name>` has the full entry (bonuses, traits, speed, languages) if the player wants to read it.
 5. Ask: Fighting Style (Fighter/Paladin/Ranger), spells (if caster)
 6. Assign starting equipment per class + background
 7. Write to `characters/<name>.md` using `templates/character-sheet.md`; set `## Campaign History → Origin campaign`

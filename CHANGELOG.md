@@ -10,6 +10,139 @@ Versions before **1.6.0** are reconstructed retroactively from git history; the 
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-10-09 — Narration audio without an API key, racial bonuses that are applied rather than remembered, and a rename that works in every script
+
+### Fixed — "apply racial bonuses" was a request to the model, with nothing behind it
+
+**`character.py calc` had no `--race` parameter at all.** Step 4 of character
+creation told the DM to apply racial bonuses and then run `calc` to derive the
+secondary stats, but `calc` never saw the race, so it could not apply the bonus
+and could not check the step had happened. The bonus was an instruction to the
+model, and the model is the one part of the toolchain with no way to be
+verified. A Dwarf and an Elf built from the same array came out with the same
+Constitution and nothing could notice.
+
+`calc --race dwarf --subrace hill-dwarf` now applies the bonuses itself and
+prints base / race / final, with the secondary stats derived from the boosted
+scores — so HP follows a Dwarf's Constitution without anyone remembering to
+redo the arithmetic. **An unknown race exits non-zero rather than applying
+nothing**, because a typo that silently applied no bonus is the failure being
+closed. Half-Elf's "+1 to two abilities of your choice" cannot be held in a
+table, so it is reported as still-to-assign instead of dropped. Calling `calc`
+without `--race` behaves exactly as before, and step 4 of the creation flow now
+names the flag instead of asking for the arithmetic.
+
+### Added — races and subraces in the SRD dataset
+
+- **The dataset had no race data of any kind**, so there was nothing for the
+  creation flow to consult even in principle: it carried spells, equipment,
+  magic items, conditions, monsters and class features. `build_srd.py` now
+  fetches `5e-SRD-Races.json` and `5e-SRD-Subraces.json`, and each record
+  carries its ability bonuses flattened to a `{STAT: n}` map rather than
+  upstream's nested shape — so `lookup.py race dwarf` prints the same numbers
+  the calculator applies. 9 races and 4 subraces; bundled dataset 1,454 →
+  1,467 records, so an existing install gets them on update without a rebuild.
+- `lookup.py` takes `race` / `races` / `ancestry` and `subrace` / `subraces`,
+  and a race entry carries its traits, speed, size, age, languages and
+  subraces alongside the bonuses.
+- The bonus table in `character.py` is a second copy of upstream data, which is
+  a drift risk, so `tests/test_racial_bonuses.py` reconciles it against the
+  bundled dataset record by record.
+
+### Fixed — renaming an NPC did nothing in four of our scripts
+
+**`/dm:dnd npc rename` was a no-op for any name written without word
+delimiters.** `_whole_word_pattern` anchored with `\b`, which is the right
+guard for a Latin name (it stops "Sera" matching inside "Seraphim") and an
+impossible condition for a Chinese, Japanese, Korean or Thai one: Python's
+`\w` counts Han, Kana, Hangul and Thai as word characters, and those scripts
+put no space between a word and the text around it, so the lookbehind can
+never be satisfied. Measured — the anchored pattern replaced the name in en,
+fr, de, ru, uk and el and in **none** of zh, ja, ko, th.
+
+The failure was silent and worse than an error: the rename resolved, reported
+success, and left the session log, `world.md`, `state.md` and `npcs.md` all
+still carrying the old name, leaving a campaign inconsistent with itself
+rather than unchanged.
+
+Korean shows this is not simply about spacing. Korean does space its words, so
+the leading anchor holds, but its particles attach to the noun with no space,
+so the trailing one fails; each edge is now decided independently. A
+one-character name keeps both anchors, because a single Han character is a
+morpheme rather than a name — 王 occurs inside 王國 ("kingdom") — and
+over-matching would rewrite the player's transcript, which is not recoverable,
+while under-matching leaves a stale name, which is. Latin, Cyrillic and Greek
+behaviour is unchanged, asserted directly so the guard that stops "Ann"
+matching inside "announce" cannot be lost while chasing this. New shared
+module `scripts/script_ranges.py`.
+
+### Fixed — the scene background was decided by what a character carried
+
+- **`lantern` and `cleric` were temple keywords.** Every other word in that
+  list names a place or a fixture of one — a nave, an altar, incense. Those
+  two named a thing a character *carries* and a thing a character *is*, so
+  they scored wherever the party went: three mentions of a lantern in a room
+  with no other keyword present rendered the room as THE TEMPLE, and so did a
+  cleric walking down a road. Both removed; `prayer` is kept as the weakest
+  survivor, since it at least describes an act performed at the place.
+- **Keyword scoring counted substrings, not words.** Scores came from
+  `window.count(kw)`, so the arcane keyword `ward` matched inside "deputy
+  warden" and a prison fight scored as arcane — along with "wardrobe",
+  "forward" and "steward". Scoring is now whole-word, through the same module
+  as the rename above, so a campaign that overrides a scene's keywords in
+  Chinese or Japanese still scores.
+- **One stray keyword could move the background.** The scene was a bare
+  `max()` over keyword counts with no threshold, so a single hit took the room
+  and two plausible scenes traded the background on a one-point edge. A
+  challenger must now beat the scene on screen by 2, and the incumbent carries
+  a bonus of 1 so it can defend itself after its own keywords scroll out of
+  the window — the usual case for a long scene, since a fight in a crypt stops
+  saying "crypt" after the first line. The constants were measured against
+  this repo's own keyword lists: a genuine arrival at a city narrated over
+  three chunks scores 4 and incidental night words at sea score 2, so a bar of
+  3 admits the transition and blocks the noise.
+
+### Narration audio without an API key (#80 — @valeriopalazzo-beep)
+
+Thanks to **@valeriopalazzo-beep** for spotting that narration audio was a paid
+feature by accident, and for the fix. With no Gemini key configured, `/tts`
+answers 503 and the per-block play button put the text "TTS 503" on itself for
+three seconds and gave up. There was no second path — `speechSynthesis` did not
+appear anywhere in the repo — so an install without a key simply had no voice.
+
+The play button now falls back to the browser's own speech synthesis — no key,
+no account, no cost. It is not necessarily offline: the voice picker prefers
+neural voices, and in Chrome and Edge the best ones are synthesized on the
+browser vendor's servers rather than on the machine. Nothing is sent to us or
+to Gemini, and nothing has to be configured, but a reader who needs audio to
+stay on the device should pick a local voice in their OS speech settings. A
+503 means no key exists, so the server is not
+asked again for the rest of the session; any other failure (429, a bad gateway,
+a dropped connection) falls back for that block alone and tries the server
+again on the next one. Stop cancels whichever voice is speaking. When a Gemini
+key *is* configured nothing changes: the server path is still preferred, and
+the fallback only runs when it cannot answer.
+
+Two changes to the contributed version:
+
+- **No locale is pinned.** The voice is chosen from the page's declared
+  language, then the browser's accept-language chain, then English, then any
+  installed voice — a voice in the wrong accent still beats silence. The
+  submitted version preferred `it-IT`, which is right for its author's table
+  and would have read Italian over everyone else's narration.
+- **The chunker splits CJK.** Long speech is broken into ~220-character
+  utterances to stay under Chrome's roughly fifteen-second cut-off on a single
+  utterance. The terminator set now includes `。！？` and the Arabic and
+  Armenian full stops alongside `.!?`, and an unpunctuated run longer than the
+  cap is split on length. Japanese and Chinese prose contains none of the Latin
+  terminators, so it previously came back as one oversized chunk and hit the
+  exact cut-off the chunking exists to avoid.
+
+`tests/test_tts_fallback.py` drives the real sliced source through node rather
+than asserting the functions exist: both call sites, the 503-versus-transient
+distinction, Stop cancelling the browser voice, voice preference order, and the
+chunker across Latin, Japanese, Chinese, unpunctuated and empty input.
+
 ## [2.5.0] — 2026-09-16 — Creature defenses, narration badges, and an XP ledger
 
 Six fixes in one release, so an existing install updates once and receives all
@@ -680,7 +813,7 @@ Thanks again to [@ethros19](https://github.com/ethros19) (Ethan Piper) for the i
 
 ## [1.6.0] — 2026-04-30
 
-Today's update is a quiet but meaningful one, and it lands on a problem that's been with us — and the broader LLM-RPG community — since very early on. [@ethros19](https://github.com/ethros19) (Ethan Piper) first surfaced it in [issue #7](https://github.com/Bobby-Gray/claude-dnd-skill/issues/7) back in v1.4 days, and has been the most consistent voice keeping us honest about the long-context failure modes ever since. The shape of the problem: after enough sessions, the DM voice will sometimes treat a known character as a fresh contact — *"go see the chandler, tell him I sent you"* — when the player and that character were introduced sessions ago. The relationship facts are always in the canon. They've just fallen out of scope after compaction.
+Today's update is a quiet but meaningful one, and it lands on a problem that's been with us — and the broader LLM-RPG community — since very early on. [@ethros19](https://github.com/ethros19) (Ethan Piper) first surfaced it in [issue #7](https://github.com/neuralinitiative/claude-dnd-skill/issues/7) back in v1.4 days, and has been the most consistent voice keeping us honest about the long-context failure modes ever since. The shape of the problem: after enough sessions, the DM voice will sometimes treat a known character as a fresh contact — *"go see the chandler, tell him I sent you"* — when the player and that character were introduced sessions ago. The relationship facts are always in the canon. They've just fallen out of scope after compaction.
 
 We've shipped a few different methodologies for this over the last several months. The compaction-drift fix in 1.4 (re-read the source, never trust the compacted impression). The Live State Flags block (cover, faction stances, dispositions in compact key-value form). The targeted-Read directives in `SKILL.md`. Each one held the line at the scale of the campaigns we were running at the time.
 

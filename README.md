@@ -76,6 +76,7 @@ If you're on Claude Code, you're in the right place.
 - <img src="skills/dnd/display/icons/spellbook.png" height="18"> **SRD spell/feature lookup** — click any spell or feature name in a character sheet to view its full description; bundled 5e dataset with supplemental entries for non-SRD content (Xanathar's, Tasha's, subclass features); wikidot fallback link shown for anything not in the local data
 - <img src="skills/dnd/display/icons/crystal_ball.png" height="18"> **DM Help button** — click the ◈ button on the display for an on-demand contextual hint or warning; generated from the current scene without per-turn token overhead
 - <img src="skills/dnd/display/icons/potion.png" height="18"> **Tutor / learning mode** — enable per-session for automatic hint blocks after every scene, decision point, and roll; ideal for players new to D&D
+- <img src="skills/dnd/display/icons/chat.png" height="18"> **Spoken narration** — tap the speaker on any narration block to hear it read aloud. With a Google AI Studio key in `GEMINI_API_KEY` it uses Gemini TTS; without one it falls back to the browser's own speech synthesis, so narration audio works with no key, no account setup and no cost. The fallback is not necessarily offline — Chrome and Edge synthesize their best voices on the vendor's servers — but nothing is configured, billed, or sent to Gemini
 - <img src="skills/dnd/display/icons/focus.png" height="18"> **Browser-side sound effects** — 12 SFX types synthesized on demand via numpy and played through Web Audio API; works on any device with the tab open, including phones over LAN
 - <img src="skills/dnd/display/icons/dragon.png" height="18"> **Couch co-op** — multiple characters, shared display, turn order visible to everyone in the room
 - <img src="skills/dnd/display/icons/attack.png" height="18"> **Combat tracker** — auto-rolled initiative, `▶` turn pointer, HP bars, inline dice math sent to display
@@ -265,8 +266,8 @@ The two arc types are mutually exclusive per campaign and fully compatible with 
 The creation flow walks through:
 1. Name, race, class, background
 2. **Point buy** (validates against 27-point budget) or **rolled** (3 arrays of 4d6kh3 to choose from)
-3. Racial bonuses applied automatically
-4. Derived stats calculated via `character.py`
+3. Racial bonuses applied by `character.py calc --race <race> [--subrace <subrace>]` — the script applies them and shows base / race / final, so the step is computed rather than remembered; an unknown race refuses instead of silently applying nothing
+4. Derived stats calculated from the boosted scores by the same call
 5. Starting equipment assigned by class + background
 6. Sheet written to `characters/<name>.md`
 
@@ -488,7 +489,7 @@ The server scans narration text for keywords and crossfades the background gradi
 | Swamp | swamp, bog, marsh, mire | mist |
 | + 6 more | mine, castle, ruins, desert, fire, temple | — |
 
-Scene transitions crossfade over ~2.5 seconds. The server maintains a 20-chunk rolling window for detection so scenes don't flicker on single keyword matches.
+Scene transitions crossfade over ~2.5 seconds. Detection runs over a 20-chunk rolling window, and a challenger has to beat the scene already on screen by 2 points to take the room, with the incumbent carrying a bonus of 1 so it can hold its ground once its own keywords scroll out of the window. Before that margin existed a single keyword was enough to change the background, and two plausible scenes would trade it back and forth on a one-point edge. Keywords are matched as whole words, so `ward` no longer fires inside "deputy warden".
 
 ### Dynamic Sky Canvas
 
@@ -735,7 +736,7 @@ ${CLAUDE_SKILL_DIR}/
 ├── SKILL-commands.md         # /dm:dnd command procedures
 ├── README.md                 # This file
 ├── data/
-│   ├── dnd5e_srd.json        # Bundled 5e SRD dataset (1453 records — spells, features, equipment, monsters)
+│   ├── dnd5e_srd.json        # Bundled 5e SRD dataset (1467 records — spells, features, equipment, monsters, races)
 │   └── dnd5e_supplemental.json  # Non-SRD content (Xanathar's, subclass features, etc.)
 ├── scripts/
 │   ├── dice.py
@@ -804,7 +805,7 @@ Each campaign declares its ruleset on the `state.md` header line: `**Ruleset:** 
 
 ### 2014 dataset (default)
 
-`data/dnd5e_srd.json` — built from `5e-bits/5e-database` (`main` branch, 2014 SRD) and `foundryvtt/dnd5e` (`master` branch). 1,453 records: 319 spells, 237 equipment, 362 magic items, 15 conditions, 334 monsters, 186 features.
+`data/dnd5e_srd.json` — built from `5e-bits/5e-database` (`main` branch, 2014 SRD) and `foundryvtt/dnd5e` (`master` branch). 1,467 records: 319 spells, 237 equipment, 362 magic items, 15 conditions, 334 monsters, 9 races, 4 subraces, 187 features.
 
 ### 2024 dataset (opt-in)
 
