@@ -92,10 +92,20 @@ def _run(body: str, *, voices=None, doc_lang="", nav_lang="en-US", nav_langs=Non
         f.write(script)
         path = f.name
     try:
-        r = subprocess.run([NODE, path], capture_output=True, text=True, timeout=30)
+        # PIN THE ENCODING. `text=True` alone decodes the child's output with
+        # the LOCALE encoding, which is ascii under the non-UTF-8 CI job and
+        # cp1252 on Windows -- and the whole point of these cases is that the
+        # payload is Japanese and Chinese. Without this the harness dies on
+        # the very text it exists to check, which is the failure this repo
+        # keeps a non-UTF-8 locale job to catch (see scripts/utf8io.py).
+        r = subprocess.run([NODE, path], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=30)
         if r.returncode != 0:
-            raise AssertionError(f"node failed: {r.stderr.strip()[:800]}")
-        return json.loads(r.stdout.strip().splitlines()[-1])
+            raise AssertionError(f"node failed: {(r.stderr or '').strip()[:800]}")
+        out = (r.stdout or "").strip()
+        if not out:
+            raise AssertionError(f"node produced no stdout; stderr: {(r.stderr or '').strip()[:400]}")
+        return json.loads(out.splitlines()[-1])
     finally:
         pathlib.Path(path).unlink(missing_ok=True)
 
