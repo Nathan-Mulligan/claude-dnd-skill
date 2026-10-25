@@ -6686,12 +6686,12 @@ const _SVG_CHEVRON = '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="
 // chunks that start short (first sound comes from the first chunk alone),
 // synthesised one at a time ahead of playback, and scheduled back to back on
 // one AudioContext so consecutive chunks join without a gap.
-// Kokoro on CPU synthesises at ~0.3s + 17ms per character and speaks ~11
-// characters a second. Each chunk must finish synthesising before the audio
+// Kokoro on CPU (measured on an M-series Mac) synthesises at ~0.35s + 19ms per
+// character and speaks ~15 characters a second. Each chunk must finish synthesising before the audio
 // queued ahead of it runs out, so the first chunk is short and later ones grow
 // with the audio already banked; a long sentence is split at a comma to fit.
 const _TTS_FIRST_CAP = 60, _TTS_MAX_CAP = 320;
-const _TTS_SPEAK_S_PER_CHAR = 0.09, _TTS_SYNTH_S_PER_CHAR = 0.017, _TTS_SYNTH_FIXED_S = 0.3;
+const _TTS_SPEAK_S_PER_CHAR = 0.064, _TTS_SYNTH_S_PER_CHAR = 0.019, _TTS_SYNTH_FIXED_S = 0.35;
 const _TTS_LINE_PAUSE = 0.25;            // seconds between lines, not chunks
 let _ttsGen = 0;                         // bumped by stop; stale work checks it
 let _ttsFetchChain = Promise.resolve();
