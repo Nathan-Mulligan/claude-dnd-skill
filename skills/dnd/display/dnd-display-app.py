@@ -1420,6 +1420,8 @@ def chunk():
     elif is_tutor:
         payload["tutor"] = True
     else:
+        if data.get("opener"):
+            payload["opener"] = True
         # Scene detection only on DM narration
         scene = _detect_scene(cleaned)
         if scene:

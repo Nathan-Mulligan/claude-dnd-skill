@@ -391,6 +391,12 @@ def main() -> None:
         help="Send as a tutor/learning hint (collapsible parchment block)",
     )
     parser.add_argument(
+        "--opener", action="store_true",
+        help="DM narration only: the first sentence or two, sent the moment the "
+             "outcome is decided so the table hears it while the rest is written. "
+             "The display holds the paragraph open for the next narration send.",
+    )
+    parser.add_argument(
         "--action", metavar="NAME",
         help="Send as a player action intent — subdued label echoing what the player declared",
     )
@@ -654,6 +660,8 @@ def main() -> None:
                 payload["dice"] = True
             elif args.tutor:
                 payload["tutor"] = True
+            elif args.opener:
+                payload["opener"] = True
 
             issues = _validate_payload(payload, "chunk")
             if issues:

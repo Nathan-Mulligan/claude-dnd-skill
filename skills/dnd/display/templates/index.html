@@ -4882,6 +4882,7 @@ function instantFlush() {
 
 // ── Shared: flush cursor and currentEl before inserting a non-DM block ──
 function _flushForBlock() {
+  _openerHoldUntil = 0;
   instantFlush();  // finish any in-progress typewriter before inserting
   if (currentCursor) {
     currentCursor.classList.remove('typing-cursor');
@@ -5388,20 +5389,31 @@ function _hideProcessingIndicator() {
   if (el) el.remove();
 }
 
-function handleIncomingText(text) {
+// An opener is the DM's first sentence, sent before the rest is written. Its
+// paragraph stays open so the rest joins it instead of starting a new block.
+let _openerHoldUntil = 0;
+const OPENER_HOLD = 30000;
+
+function handleIncomingText(text, opener) {
   _hideProcessingIndicator();
   // Debounce block separation: if there was a gap > IDLE_GAP, new block
   const now = Date.now();
-  if (now - lastChunkTime > IDLE_GAP && charQueue.length === 0 && !isTyping) {
+  const held = now < _openerHoldUntil;
+  _openerHoldUntil = opener ? now + OPENER_HOLD : 0;
+  if (!held && now - lastChunkTime > IDLE_GAP && charQueue.length === 0 && !isTyping) {
     flushNewBlock();
+  } else if (held && currentEl) {
+    charQueue.push(' ');
   }
   lastChunkTime = now;
 
   // Reset idle timer
   clearTimeout(idleTimer);
-  idleTimer = setTimeout(() => {
+  const flushAfter = () => {
+    if (Date.now() < _openerHoldUntil) { idleTimer = setTimeout(flushAfter, _openerHoldUntil - Date.now()); return; }
     if (!isTyping && charQueue.length === 0) flushNewBlock();
-  }, IDLE_GAP * 2);
+  };
+  idleTimer = setTimeout(flushAfter, IDLE_GAP * 2);
 
   // Enqueue — preprocess markdown to typed segment items
   const cleaned = text
@@ -7955,7 +7967,7 @@ function connect() {
       } else if (payload.tutor) {
         renderTutorBlock(payload.text);
       } else {
-        handleIncomingText(payload.text);
+        handleIncomingText(payload.text, !!payload.opener);
         if (_ttsAutoNarrate && _TTS_AVAILABLE) _narrate(payload.text, _narratorVoice());
       }
     }

@@ -338,7 +338,15 @@ DNDEND
 ```
 Brief NPC interjections within narration don't need a separate block.
 
-*DM narration* — **CRITICAL:** compose the complete narration first, then call `send.py` as the very last action. Never call `send.py` mid-response. The send must contain the **complete, unabridged text** — do not summarize or condense. **Bundle all stat changes (HP, spell slots, conditions, concentration, inventory) into this same send.py call** using `--stat-*` flags — no separate `push_stats.py` call needed for turn-resolution state:
+*Opener first.* The table hears nothing until a send lands, and writing a full paragraph takes several seconds. So once the outcome of the turn is decided (after any rolls), send the scene's first sentence or two on their own with `--opener`, in their own Bash call, before writing the rest. Keep it to roughly 15-30 words of plain narration, consistent with what follows, no stat flags. The display speaks it at once and holds the paragraph open, so the full narration sent next continues it. Then send the rest exactly as below, starting after the opener (don't repeat it):
+```bash
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --opener << 'DNDEND'
+The goblin's blade skitters off your shield, and for a heartbeat the cave goes silent.
+DNDEND
+```
+Skip the opener for one-line replies, out-of-character answers, and turns whose narration is only a sentence or two anyway.
+
+*DM narration* — **CRITICAL:** compose the complete narration (after any opener) first, then call `send.py` as the very last action. Never call `send.py` mid-response apart from the opener. The send must contain the **complete, unabridged text** — do not summarize or condense. **Bundle all stat changes (HP, spell slots, conditions, concentration, inventory) into this same send.py call** using `--stat-*` flags — no separate `push_stats.py` call needed for turn-resolution state:
 ```bash
 # With stat changes (any HP/slot/condition that changed this turn):
 python3 ${CLAUDE_SKILL_DIR}/display/send.py \
@@ -369,7 +377,7 @@ DNDEND
 | `--effect-start` | `"NAME:SPELL:DURATION"` | Start timed effect — DURATION: `10r` / `60m` / `8h` / `indef`; append `:conc` if concentration |
 | `--effect-end` | `"NAME:SPELL"` | End effect (broken concentration, dispelled, player drops it) |
 
-**Batching rule — ONE Bash tool call per response, multiple typed sends inside it:**
+**Batching rule — ONE Bash tool call per response (plus the opener's own call), multiple typed sends inside it:**
 
 **CRITICAL: `send.py` calls MUST go through the explicit Bash tool — bash code blocks written in response text do not execute in Claude Code; they only display as text. Every display sync invocation requires an actual Bash tool call.**
 
@@ -407,7 +415,8 @@ b. Roll all dice (combat.py attack / dice.py)
 c. send.py --dice    ← ALL roll results with context
 d. tracker.py        ← conditions, concentration, death saves if applicable
    tracker.py effect tick <actor>  ← decrement round effects; prints any expiry warnings
-e. Write full narration for this turn
+e. send.py --opener ← first sentence or two, the moment the outcome is known
+   then write the rest of the narration for this turn
 f. send.py [--stat-*] ← send complete narration + ALL stat changes — NEVER skip
    Use --effect-start / --effect-end flags when effects begin or end this turn (syncs display)
 g. push_stats.py --turn-current  ← advance turn pointer (still separate — not a narration)
