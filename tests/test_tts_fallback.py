@@ -117,7 +117,6 @@ class SliceSanityTests(unittest.TestCase):
         src = _js_source()
         self.assertIn("_ttsChunkText", src)
         self.assertIn("_ttsPickBrowserVoice", src)
-        self.assertIn("_ttsBrowserSpeak", src)
         self.assertGreater(len(src), 1500, "slice is suspiciously short")
 
 
@@ -128,33 +127,27 @@ class WiringTests(unittest.TestCase):
     def setUpClass(cls):
         cls.full = HTML.read_text(encoding="utf-8")
 
-    def test_the_fallback_is_called_from_more_than_one_place(self):
-        """It needs the pre-check (server already known keyless) AND the catch
-        (this request just failed). One without the other half-works."""
-        # `(?<!function )` matters: the declaration reads
-        # `function _ttsBrowserSpeak(btn, text)` and matches the bare pattern,
-        # so counting every occurrence stays at 2 with BOTH call sites deleted.
-        # That is the exact shape this file's docstring warns about.
-        calls = len(re.findall(r"(?<!function )_ttsBrowserSpeak\(btn, text\)", self.full))
-        self.assertGreaterEqual(calls, 2,
-                                "the fallback should be reached from both the "
-                                "pre-check and the error path")
+    def test_a_chunk_without_server_audio_falls_back_to_the_browser(self):
+        """Every failure path (no key, 429, 502, dropped connection) comes back
+        from _ttsFetchPcm as null, and the queue speaks that chunk instead."""
+        fetch = re.search(r"async function _ttsFetchPcm\(text, voice\) \{(.*?)\n\}", self.full, re.S)
+        self.assertIsNotNone(fetch)
+        self.assertIn("return null;", fetch.group(1))
+        narrate = re.search(r"function _narrate\(text, voice, btn\) \{(.*?)\n\}", self.full, re.S)
+        self.assertIsNotNone(narrate)
+        self.assertIn("await _ttsBrowserSay(chunk);", narrate.group(1))
 
     def test_the_stop_button_cancels_the_browser_voice(self):
         """Without this, Stop silences the server path and the browser keeps
         talking over the next block."""
-        self.assertIn("speechSynthesis.cancel()", self.full)
-        stop = re.search(r"function _ttsStopActive\(\) \{(.*?)\n\}", self.full, re.S)
+        stop = re.search(r"function _ttsStopAll\(\) \{(.*?)\n\}", self.full, re.S)
         self.assertIsNotNone(stop)
         self.assertIn("speechSynthesis.cancel()", stop.group(1))
 
-    def test_only_503_disables_the_server_permanently(self):
-        """A transient failure must not downgrade a working install."""
-        self.assertIn("if (err.message === 'TTS 503') _ttsServerOk = false;", self.full)
-        bare = re.findall(r"^\s*_ttsServerOk = false;", self.full, re.M)
-        self.assertEqual(bare, [],
-                         "an unconditional `_ttsServerOk = false` means any single "
-                         "error stops using the server for the rest of the session")
+    def test_no_failure_disables_the_server_for_the_session(self):
+        """A 503 backs off for a minute; nothing gives up on Kokoro for good."""
+        self.assertIn("if (resp.status === 503) _ttsServerRetryAt = Date.now() + 60000;", self.full)
+        self.assertNotIn("_ttsServerOk = false", self.full)
 
 
 class VoiceSelectionTests(unittest.TestCase):

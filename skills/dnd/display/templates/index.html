@@ -4869,6 +4869,12 @@ function _flushForBlock() {
     currentCursor.classList.remove('typing-cursor');
     currentCursor = null;
   }
+  // The DM block being closed still needs its badge and play bar; without
+  // these, narration followed by an NPC line or a roll had no replay button.
+  if (currentEl) {
+    _addBlockBadge(currentEl);
+    _addTtsBar(currentEl);
+  }
   currentEl = null;
   clearTimeout(idleTimer);
 }
@@ -5263,6 +5269,16 @@ function renderXpBlock(xpData) {
 
 // ── Replay batch (reconnect / session resume) ─────────────────────────
 function renderReplayBatch(items) {
+  // The server sends the backlog on every (re)connect. Rebuild the feed from
+  // it rather than appending, or each dropped connection doubles the story.
+  charQueue = [];
+  isTyping = false;
+  _currentInlineEl = null;
+  if (currentCursor && currentCursor.parentNode) currentCursor.parentNode.removeChild(currentCursor);
+  currentCursor = null;
+  currentEl = null;
+  clearTimeout(idleTimer);
+  textContent.innerHTML = '';
   flushNewBlock();
   items.forEach(item => {
     if (!item) return;
@@ -6543,30 +6559,31 @@ fetch('/cast', { headers: _authHeaders() })
   .then(m => { _CAST = m || {}; })
   .catch(() => {});
 
-function _voiceForBlock(blockEl) {
-  const narrator = _CAST._narrator || _ttsVoice;
-  if (!blockEl) return narrator;
-  const nameEl = blockEl.querySelector('.npc-name');
-  if (!nameEl) return narrator;
-  const raw = (nameEl.textContent || '').trim().toLowerCase();
-  if (!raw) return narrator;
+function _narratorVoice() {
+  // A voice picked in the dropdown wins; otherwise cast.json's narrator.
+  return (!localStorage.getItem('dnd_tts_voice') && _CAST._narrator) || _ttsVoice;
+}
+
+function _voiceForName(name) {
+  const raw = String(name || '').trim().toLowerCase();
+  if (!raw) return _narratorVoice();
   if (_CAST[raw]) return _CAST[raw];
   // Loose match so 'Cultist Sentry' finds 'cultist', as dm-speak.py does.
-  const hit = Object.keys(_CAST).filter(k => k[0] !== '_')
-                    .find(k => raw.includes(k));
-  return hit ? _CAST[hit] : narrator;
+  const hit = Object.keys(_CAST).filter(k => k[0] !== '_').find(k => raw.includes(k));
+  return hit ? _CAST[hit] : _narratorVoice();
+}
+
+function _voiceForBlock(blockEl) {
+  const nameEl = blockEl && blockEl.querySelector('.npc-name');
+  return nameEl ? _voiceForName(nameEl.textContent) : _narratorVoice();
 }
 
 let _ttsCtx = null;
-let _ttsActiveSource = null;
-let _ttsActivePlayBtn = null;
 
 // Free fallback: the browser's own speech synthesis, no API key needed.
 // Used when /tts has no key configured (503) or fails. Without this, a
 // keyless install got a play button that flashed "TTS 503" for three seconds
 // and never spoke -- the server path was the only path.
-let _ttsServerOk = true;
-let _ttsUtterance = null;
 const _TTS_HAS_BROWSER = 'speechSynthesis' in window;
 if (_TTS_HAS_BROWSER) {
   // Chrome populates the voice list asynchronously; the first call primes it.
@@ -6633,43 +6650,6 @@ function _ttsChunkText(text) {
   return chunks.filter(Boolean);
 }
 
-function _ttsBrowserSpeak(btn, text) {
-  speechSynthesis.cancel();
-  const voice = _ttsPickBrowserVoice();
-  const chunks = _ttsChunkText(text);
-  let last = null;
-  chunks.forEach(chunk => {
-    const u = new SpeechSynthesisUtterance(chunk);
-    // Leave lang unset when no voice matched: the browser default is a better
-    // guess than any locale this file could name.
-    if (voice) { u.voice = voice; u.lang = voice.lang; }
-    u.rate = 0.95;
-    speechSynthesis.speak(u);
-    last = u;
-  });
-  if (!last) return;
-
-  btn.innerHTML = _SVG_STOP;
-  btn.classList.remove('tts-loading');
-  btn.classList.add('tts-playing');
-  btn.setAttribute('aria-label', 'Stop narration');
-  _ttsActivePlayBtn = btn;
-  _ttsUtterance = last;
-
-  const done = () => {
-    if (_ttsUtterance !== last) return;      // a newer block took over
-    _ttsUtterance = null;
-    if (_ttsActivePlayBtn === btn) {
-      btn.innerHTML = _SVG_SPEAKER;
-      btn.classList.remove('tts-playing');
-      btn.setAttribute('aria-label', 'Listen to narration');
-      _ttsActivePlayBtn = null;
-    }
-  };
-  last.onend = done;
-  last.onerror = done;
-}
-
 function _getTtsCtx() {
   if (!_ttsCtx || _ttsCtx.state === 'closed') {
     _ttsCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -6682,109 +6662,194 @@ const _SVG_STOP    = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height=
 const _SVG_SPIN    = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" class="tts-spin" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>';
 const _SVG_CHEVRON = '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-function _ttsStopActive() {
-  if (_ttsActiveSource) {
-    try { _ttsActiveSource.stop(); } catch (_) {}
-    _ttsActiveSource = null;
+// ── Narration queue ─────────────────────────────────────────────────────
+// Every spoken line, auto-narrated or clicked, goes through one queue: lines
+// play in arrival order and never overlap. Each line is split into sentence
+// chunks that start short (first sound comes from the first chunk alone),
+// synthesised one at a time ahead of playback, and scheduled back to back on
+// one AudioContext so consecutive chunks join without a gap.
+// Kokoro on CPU synthesises at ~0.3s + 17ms per character and speaks ~11
+// characters a second. Each chunk must finish synthesising before the audio
+// queued ahead of it runs out, so the first chunk is short and later ones grow
+// with the audio already banked; a long sentence is split at a comma to fit.
+const _TTS_FIRST_CAP = 60, _TTS_MAX_CAP = 320;
+const _TTS_SPEAK_S_PER_CHAR = 0.09, _TTS_SYNTH_S_PER_CHAR = 0.017, _TTS_SYNTH_FIXED_S = 0.3;
+const _TTS_LINE_PAUSE = 0.25;            // seconds between lines, not chunks
+let _ttsGen = 0;                         // bumped by stop; stale work checks it
+let _ttsFetchChain = Promise.resolve();
+let _ttsPlayChain = Promise.resolve();
+let _ttsNextAt = 0;
+const _ttsSources = new Set();
+let _ttsServerRetryAt = 0;               // while in the future, use browser speech
+
+function _ttsSpeakable(text) {
+  return String(text || '').replace(/[*_#`>|]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function _ttsRampChunks(text) {
+  const sentences = text.match(/[^.!?…。！？؟։]+[.!?…。！？؟։]*["'»”’」』)]*\s*/g) || [text];
+  const out = [];
+  let banked = 0;                          // seconds of audio ahead of the next chunk
+  let cur = '';
+  const capNow = () => out.length === 0 ? _TTS_FIRST_CAP : Math.max(40, Math.min(_TTS_MAX_CAP,
+    Math.floor((banked * 0.8 - _TTS_SYNTH_FIXED_S) / _TTS_SYNTH_S_PER_CHAR)));
+  const push = c => {
+    c = c.trim();
+    if (!c) return;
+    if (out.length) banked -= _TTS_SYNTH_FIXED_S + c.length * _TTS_SYNTH_S_PER_CHAR;
+    banked += c.length * _TTS_SPEAK_S_PER_CHAR;
+    out.push(c);
+  };
+  for (let s of sentences) {
+    if (cur && (cur + s).length > capNow()) { push(cur); cur = ''; }
+    while (!cur && s.length > capNow()) {
+      const cap = capNow();
+      const cut = Math.max(s.lastIndexOf(', ', cap), s.lastIndexOf('; ', cap), s.lastIndexOf(' — ', cap));
+      if (cut < cap * 0.4) break;
+      push(s.slice(0, cut + 1));
+      s = s.slice(cut + 1);
+    }
+    cur += s;
   }
-  if (_TTS_HAS_BROWSER && (_ttsUtterance || speechSynthesis.speaking || speechSynthesis.pending)) {
-    _ttsUtterance = null;
-    speechSynthesis.cancel();
+  push(cur);
+  return out.flatMap(c => c.length <= 400 ? [c] : _ttsChunkText(c));
+}
+
+function _ttsSetBtn(btn, state) {
+  if (!btn) return;
+  btn.classList.remove('tts-loading', 'tts-playing');
+  if (state === 'loading') {
+    btn.innerHTML = _SVG_SPIN; btn.classList.add('tts-loading');
+    btn.setAttribute('aria-label', 'Loading…');
+  } else if (state === 'playing') {
+    btn.innerHTML = _SVG_STOP; btn.classList.add('tts-playing');
+    btn.setAttribute('aria-label', 'Stop narration');
+  } else {
+    btn.innerHTML = _SVG_SPEAKER;
+    btn.setAttribute('aria-label', 'Listen to narration');
   }
-  if (_ttsActivePlayBtn) {
-    _ttsActivePlayBtn.innerHTML = _SVG_SPEAKER;
-    _ttsActivePlayBtn.classList.remove('tts-playing', 'tts-loading');
-    _ttsActivePlayBtn.setAttribute('aria-label', 'Listen to narration');
-    _ttsActivePlayBtn = null;
+}
+
+async function _ttsFetchPcm(text, voice) {
+  if (Date.now() < _ttsServerRetryAt) return null;
+  const resp = await fetch('/tts', {
+    method: 'POST', headers: _authHeaders(), body: JSON.stringify({ text, voice }),
+  });
+  if (!resp.ok) {
+    // 503 means the server has no voice at all right now; ask again in a
+    // minute rather than giving up on Kokoro for the rest of the session.
+    if (resp.status === 503) _ttsServerRetryAt = Date.now() + 60000;
+    return null;
   }
+  const pcm = await resp.arrayBuffer();
+  return pcm.byteLength >= 2 ? pcm : null;
+}
+
+function _ttsBrowserSay(text) {
+  if (!_TTS_HAS_BROWSER) return Promise.resolve();
+  return new Promise(resolve => {
+    const voice = _ttsPickBrowserVoice();
+    const chunks = _ttsChunkText(text);
+    if (!chunks.length) return resolve();
+    chunks.forEach((chunk, i) => {
+      const u = new SpeechSynthesisUtterance(chunk);
+      if (voice) { u.voice = voice; u.lang = voice.lang; }
+      u.rate = 0.95;
+      if (i === chunks.length - 1) { u.onend = resolve; u.onerror = resolve; }
+      speechSynthesis.speak(u);
+    });
+  });
+}
+
+let _ttsUnlockHinted = false;
+function _ttsEnsureRunning(ctx) {
+  if (ctx.state === 'running') return;
+  ctx.resume().catch(() => {});
+  // Chrome keeps audio suspended until the page has been clicked once. Queued
+  // lines are already scheduled in order and start together with the context.
+  if (!_ttsUnlockHinted && typeof _showToast === 'function') {
+    _ttsUnlockHinted = true;
+    setTimeout(() => { if (ctx.state !== 'running') _showToast('Click anywhere to turn narration sound on'); }, 600);
+  }
+}
+document.addEventListener('pointerdown', () => {
+  if (_ttsCtx && _ttsCtx.state === 'suspended') _ttsCtx.resume().catch(() => {});
+}, { capture: true, passive: true });
+
+function _ttsSchedule(ctx, pcm, btn, first, last, gen) {
+  const int16 = new Int16Array(pcm, 0, pcm.byteLength >> 1);
+  const buf = ctx.createBuffer(1, int16.length, 24000);
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < int16.length; i++) ch[i] = int16[i] / 32768;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  const now = ctx.currentTime;
+  let at = Math.max(now + 0.03, _ttsNextAt + (first && _ttsNextAt > now ? _TTS_LINE_PAUSE : 0));
+  _ttsNextAt = at + buf.duration;
+  _ttsSources.add(src);
+  if (first && btn) setTimeout(() => { if (gen === _ttsGen) _ttsSetBtn(btn, 'playing'); }, Math.max(0, (at - now) * 1000));
+  src.onended = () => {
+    _ttsSources.delete(src);
+    if (last && btn && gen === _ttsGen) _ttsSetBtn(btn, 'idle');
+  };
+  src.start(at);
+}
+
+function _ttsWaitForQueue(ctx) {
+  const ms = Math.max(0, (_ttsNextAt - ctx.currentTime) * 1000);
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function _narrate(text, voice, btn) {
+  text = _ttsSpeakable(text);
+  if (!text) return;
+  const gen = _ttsGen;
+  const ctx = _getTtsCtx();
+  _ttsEnsureRunning(ctx);
+  if (btn) _ttsSetBtn(btn, 'loading');
+  const chunks = _ttsRampChunks(text);
+  chunks.forEach((chunk, i) => {
+    const pcmP = _ttsFetchChain.then(() => gen === _ttsGen ? _ttsFetchPcm(chunk, voice) : null);
+    _ttsFetchChain = pcmP.catch(() => null);
+    const step = _ttsPlayChain.then(async () => {
+      let pcm = null;
+      try { pcm = await pcmP; } catch (_) {}
+      if (gen !== _ttsGen) return;
+      if (pcm) { _ttsSchedule(ctx, pcm, btn, i === 0, i === chunks.length - 1, gen); return; }
+      // No server audio for this chunk: wait for what's queued, then let the
+      // browser say it, so the fallback can't talk over Kokoro either.
+      await _ttsWaitForQueue(ctx);
+      if (gen !== _ttsGen) return;
+      if (i === 0 && btn) _ttsSetBtn(btn, 'playing');
+      await _ttsBrowserSay(chunk);
+      if (i === chunks.length - 1 && btn && gen === _ttsGen) _ttsSetBtn(btn, 'idle');
+    });
+    _ttsPlayChain = step.catch(() => {});
+  });
+}
+
+function _ttsStopAll() {
+  _ttsGen++;
+  for (const src of _ttsSources) { try { src.stop(); } catch (_) {} }
+  _ttsSources.clear();
+  _ttsNextAt = 0;
+  if (_TTS_HAS_BROWSER) speechSynthesis.cancel();
+  document.querySelectorAll('.tts-play-btn.tts-playing, .tts-play-btn.tts-loading')
+    .forEach(b => _ttsSetBtn(b, 'idle'));
 }
 
 function _ttsExtractText(blockEl) {
   const clone = blockEl.cloneNode(true);
-  const bar = clone.querySelector('.tts-bar');
-  if (bar) bar.remove();
-  return (clone.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 2000);
+  clone.querySelectorAll('.tts-bar, .npc-name, .block-badge').forEach(n => n.remove());
+  return (clone.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
-async function _ttsPlayBlock(btn, blockEl) {
-  if (btn.classList.contains('tts-playing')) { _ttsStopActive(); return; }
-  _ttsStopActive();
-  const text = _ttsExtractText(blockEl);
-  if (!text) return;
-
-  if (!_ttsServerOk && _TTS_HAS_BROWSER) { _ttsBrowserSpeak(btn, text); return; }
-
-  const ctx = _getTtsCtx();
-  const resumeP = ctx.state !== 'running' ? ctx.resume() : Promise.resolve();
-
-  btn.innerHTML = _SVG_SPIN;
-  btn.classList.add('tts-loading');
-  btn.setAttribute('aria-label', 'Loading…');
-  _ttsActivePlayBtn = btn;
-
-  try {
-    const resp = await fetch('/tts', {
-      method: 'POST',
-      headers: _authHeaders(),
-      body: JSON.stringify({ text, voice: _voiceForBlock(blockEl) }),
-    });
-    if (!resp.ok) throw new Error('TTS ' + resp.status);
-    const pcm = await resp.arrayBuffer();
-    if (!pcm.byteLength) throw new Error('TTS empty');
-
-    await resumeP;
-    if (ctx.state === 'suspended') await ctx.resume();
-
-    const int16 = new Int16Array(pcm);
-    const audioBuffer = ctx.createBuffer(1, int16.length, 24000);
-    const ch = audioBuffer.getChannelData(0);
-    for (let i = 0; i < int16.length; i++) ch[i] = int16[i] / 32768.0;
-
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(ctx.destination);
-
-    btn.innerHTML = _SVG_STOP;
-    btn.classList.remove('tts-loading');
-    btn.classList.add('tts-playing');
-    btn.setAttribute('aria-label', 'Stop narration');
-    _ttsActiveSource = source;
-
-    source.onended = () => {
-      if (_ttsActiveSource === source) {
-        _ttsActiveSource = null;
-        if (_ttsActivePlayBtn === btn) {
-          btn.innerHTML = _SVG_SPEAKER;
-          btn.classList.remove('tts-playing');
-          btn.setAttribute('aria-label', 'Listen to narration');
-          _ttsActivePlayBtn = null;
-        }
-      }
-    };
-    source.start(0);
-  } catch (err) {
-    if (_ttsActivePlayBtn === btn && _TTS_HAS_BROWSER) {
-      // 503 means no key is configured, so stop asking the server at all.
-      // Anything else (429, 502, a dropped connection) is transient: fall
-      // back for this block and try the server again on the next one.
-      if (err.message === 'TTS 503') _ttsServerOk = false;
-      _ttsBrowserSpeak(btn, text);
-      return;
-    }
-    if (_ttsActivePlayBtn === btn) {
-      const label = (err.message || 'ERR').slice(0, 12);
-      btn.textContent = label;
-      btn.classList.remove('tts-loading', 'tts-playing');
-      setTimeout(() => {
-        if (!btn.classList.contains('tts-playing') && !btn.classList.contains('tts-loading')) {
-          btn.innerHTML = _SVG_SPEAKER;
-          btn.setAttribute('aria-label', 'Listen to narration');
-        }
-      }, 3000);
-      _ttsActivePlayBtn = null;
-    }
-    _ttsActiveSource = null;
-  }
+function _ttsPlayBlock(btn, blockEl) {
+  const wasPlaying = btn.classList.contains('tts-playing') || btn.classList.contains('tts-loading');
+  _ttsStopAll();
+  if (wasPlaying) return;
+  _narrate(_ttsExtractText(blockEl), _voiceForBlock(blockEl), btn);
 }
 
 function _ttsSaveVoice(voice) {
@@ -6895,14 +6960,6 @@ function _addTtsBar(blockEl) {
   });
 
   blockEl.appendChild(bar);
-
-  // local patch: _ttsReplaying guards the backlog. On connect the server
-  // sends replay_batch so a reloaded tab catches up; without this guard
-  // every one of those blocks starts speaking simultaneously.
-  if (_ttsAutoNarrate && !window._ttsReplaying) {
-    // Defer one tick so the bar is in the DOM before triggering the click path
-    setTimeout(() => _ttsPlayBlock(playBtn, blockEl), 0);
-  }
 }
 
 document.addEventListener('click', () => {
@@ -7822,8 +7879,6 @@ function connect() {
       clearDisplay();
     }
     if (payload.replay_batch) {
-      window._ttsReplaying = true;   // local patch — see _ttsAutoNarrate guard
-      setTimeout(() => { window._ttsReplaying = false; }, 1500);
       renderReplayBatch(payload.replay_batch);
     }
     if (payload.replay) {
@@ -7852,12 +7907,14 @@ function connect() {
         renderPlayerBlock(payload.player, payload.text);
       } else if (payload.npc) {
         renderNPCBlock(payload.npc, payload.text);
+        if (_ttsAutoNarrate && _TTS_AVAILABLE) _narrate(payload.text, _voiceForName(payload.npc));
       } else if (payload.dice) {
         renderDiceBlock(payload.text);
       } else if (payload.tutor) {
         renderTutorBlock(payload.text);
       } else {
         handleIncomingText(payload.text);
+        if (_ttsAutoNarrate && _TTS_AVAILABLE) _narrate(payload.text, _narratorVoice());
       }
     }
   };

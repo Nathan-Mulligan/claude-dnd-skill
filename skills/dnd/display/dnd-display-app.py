@@ -162,11 +162,11 @@ _RATE_WINDOW = 60    # seconds
 _RATE_MAX    = 20    # requests per window per IP
 
 
-def _rate_ok(ip: str) -> bool:
+def _rate_ok(ip: str, limit: int = _RATE_MAX) -> bool:
     now = _time.time()
     with _rate_lock:
         bucket = [t for t in _rate_buckets.get(ip, []) if now - t < _RATE_WINDOW]
-        if len(bucket) >= _RATE_MAX:
+        if len(bucket) >= limit:
             return False
         bucket.append(now)
         _rate_buckets[ip] = bucket
@@ -1861,7 +1861,14 @@ def roll_pref():
 # Voice selection persists per-campaign in state.md → ## Session Flags →
 # `tts_voice: <name>`. Read at /index render, written by POST /voice.
 
-_VOICE_PAT = re.compile(r"^\s*tts_voice:\s*([A-Za-z]+)\s*$", re.MULTILINE)
+_VOICE_PAT = re.compile(r"^\s*tts_voice:\s*([A-Za-z0-9_+]+)\s*$", re.MULTILINE)
+# Kokoro voice ids (bm_george) and blends (bm_lewis+am_fenrir). The server owns
+# its catalog, so any id of that shape is passed through rather than replaced.
+_KOKORO_VOICE = re.compile(r"[a-z]{2}_[a-z0-9]+(\+[a-z]{2}_[a-z0-9]+)*")
+
+
+def _voice_ok(voice: str) -> bool:
+    return voice in _tts.VALID_VOICES or bool(_KOKORO_VOICE.fullmatch(voice))
 
 
 def _active_campaign_name() -> Optional[str]:
@@ -1889,12 +1896,12 @@ def _read_narrator_voice() -> str:
     if not m:
         return _tts.DEFAULT_VOICE
     v = m.group(1).strip()
-    return v if v in _tts.VALID_VOICES else _tts.DEFAULT_VOICE
+    return v if _voice_ok(v) else _tts.DEFAULT_VOICE
 
 
 def _write_narrator_voice(voice: str) -> bool:
     """Persist tts_voice to the active campaign's state.md → ## Session Flags."""
-    if _tts is None or voice not in _tts.VALID_VOICES:
+    if _tts is None or not _voice_ok(voice):
         return False
     name = _active_campaign_name()
     if not name:
@@ -1945,7 +1952,9 @@ def tts_synthesize():
         return "TTS module unavailable", 503
     if not _token_ok():
         return "Forbidden", 403
-    if not _rate_ok(request.remote_addr or "?"):
+    # Own bucket: the page now asks per sentence, which would exhaust the
+    # 20/min write bucket it shares with the party input panel in one scene.
+    if not _rate_ok("tts:" + (request.remote_addr or "?"), limit=240):
         return "Rate limited", 429
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
@@ -1954,10 +1963,7 @@ def tts_synthesize():
         return "empty text", 400
     if len(text) > _tts.MAX_TEXT_CHARS:
         text = text[: _tts.MAX_TEXT_CHARS]
-    # local patch: allow any Kokoro voice id, including '+' blends, so the
-    # per-character cast in voice/cast.json survives the round trip.
-    if voice not in _tts.VALID_VOICES and not re.fullmatch(
-            r"[a-z]{2}_[a-z0-9]+(\+[a-z]{2}_[a-z0-9]+)*", voice):
+    if not _voice_ok(voice):
         voice = _tts.DEFAULT_VOICE
     if _tts.key_source() == "unset":
         return "TTS not configured (see docs/SKILL-tts.md)", 503
@@ -2051,7 +2057,7 @@ def tts_voice():
         return "Forbidden", 403
     data = request.get_json(silent=True) or {}
     voice = (data.get("voice") or "").strip()
-    if voice not in _tts.VALID_VOICES:
+    if not _voice_ok(voice):
         return jsonify({"error": "invalid voice"}), 400
     ok = _write_narrator_voice(voice)
     return jsonify({"voice": voice, "persisted": ok}), 200
