@@ -162,11 +162,11 @@ _RATE_WINDOW = 60    # seconds
 _RATE_MAX    = 20    # requests per window per IP
 
 
-def _rate_ok(ip: str) -> bool:
+def _rate_ok(ip: str, limit: int = _RATE_MAX) -> bool:
     now = _time.time()
     with _rate_lock:
         bucket = [t for t in _rate_buckets.get(ip, []) if now - t < _RATE_WINDOW]
-        if len(bucket) >= _RATE_MAX:
+        if len(bucket) >= limit:
             return False
         bucket.append(now)
         _rate_buckets[ip] = bucket
@@ -349,6 +349,13 @@ _queue_status_lock = threading.Lock()
 # Cleared when autorun_waiting=false (turn resolved or autorun disabled).
 _autorun_cycle: Optional[dict] = None
 _autorun_cycle_lock = threading.Lock()
+
+# When a DM-side waiter (wait_turn.py, autorun_wait.py) last said it was
+# listening. Waiters repeat it while they poll, so a stale time means the
+# waiter died (Claude Code killed the Bash call) and the panel must stop
+# promising that a typed turn will be read.
+_waiter_seen_at = 0.0
+WAITER_FRESH_S = 45
 
 
 def _normalize_slot(slot: dict) -> None:
@@ -1656,6 +1663,8 @@ def stats():
 
     # autorun_waiting / autorun_cycle — display-only signals, not stored in stats
     if "autorun_waiting" in data:
+        global _waiter_seen_at
+        _waiter_seen_at = _time.time() if data["autorun_waiting"] else 0.0
         if not data["autorun_waiting"]:
             # Turn resolved — clear stored cycle so reconnecting clients don't see stale pie
             global _autorun_cycle
@@ -1861,7 +1870,14 @@ def roll_pref():
 # Voice selection persists per-campaign in state.md → ## Session Flags →
 # `tts_voice: <name>`. Read at /index render, written by POST /voice.
 
-_VOICE_PAT = re.compile(r"^\s*tts_voice:\s*([A-Za-z]+)\s*$", re.MULTILINE)
+_VOICE_PAT = re.compile(r"^\s*tts_voice:\s*([A-Za-z0-9_+]+)\s*$", re.MULTILINE)
+# Kokoro voice ids (bm_george) and blends (bm_lewis+am_fenrir). The server owns
+# its catalog, so any id of that shape is passed through rather than replaced.
+_KOKORO_VOICE = re.compile(r"[a-z]{2}_[a-z0-9]+(\+[a-z]{2}_[a-z0-9]+)*")
+
+
+def _voice_ok(voice: str) -> bool:
+    return voice in _tts.VALID_VOICES or bool(_KOKORO_VOICE.fullmatch(voice))
 
 
 def _active_campaign_name() -> Optional[str]:
@@ -1889,12 +1905,12 @@ def _read_narrator_voice() -> str:
     if not m:
         return _tts.DEFAULT_VOICE
     v = m.group(1).strip()
-    return v if v in _tts.VALID_VOICES else _tts.DEFAULT_VOICE
+    return v if _voice_ok(v) else _tts.DEFAULT_VOICE
 
 
 def _write_narrator_voice(voice: str) -> bool:
     """Persist tts_voice to the active campaign's state.md → ## Session Flags."""
-    if _tts is None or voice not in _tts.VALID_VOICES:
+    if _tts is None or not _voice_ok(voice):
         return False
     name = _active_campaign_name()
     if not name:
@@ -1945,7 +1961,9 @@ def tts_synthesize():
         return "TTS module unavailable", 503
     if not _token_ok():
         return "Forbidden", 403
-    if not _rate_ok(request.remote_addr or "?"):
+    # Own bucket: the page now asks per sentence, which would exhaust the
+    # 20/min write bucket it shares with the party input panel in one scene.
+    if not _rate_ok("tts:" + (request.remote_addr or "?"), limit=240):
         return "Rate limited", 429
     data = request.get_json(silent=True) or {}
     text = (data.get("text") or "").strip()
@@ -1954,7 +1972,7 @@ def tts_synthesize():
         return "empty text", 400
     if len(text) > _tts.MAX_TEXT_CHARS:
         text = text[: _tts.MAX_TEXT_CHARS]
-    if voice not in _tts.VALID_VOICES:
+    if not _voice_ok(voice):
         voice = _tts.DEFAULT_VOICE
     if _tts.key_source() == "unset":
         return "TTS not configured (see docs/SKILL-tts.md)", 503
@@ -1971,6 +1989,51 @@ def tts_synthesize():
             "Cache-Control": "no-store",
         },
     )
+
+
+# Per-character voice map. DND_CAST_FILE wins; otherwise <data-root>/cast.json.
+CAST_FILE = os.path.expanduser(os.environ.get("DND_CAST_FILE", "").strip()
+                               or os.path.join(os.path.dirname(os.path.dirname(rt("x"))), "cast.json"))
+CLIENTLOG_FILE = rt("client-errors.log")
+
+
+@app.route("/clientlog", methods=["POST"])
+def clientlog():
+    """Record a browser-side error (local patch).
+
+    The display is a single-page app; when its JS throws, the DM sees a
+    symptom ("the drawer never opened") and has to guess. This gives the
+    real stack a place to land that is readable from the terminal.
+    """
+    d = request.get_json(silent=True) or {}
+    line = "%s  %s  %s\n" % (
+        _time.strftime("%H:%M:%S"),
+        str(d.get("kind", "error"))[:20],
+        str(d.get("message", ""))[:500].replace("\n", " "),
+    )
+    try:
+        with open(CLIENTLOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+    return "", 204
+
+
+@app.route("/cast", methods=["GET"])
+def cast_map():
+    """Per-character voice map (local patch).
+
+    Upstream narrates every block in one global voice. The kit keeps a
+    speaker -> voice map in voice/cast.json; serving it here lets the
+    browser pick the right voice per NPC block instead.
+    """
+    try:
+        with open(CAST_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return jsonify({k.lower(): v for k, v in data.items()
+                        if isinstance(v, str) and k != "_comment"})
+    except Exception:
+        return jsonify({})
 
 
 @app.route("/tts/voices", methods=["GET"])
@@ -2003,7 +2066,7 @@ def tts_voice():
         return "Forbidden", 403
     data = request.get_json(silent=True) or {}
     voice = (data.get("voice") or "").strip()
-    if voice not in _tts.VALID_VOICES:
+    if not _voice_ok(voice):
         return jsonify({"error": "invalid voice"}), 400
     ok = _write_narrator_voice(voice)
     return jsonify({"voice": voice, "persisted": ok}), 200
@@ -2693,6 +2756,8 @@ def stream():
     with _autorun_cycle_lock:
         if _autorun_cycle:
             q.put_nowait({"autorun_cycle": dict(_autorun_cycle)})
+    if _time.time() - _waiter_seen_at < WAITER_FRESH_S:
+        q.put_nowait({"autorun_waiting": True})
 
     # Replay threshold so the ready counter reflects the correct target on reconnect.
     if _autorun_threshold is not None:

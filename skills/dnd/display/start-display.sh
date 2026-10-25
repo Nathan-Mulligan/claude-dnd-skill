@@ -86,17 +86,17 @@ pkill -9 -f "dnd-display-app\.py" 2>/dev/null || true
 sleep 0.3
 
 # ── Dependency check (first run) ──────────────────────────────────────────────
-# The display companion is optional — core gameplay (dice, combat, tracker, XP,
-# state) is pure stdlib and runs without it. But if the user asked for the
-# display, fail with the exact one-time install command rather than a silent
-# "server may not have started" further down.
+# Homebrew and most distro pythons refuse a bare `pip3 install` (PEP 668), so
+# bootstrap a venv beside the campaign data once and run the display from it.
+# It lives outside the plugin directory so a plugin update doesn't wipe it.
 if ! python3 -c "import flask, flask_cors" 2>/dev/null; then
-  echo "The display companion needs its Python dependencies (one-time install):"
-  echo "    pip3 install -r \"$DISPLAY_DIR/requirements.txt\""
-  echo ""
-  echo "Core gameplay works without the display — you can keep playing and add"
-  echo "the companion later by running the command above, then /dnd display start."
-  exit 1
+  VENV="$(dirname "$RT")/.venv"
+  if [[ ! -x "$VENV/bin/python" ]] || ! "$VENV/bin/python" -c "import flask, flask_cors" 2>/dev/null; then
+    echo "display   : installing flask into $VENV (one-time)"
+    python3 -m venv "$VENV" && "$VENV/bin/pip" install -q flask flask-cors \
+      || { echo "Error: could not install flask into $VENV"; exit 1; }
+  fi
+  export PATH="$VENV/bin:$PATH"
 fi
 
 # ── Start Flask ───────────────────────────────────────────────────────────────
@@ -150,7 +150,9 @@ for i in $(seq 1 10); do
       echo "══════════════════════════════════════════════════════════════"
     fi
 
-    open "$LOCAL_URL" 2>/dev/null || true
+    # local patch: only open a tab when asked. Relaunching during a session
+    # otherwise spawns a new tab every time and buries the live one.
+    [ -z "${DND_NO_OPEN:-}" ] && open "$LOCAL_URL" 2>/dev/null || true
     exit 0
   fi
 done

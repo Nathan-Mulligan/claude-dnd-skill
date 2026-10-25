@@ -121,7 +121,9 @@ def local_available(force: bool = False) -> bool:
     """Return True when the local server answers, cached for _PROBE_TTL seconds."""
     global _probe_cache
     now = time.monotonic()
-    if not force and _probe_cache and now - _probe_cache[0] < _PROBE_TTL:
+    # A miss is re-checked after a few seconds: Kokoro answering slowly while
+    # it synthesises must not read as "down" for half a minute.
+    if not force and _probe_cache and now - _probe_cache[0] < (_PROBE_TTL if _probe_cache[1] else 5):
         return _probe_cache[1]
     try:
         with urllib.request.urlopen(f"{local_url()}/v1/audio/voices", timeout=2.0) as r:
