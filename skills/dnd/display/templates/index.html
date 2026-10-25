@@ -7344,7 +7344,7 @@ function _renderStagedQueue(data) {
     _waitingEl.style.display = 'flex';
     const label = needMore
       ? `${readyCount}/${threshold} ready`
-      : `Queued \u2014 fires on DM Enter`;
+      : _queuedLabel();
     const checks = notReady.map(c => `<span class="queue-check" style="opacity:0.5">${c}</span>`).join('');
     _waitingEl.innerHTML = `<span class="queue-label">${label}</span>${checks}`;
   } else {
@@ -7405,6 +7405,29 @@ function _stopAutorunCountdown() {
   if (label) label.textContent = 'Next Turn';
 }
 
+// ── Is the DM actually listening? ─────────────────────────────────
+// A waiter on the DM side repeats autorun_waiting=true every ~20s while it
+// polls. No repeat for 45s means it died, and a queued turn will sit unread
+// until the DM's next turn, so the panel says that instead of "fires".
+let _dmListening = false;
+let _dmListenTimer = null;
+function _setDmListening(on) {
+  clearTimeout(_dmListenTimer);
+  _dmListening = on;
+  if (on) _dmListenTimer = setTimeout(() => _setDmListening(false), 45000);
+  document.body.classList.toggle('dm-listening', on);
+  // The DM is waiting on the table: open the party panel so there is
+  // somewhere visible to type (in Vellum it starts as a collapsed bar).
+  if (on && !document.body.classList.contains('input-only') && typeof _inputPanel !== 'undefined'
+      && !document.documentElement.dataset.skin) {
+    _inputPanel.classList.remove('collapsed');
+  }
+  if (typeof _renderStagedQueue === 'function' && typeof _stagedData !== 'undefined') _renderStagedQueue(_stagedData);
+}
+function _queuedLabel() {
+  return _dmListening ? 'Queued \u2014 the DM is listening' : 'Queued \u2014 read on the DM\u2019s next turn';
+}
+
 // ── Queue status panel (persists until wrapper injects) ──────────
 function _renderQueueStatus(chars) {
   if (!chars || chars.length === 0) {
@@ -7413,7 +7436,7 @@ function _renderQueueStatus(chars) {
     return;
   }
   const checks = chars.map(c => `<span class="queue-check">✓ ${c}</span>`).join('');
-  _waitingEl.innerHTML = `<span class="queue-label">⏳ Queued — fires on DM Enter</span>${checks}`;
+  _waitingEl.innerHTML = `<span class="queue-label">⏳ ${_queuedLabel()}</span>${checks}`;
   _waitingEl.style.display = 'block';
 }
 
@@ -7861,6 +7884,7 @@ function connect() {
       _startAutorunCountdown(payload.autorun_cycle.interval, payload.autorun_cycle.ts);
     }
     if (payload.autorun_waiting !== undefined) {
+      _setDmListening(!!payload.autorun_waiting);
       const el = document.getElementById('autorun-indicator');
       const fill = document.querySelector('.autorun-fill');
       if (payload.autorun_waiting) {

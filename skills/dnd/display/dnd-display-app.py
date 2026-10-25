@@ -350,6 +350,13 @@ _queue_status_lock = threading.Lock()
 _autorun_cycle: Optional[dict] = None
 _autorun_cycle_lock = threading.Lock()
 
+# When a DM-side waiter (wait_turn.py, autorun_wait.py) last said it was
+# listening. Waiters repeat it while they poll, so a stale time means the
+# waiter died (Claude Code killed the Bash call) and the panel must stop
+# promising that a typed turn will be read.
+_waiter_seen_at = 0.0
+WAITER_FRESH_S = 45
+
 
 def _normalize_slot(slot: dict) -> None:
     """Coerce a spell-slot entry to the canonical {used, max} shape in place.
@@ -1656,6 +1663,8 @@ def stats():
 
     # autorun_waiting / autorun_cycle — display-only signals, not stored in stats
     if "autorun_waiting" in data:
+        global _waiter_seen_at
+        _waiter_seen_at = _time.time() if data["autorun_waiting"] else 0.0
         if not data["autorun_waiting"]:
             # Turn resolved — clear stored cycle so reconnecting clients don't see stale pie
             global _autorun_cycle
@@ -2747,6 +2756,8 @@ def stream():
     with _autorun_cycle_lock:
         if _autorun_cycle:
             q.put_nowait({"autorun_cycle": dict(_autorun_cycle)})
+    if _time.time() - _waiter_seen_at < WAITER_FRESH_S:
+        q.put_nowait({"autorun_waiting": True})
 
     # Replay threshold so the ready counter reflects the correct target on reconnect.
     if _autorun_threshold is not None:
