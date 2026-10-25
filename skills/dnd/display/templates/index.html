@@ -2389,6 +2389,24 @@
   }
   body.input-only #dice-pending-badge { display: none !important; }
 
+  /* The pending-roll badge sits above the story rather than over it, and a
+     click on it brings the tray back. */
+  #dice-pending-badge { top: 64px; transform: translateX(-50%); pointer-events: auto; cursor: pointer; }
+
+  /* Vellum has no rail, so its dice launcher is a lone button bottom right. */
+  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice{
+    display:flex; align-items:center; gap:6px; position:fixed; right:18px; bottom:64px; z-index:31;
+    padding:8px 14px; border-radius:999px; cursor:pointer;
+    background:rgba(20,12,4,0.88); color:#f4e2a8; border:1px solid rgba(220,180,90,0.55);
+    font:600 12px/1 ui-monospace, monospace; letter-spacing:.08em; text-transform:uppercase; }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice .ed-ic{ font-size:18px; }
+  :root:not([data-skin="editorial"]) body:not(.input-only).ed-drawer-open #ed-launch-dice{ display:none; }
+  #dice-drawer .dd-close{
+    position:absolute; top:10px; right:12px; width:32px; height:32px; border-radius:50%;
+    background:transparent; color:inherit; border:1px solid currentColor; opacity:.6;
+    font-size:18px; line-height:1; cursor:pointer; }
+  #dice-drawer .dd-close:hover{ opacity:1; }
+
   /* ── Mode switcher (full-view button + input-view "back to full" button) ── */
   #phone-mode-btn {
     position: fixed;
@@ -7972,15 +7990,32 @@ connect();
         console.warn('[DnD] dice-drawer wrap: window._onDiceRequest not set by _initDicePad — prescribed-roll prefill will be skipped');
       }
       const _nameEl = _pad.querySelector('#dp-name');
-      window._onDiceRequest = (req) => {
-        const tgt = (req && req.characters && req.characters[0]) || (req && req.character) || '';
-        if (_nameEl && tgt && tgt.toLowerCase() !== 'any') _nameEl.value = tgt;
+      // The shared screen rolls for every character it has no phone for, one
+      // after another. Remember each request so the next pending character can
+      // be put on the pad once the first has rolled.
+      const _tvReqs = window._tvDiceReqs = new Map();
+      const _seen = new Set();
+      window._tvApplyDiceRequest = (req, who) => {
+        if (_nameEl && who) _nameEl.value = who;
         if (typeof _prefill === 'function') _prefill(req);
-        // Open when on-screen rolling is forced on (Settings), OR auto-detected:
-        // the server marks targets with no live phone in onscreen_targets.
-        const noPhone = Array.isArray(req && req.onscreen_targets)
-          && req.onscreen_targets.some(c => String(c).toLowerCase() === String(tgt).toLowerCase());
-        if ((_onscreenDiceOn() || noPhone) && typeof window._edOpenDrawer === 'function') window._edOpenDrawer('dice-drawer');
+      };
+      window._onDiceRequest = (req) => {
+        if (!req) return;
+        const rid = String(req.request_id || '');
+        const targets = (Array.isArray(req.characters) && req.characters.length)
+          ? req.characters : [req.character || 'any'];
+        const onscreen = (Array.isArray(req.onscreen_targets) ? req.onscreen_targets : [])
+          .map(c => String(c).toLowerCase());
+        const tgt = targets.find(c => onscreen.includes(String(c).toLowerCase())) || targets[0] || '';
+        if (rid) _tvReqs.set(rid, req);
+        window._tvApplyDiceRequest(req, String(tgt).toLowerCase() === 'any' ? '' : tgt);
+        // The server re-sends open requests on every reconnect; only a request
+        // this page hasn't seen yet slides the tray open.
+        const fresh = !rid || !_seen.has(rid);
+        if (rid) _seen.add(rid);
+        if (fresh && (_onscreenDiceOn() || onscreen.length) && typeof window._edOpenDrawer === 'function') {
+          window._edOpenDrawer('dice-drawer');
+        }
       };
     }
   }
@@ -8048,6 +8083,18 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
       const el = document.getElementById(id);
       if (el && !el.classList.contains('ed-open')) toggle(id);
     };
+    window._edCloseDrawer = (id) => {
+      const el = document.getElementById(id);
+      if (el && el.classList.contains('ed-open')) closeAll();
+    };
+    const dd = document.getElementById('dice-drawer');
+    if (dd && !dd.querySelector('.dd-close')) {
+      const x = document.createElement('button');
+      x.type = 'button'; x.className = 'dd-close'; x.textContent = '×';
+      x.setAttribute('aria-label', 'Close dice tray');
+      x.addEventListener('click', e => { e.stopPropagation(); closeAll(); });
+      dd.appendChild(x);
+    }
   }
 
   // Phone-only display settings — reuse the hidden Theme / Style pickers so each
@@ -8350,6 +8397,7 @@ function _updateDicePendingBadge(snapshot) {
   const badge = document.getElementById('dice-pending-badge');
   if (!badge) return;
   const entries = Array.isArray(snapshot) ? snapshot.filter(e => e && (e.pending || []).length) : [];
+  _tvAdvanceDice(entries);
   if (entries.length === 0) {
     badge.classList.remove('visible');
     badge.innerHTML = '';
@@ -8367,6 +8415,39 @@ function _updateDicePendingBadge(snapshot) {
   badge.innerHTML = lines;
   badge.classList.add('visible');
 }
+
+// Shared screen only: after a prescribed roll, put the next character still
+// owed on that request onto the pad; when nobody is owed anything, let the
+// result show for a moment and slide the tray away.
+let _tvDiceCloseTimer = null;
+function _tvAdvanceDice(entries) {
+  if (document.body.classList.contains('input-only') || !window._tvDiceReqs) return;
+  if (window._dpRolling) { window._tvHeldDiceEntries = entries; return; }
+  clearTimeout(_tvDiceCloseTimer);
+  const nameEl = document.getElementById('dp-name');
+  const current = (nameEl && nameEl.value || '').trim().toLowerCase();
+  const open = new Set(entries.map(e => e.request_id));
+  const hadRequests = window._tvDiceReqs.size > 0;
+  for (const rid of [...window._tvDiceReqs.keys()]) if (!open.has(rid)) window._tvDiceReqs.delete(rid);
+  for (const e of entries) {
+    const req = window._tvDiceReqs.get(e.request_id);
+    if (!req) continue;
+    const pending = (e.pending || []).map(c => String(c).toLowerCase());
+    if (pending.includes(current)) return;                 // still this character's turn
+    const targets = (Array.isArray(req.characters) && req.characters.length) ? req.characters : [req.character];
+    const next = targets.find(c => pending.includes(String(c).toLowerCase())) || e.pending[0];
+    window._tvApplyDiceRequest(req, next);
+    return;
+  }
+  const dd = document.getElementById('dice-drawer');
+  if (hadRequests && dd && dd.classList.contains('ed-open') && typeof window._edCloseDrawer === 'function') {
+    _tvDiceCloseTimer = setTimeout(() => window._edCloseDrawer('dice-drawer'), 1800);
+  }
+}
+
+document.getElementById('dice-pending-badge')?.addEventListener('click', () => {
+  if (typeof window._edOpenDrawer === 'function') window._edOpenDrawer('dice-drawer');
+});
 
 // ── Phone dice pad: server-side roll + slot-machine reveal ───────────────
 function _initDicePad() {
@@ -8476,6 +8557,20 @@ function _initDicePad() {
   }
 
   rollBtn.addEventListener('click', async () => {
+    window._dpRolling = true;
+    try { await _dpRoll(); } finally {
+      window._dpRolling = false;
+      // The server's pending-roll update usually lands before this roll's own
+      // reply; it was held back so the result is seen before the next
+      // character is put on the pad.
+      if (window._tvHeldDiceEntries) {
+        const held = window._tvHeldDiceEntries;
+        window._tvHeldDiceEntries = null;
+        setTimeout(() => _tvAdvanceDice(held), 1200);
+      }
+    }
+  });
+  async function _dpRoll() {
     const character = (nameEl.value || '').trim() || 'Player';
     const label     = (labelEl.value || '').trim();
     rollBtn.disabled = true;
@@ -8548,7 +8643,7 @@ function _initDicePad() {
       rollBtn.disabled = false;
       if (_locked) _setLocked(false);
     }
-  });
+  }
 
   // Lock the pad to a single prescribed roll. Only the matching die / adv
   // button and the Roll button remain interactive. Cleared after the roll
