@@ -55,7 +55,11 @@ except Exception:
     _lookup = None          # type: ignore
     _SRD_AVAILABLE = False
 
+import functools as _functools
+import script_ranges
+
 from paths import find_campaign as _find_campaign
+from utf8io import read_text as _read_text
 
 # Audio module — degrades silently if numpy not installed
 _AUDIO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -85,13 +89,13 @@ def _apply_campaign_sfx_languages() -> None:
     if _audio is None:
         return
     try:
-        camp = open(rt(".campaign")).read().strip()
+        camp = open(rt(".campaign"), encoding="utf-8").read().strip()
         if not camp:
             return
         state_md = _find_campaign(camp) / "state.md"
         if not state_md.exists():
             return
-        text = state_md.read_text(errors="replace")
+        text = state_md.read_text(encoding="utf-8", errors="replace")
     except (OSError, ValueError):
         return
     m = re.search(r"^\s*sfx_languages:\s*([\w,\s\-]+)$", text, re.MULTILINE)
@@ -131,13 +135,13 @@ if _TLS_MODE:
 def _get_or_create_token() -> str:
     """Load or generate the LAN token. Upgrades short legacy tokens to 64-char."""
     try:
-        token = open(TOKEN_FILE).read().strip()
+        token = open(TOKEN_FILE, encoding="utf-8").read().strip()
         if len(token) >= 48:   # 48+ chars = already long enough
             return token
     except FileNotFoundError:
         pass
     token = secrets.token_hex(32)   # 64-char hex — brute force infeasible
-    with open(TOKEN_FILE, "w") as f:
+    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
         f.write(token)
     os.chmod(TOKEN_FILE, 0o600)
     return token
@@ -234,7 +238,7 @@ def _persist_approved_devices() -> None:
     try:
         with _devices_lock:
             data = list(_approved_devices)
-        with open(DEVICES_FILE, "w") as f:
+        with open(DEVICES_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
         os.chmod(DEVICES_FILE, 0o600)
     except Exception:
@@ -243,7 +247,7 @@ def _persist_approved_devices() -> None:
 
 def _load_approved_devices() -> None:
     try:
-        with open(DEVICES_FILE) as f:
+        with open(DEVICES_FILE, encoding="utf-8") as f:
             data = json.load(f)
         with _devices_lock:
             for d in data:
@@ -257,7 +261,7 @@ def _persist_pending_devices() -> None:
     try:
         with _devices_lock:
             data = list(_pending_devices.values())
-        with open(PENDING_DEVICES_FILE, "w") as f:
+        with open(PENDING_DEVICES_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
         os.chmod(PENDING_DEVICES_FILE, 0o600)
     except Exception:
@@ -266,7 +270,7 @@ def _persist_pending_devices() -> None:
 
 def _load_pending_devices() -> None:
     try:
-        with open(PENDING_DEVICES_FILE) as f:
+        with open(PENDING_DEVICES_FILE, encoding="utf-8") as f:
             data = json.load(f)
         with _devices_lock:
             for d in data:
@@ -390,7 +394,7 @@ def _check_auto_trigger() -> None:
         _staged.clear()
 
     try:
-        with open(QUEUE_FILE, "w") as f:
+        with open(QUEUE_FILE, "w", encoding="utf-8") as f:
             f.write(content)
     except Exception:
         char_names = []
@@ -411,6 +415,7 @@ def _token_ok() -> bool:
 
 
 app = Flask(__name__)
+
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 CORS(app)
 
@@ -588,9 +593,18 @@ SCENES: dict[str, dict] = {
         "label": "The Night",
     },
     "temple": {
+        # `lantern` and `cleric` REMOVED. Every other word here names a place
+        # or a fixture of one -- a nave, an altar, incense. Those two named a
+        # thing a character CARRIES and a thing a character IS, so they scored
+        # wherever the party went: measured, three mentions of a lantern in a
+        # room with no other keyword present rendered the room as THE TEMPLE,
+        # and so did a cleric walking down a road.
+        #
+        # `prayer` is the weakest survivor and is kept: people pray in
+        # foxholes, but it at least describes an act performed AT the place.
         "keywords": [
             "temple", "shrine", "altar", "holy", "sacred", "chapel",
-            "prayer", "cleric", "incense", "lantern", "pew", "nave",
+            "prayer", "incense", "pew", "nave",
             "pale flame",
         ],
         "colors": ["#0e0c18", "#1a1428"],
@@ -809,6 +823,50 @@ _current_scene_name: str = "tavern"   # default — we start in the inn
 _scene_buffer: list[str] = []
 _BUFFER_WINDOW = 20   # analyse last N cleaned chunks together
 
+# How much evidence a scene change needs. A bare `max()` over keyword counts
+# meant ONE stray keyword could move the background, and two plausible scenes
+# traded it back and forth on a one-point edge.
+#
+# MARGIN is the gap a challenger must open over the scene already on screen.
+# The INCUMBENT BONUS lets the current scene defend itself even after its own
+# keywords have scrolled out of the window, which is the usual case for a long
+# scene: a fight in a crypt stops saying "crypt" after the first line.
+#
+# The bonus is 1 rather than 2 by measurement against this repo's own keyword
+# lists, not by feel. A genuine transition narrated over three chunks --
+# arriving at a city -- scores 4; incidental noise, a couple of night words
+# while at sea, scores 2. With MARGIN 2 an aged-out incumbent needs the
+# challenger at 3, which admits the real change and blocks the noise. At 2 the
+# bar becomes 4 and a genuine arrival stops registering.
+#
+# There is deliberately NO separate minimum-hits floor. One was written here
+# first and it could never fire: the test below requires
+# `best >= scores.get(current, 0) + BONUS + MARGIN`, which is at least 3, so a
+# floor of 2 is unreachable for every input. A constant that decides nothing
+# reads as protection and is not, so it is gone rather than documented.
+_SCENE_SWITCH_MARGIN = 2    # a challenger must beat the scene on screen by this
+_SCENE_INCUMBENT_BONUS = 1
+
+
+def _keyword_pattern(keyword: str) -> "re.Pattern":
+    r"""Match `keyword` as a whole word where the script has word delimiters.
+
+    Scored with `window.count(kw)` before this, which is a SUBSTRING count:
+    the arcane keyword `ward` matched inside "deputy warden", so a prison
+    fight scored as arcane. It also matches "wardrobe", "forward", "steward".
+
+    Anchors are applied only for keywords in a script that separates words. A
+    campaign may override a scene's keyword list in its own language (the lists
+    shipped here are English), and `\b` is an impossible condition for Han,
+    Kana, Hangul or Thai -- see scripts/script_ranges.py.
+    """
+    return script_ranges.whole_word_pattern(keyword)
+
+
+@_functools.lru_cache(maxsize=512)
+def _cached_keyword_pattern(keyword: str) -> "re.Pattern":
+    return _keyword_pattern(keyword)
+
 
 def _detect_scene(text: str) -> Optional[dict]:
     global _current_scene_name, _scene_buffer
@@ -822,7 +880,8 @@ def _detect_scene(text: str) -> Optional[dict]:
     scores: dict[str, int] = {}
     for scene_name in SCENE_PRIORITY:
         scene = SCENES[scene_name]
-        score = sum(window.count(kw) for kw in scene["keywords"])
+        score = sum(len(_cached_keyword_pattern(kw).findall(window))
+                    for kw in scene["keywords"])
         if score > 0:
             scores[scene_name] = score
 
@@ -832,6 +891,11 @@ def _detect_scene(text: str) -> Optional[dict]:
     best = max(scores, key=lambda k: scores[k])
     if best == _current_scene_name:
         return None   # no change
+    # `_current_scene_name` may not be in `scores` at all once its keywords
+    # have scrolled out of the window -- that is the case the bonus is for.
+    held = scores.get(_current_scene_name, 0) + _SCENE_INCUMBENT_BONUS
+    if scores[best] - held < _SCENE_SWITCH_MARGIN:
+        return None
 
     _current_scene_name = best
     return SCENES[best] | {"name": best}
@@ -857,9 +921,12 @@ def _phone_present(char: str) -> bool:
         return c in _client_chars.values()
 
 # ─── Text replay log ──────────────────────────────────────────────────────────
-# Stores the last N cleaned text chunks so late-connecting browsers can catch up.
+# Stores cleaned text chunks so late-connecting browsers can catch up.
 # Persisted to LOG_FILE so it survives Flask restarts (Chromecast reconnects, new sessions).
-_text_log: deque = deque(maxlen=60)
+# Full body retention (player requirement, 2026-08-18): cap raised 60 → 2000 with
+# full reload at startup (_load_log), so cross-session body text stays recoverable
+# and archivable in both formats. On plugin updates, re-check these three spots.
+_text_log: deque = deque(maxlen=2000)
 _text_log_lock = threading.Lock()
 
 # ─── Session tail buffer ──────────────────────────────────────────────────────
@@ -893,7 +960,7 @@ def _get_tail_file() -> "str | None":
     much harder to diagnose. The new contract: campaign-specific or nothing.
     """
     try:
-        camp = open(CAMP_FILE).read().strip()
+        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
         if camp:
             return str(_find_campaign(camp) / "session_tail.json")
     except Exception:
@@ -925,7 +992,7 @@ def _persist_tail() -> None:
             except OSError:
                 pass
         tmp = path + ".tmp"
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f)
             f.flush()
             try:
@@ -952,7 +1019,7 @@ def _load_tail() -> None:
     if not path:
         return
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         return  # No file yet — keep in-memory state
@@ -965,7 +1032,7 @@ def _load_tail() -> None:
         return
 
     try:
-        current_camp = open(CAMP_FILE).read().strip()
+        current_camp = open(CAMP_FILE, encoding="utf-8").read().strip()
     except Exception:
         current_camp = ""
 
@@ -999,7 +1066,7 @@ def _persist_log() -> None:
     try:
         with _text_log_lock:
             data = list(_text_log)
-        with open(LOG_FILE, "w") as f:
+        with open(LOG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
     except Exception:
         pass
@@ -1009,11 +1076,11 @@ def _load_log() -> None:
     """Load a previously persisted text log on startup.
     Handles both old string format and new dict format."""
     try:
-        with open(LOG_FILE) as f:
+        with open(LOG_FILE, encoding="utf-8") as f:
             data = json.load(f)
         with _text_log_lock:
             _text_log.clear()
-            for item in data[-60:]:
+            for item in data[:]:
                 # Migrate old plain-string entries to dict format
                 if isinstance(item, str):
                     item = {"text": item}
@@ -1037,7 +1104,7 @@ def _persist_stats() -> None:
     try:
         with _stats_lock:
             data = dict(_current_stats)
-        with open(STATS_FILE, "w") as f:
+        with open(STATS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
     except Exception:
         pass
@@ -1046,7 +1113,7 @@ def _persist_stats() -> None:
 def _load_stats() -> None:
     global _expected_count
     try:
-        with open(STATS_FILE) as f:
+        with open(STATS_FILE, encoding="utf-8") as f:
             data = json.load(f)
         with _stats_lock:
             _current_stats.update(data)
@@ -1088,7 +1155,7 @@ def _dice_pending_snapshot() -> list:
 def _load_input_queue() -> None:
     global _input_queue
     try:
-        with open(INPUT_FILE) as f:
+        with open(INPUT_FILE, encoding="utf-8") as f:
             _input_queue = json.load(f)
     except Exception:
         _input_queue = []
@@ -1096,7 +1163,7 @@ def _load_input_queue() -> None:
 
 def _persist_input_queue() -> None:
     try:
-        with open(INPUT_FILE, "w") as f:
+        with open(INPUT_FILE, "w", encoding="utf-8") as f:
             json.dump(_input_queue, f)
     except Exception:
         pass
@@ -1172,7 +1239,10 @@ def srd_lookup():
         return jsonify({"found": True, "name": name, "category": resolved_cat, "text": text})
     # Not found — offer near-miss "did you mean?" suggestions (typo recovery)
     # plus the wikidot fallback URL so the frontend can still link out.
-    wurl = _lookup.wikidot_url(name, category=category)
+    # `ref` is {} when there is no VERIFIED destination for this category, and
+    # the frontend renders no link at all in that case: a guessed URL reads as
+    # an answer and dead-ends, which is worse than saying nothing.
+    ref = _lookup.reference_url(name, category=category)
     suggestions = []
     try:
         for sg_name, sg_cat in _lookup.suggest(name, category=category, n=3):
@@ -1180,7 +1250,11 @@ def srd_lookup():
     except Exception:
         pass  # suggestion is best-effort; never fail the lookup over it
     return jsonify({"found": False, "name": name,
-                    "wikidot_url": wurl, "suggestions": suggestions})
+                    "reference_url": ref.get("url", ""),
+                    "reference_label": ref.get("label", ""),
+                    # kept so an older cached frontend still gets a link
+                    "wikidot_url": ref.get("url", ""),
+                    "suggestions": suggestions})
 
 
 @app.route("/ping")
@@ -1204,7 +1278,7 @@ def health():
     content is exposed.
     """
     try:
-        camp = open(CAMP_FILE).read().strip()
+        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
     except Exception:
         camp = ""
     tail_path = _get_tail_file()
@@ -1364,7 +1438,7 @@ def chunk():
 
     # Stamp campaign on tail entries to prevent bleed when switching campaigns
     try:
-        _camp_stamp = open(CAMP_FILE).read().strip()
+        _camp_stamp = open(CAMP_FILE, encoding="utf-8").read().strip()
         if _camp_stamp:
             log_entry["_camp"] = _camp_stamp
     except Exception:
@@ -1614,7 +1688,7 @@ def stats():
     # display replay at /dnd load shows the correct campaign's last session.
     if "campaign" in data:
         try:
-            with open(CAMP_FILE, "w") as f:
+            with open(CAMP_FILE, "w", encoding="utf-8") as f:
                 f.write(str(data["campaign"]).strip())
             _load_tail()
         except Exception:
@@ -1735,7 +1809,7 @@ def narration_pref():
     pref = rt("narration_target")
     try:
         if n:
-            with open(pref, "w") as f:
+            with open(pref, "w", encoding="utf-8") as f:
                 f.write(str(n))
         elif os.path.exists(pref):
             os.remove(pref)
@@ -1773,10 +1847,10 @@ def roll_pref():
     try:
         prefs = {}
         if os.path.exists(pref):
-            with open(pref) as f:
+            with open(pref, encoding="utf-8") as f:
                 prefs = json.load(f)
         prefs[char] = mode
-        with open(pref, "w") as f:
+        with open(pref, "w", encoding="utf-8") as f:
             json.dump(prefs, f)
     except (OSError, ValueError):
         pass
@@ -1792,7 +1866,7 @@ _VOICE_PAT = re.compile(r"^\s*tts_voice:\s*([A-Za-z]+)\s*$", re.MULTILINE)
 
 def _active_campaign_name() -> Optional[str]:
     try:
-        return open(CAMP_FILE).read().strip() or None
+        return open(CAMP_FILE, encoding="utf-8").read().strip() or None
     except OSError:
         return None
 
@@ -1808,7 +1882,7 @@ def _read_narrator_voice() -> str:
         state = _find_campaign(name) / "state.md"
         if not state.exists():
             return _tts.DEFAULT_VOICE
-        text = state.read_text(errors="replace")
+        text = state.read_text(encoding="utf-8", errors="replace")
     except (OSError, ValueError):
         return _tts.DEFAULT_VOICE
     m = _VOICE_PAT.search(text)
@@ -1827,7 +1901,10 @@ def _write_narrator_voice(voice: str) -> bool:
         return False
     try:
         state = _find_campaign(name) / "state.md"
-        text = state.read_text(errors="replace") if state.exists() else ""
+        # utf8io transcodes legacy-GBK state.md losslessly (one-time migration);
+        # raises ValueError on anything undecodable, so we never write U+FFFD
+        # back over the file from the display UI.
+        text = _read_text(state) if state.exists() else ""
     except (OSError, ValueError):
         return False
 
@@ -1850,7 +1927,7 @@ def _write_narrator_voice(voice: str) -> bool:
             text = f"{text}{sep}\n## Session Flags\n{new_line}\n"
 
     try:
-        state.write_text(text)
+        state.write_text(text, encoding="utf-8")
         return True
     except OSError:
         return False
@@ -1987,7 +2064,7 @@ def help_request():
 
     # Read active campaign name
     try:
-        campaign = open(CAMP_FILE).read().strip()
+        campaign = open(CAMP_FILE, encoding="utf-8").read().strip()
     except FileNotFoundError:
         os.unlink(HELP_LOCK)
         return "No active campaign", 400
@@ -2101,7 +2178,7 @@ def player_dice():
     payload   = {"text": text, "dice": True}
     log_entry = {"text": text, "dice": True}
     try:
-        _camp_stamp = open(CAMP_FILE).read().strip()
+        _camp_stamp = open(CAMP_FILE, encoding="utf-8").read().strip()
         if _camp_stamp:
             log_entry["_camp"] = _camp_stamp
     except Exception:
@@ -2279,7 +2356,7 @@ def get_character_sheet(character):
         return "Bad character name", 400
 
     try:
-        camp = open(CAMP_FILE).read().strip()
+        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
     except Exception:
         camp = ""
     # Sanitise the campaign name with the same allowlist + length cap as the
@@ -2510,14 +2587,14 @@ def submit_now():
     if not _token_ok():
         return "Forbidden", 403
     try:
-        content = open(QUEUE_FILE).read()
+        content = open(QUEUE_FILE, encoding="utf-8").read()
         os.unlink(QUEUE_FILE)
     except FileNotFoundError:
         return "No queue", 204
     except Exception:
         return "Error", 500
     try:
-        with open(TRIGGER_FILE, "w") as f:
+        with open(TRIGGER_FILE, "w", encoding="utf-8") as f:
             f.write(content)
     except Exception:
         return "Error", 500
@@ -2560,9 +2637,11 @@ def stream():
     q.put_nowait({"scene": initial_scene})
 
     # Replay recent entries so late-connecting / reconnecting browsers catch up.
-    # Sent as a typed batch so the browser can render each item (dm/player/dice) correctly.
+    # _text_log is the durable session record (maxlen=2000); replay only the
+    # last 200 chunks — the browser renders this batch on join, not the whole
+    # log, so a late joiner isn't shown sessions 1..N rendered at them.
     with _text_log_lock:
-        recent = list(_text_log)
+        recent = list(_text_log)[-200:]
     if recent:
         q.put_nowait({"replay_batch": recent})
 
@@ -2675,7 +2754,7 @@ if __name__ == "__main__":
 
     # Write .scheme so push_stats.py / send.py / autorun_wait.py know which to use
     try:
-        with open(os.path.join(_display_dir, ".scheme"), "w") as _sf:
+        with open(os.path.join(_display_dir, ".scheme"), "w", encoding="utf-8") as _sf:
             _sf.write(scheme)
     except OSError:
         pass

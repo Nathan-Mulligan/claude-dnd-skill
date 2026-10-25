@@ -55,6 +55,11 @@ BITS_FILES_2014 = {
     "magic_items": "5e-SRD-Magic-Items.json",
     "conditions":  "5e-SRD-Conditions.json",
     "monsters":    "5e-SRD-Monsters.json",
+    # Races carry the ability bonuses character creation has to apply.
+    # Absent until 2026-10-09, so there was no source for them at all:
+    # the flow said "apply racial bonuses" and nothing could check it.
+    "races":       "5e-SRD-Races.json",
+    "subraces":    "5e-SRD-Subraces.json",
 }
 
 # 2024 file roster — partial upstream coverage as of 2026-05.
@@ -1448,6 +1453,23 @@ def _norm_monster(r: dict) -> dict:
         parts.append(f"Action — {a.get('name','')}: {a.get('desc','')}")
     for a in r.get("legendary_actions", []):
         parts.append(f"Legendary — {a.get('name','')}: {a.get('desc','')}")
+
+    # Defenses. Upstream gives damage_* as lists of plain strings and
+    # condition_immunities as a list of {index,name,url} records, so they need
+    # different flattening. Dropping these was not cosmetic: halving or zeroing
+    # damage changes what a fight IS, and a GM with no record to consult will
+    # apply a half-remembered resistance inconsistently.
+    def _flat(key: str) -> str:
+        vals = r.get(key) or []
+        if not isinstance(vals, list):
+            return str(vals or "")
+        out = []
+        for v in vals:
+            if isinstance(v, dict):
+                v = v.get("name", "")
+            if v:
+                out.append(str(v))
+        return ", ".join(out)
     return {
         "name":  r.get("name", ""),
         "index": r.get("index", _slugify(r.get("name", ""))),
@@ -1468,6 +1490,57 @@ def _norm_monster(r: dict) -> dict:
         "cha":   r.get("charisma", 10),
         "alignment": r.get("alignment", ""),
         "languages": r.get("languages", ""),
+        "resistances":   _flat("damage_resistances"),
+        "immunities":    _flat("damage_immunities"),
+        "vulnerabilities": _flat("damage_vulnerabilities"),
+        "condition_immunities": _flat("condition_immunities"),
+    }
+
+
+def _norm_race(r: dict) -> dict:
+    """A race record, with its ability bonuses as a flat {STAT: n} map.
+
+    The upstream shape nests each bonus under
+    `ability_bonuses[].ability_score.index`, which is awkward to read at a
+    glance and awkward to compare against `character.py`'s table. Flattening
+    it here means `lookup.py race dwarf` prints the same thing the calculator
+    applies.
+    """
+    bonuses: dict = {}
+    for b in r.get("ability_bonuses") or []:
+        idx = ((b.get("ability_score") or {}).get("index") or "").upper()
+        if idx:
+            bonuses[idx] = bonuses.get(idx, 0) + int(b.get("bonus") or 0)
+    return {
+        "name":            r.get("name", ""),
+        "index":           r.get("index", _slugify(r.get("name", ""))),
+        "ability_bonuses": bonuses,
+        "speed":           r.get("speed", ""),
+        "size":            r.get("size", ""),
+        "size_description": r.get("size_description", ""),
+        "age":             r.get("age", ""),
+        "alignment":       r.get("alignment", ""),
+        "languages":       [l.get("name", "") for l in (r.get("languages") or [])],
+        "language_desc":   r.get("language_desc", ""),
+        "traits":          [t.get("name", "") for t in (r.get("traits") or [])],
+        "subraces":        [s.get("name", "") for s in (r.get("subraces") or [])],
+    }
+
+
+def _norm_subrace(r: dict) -> dict:
+    """A subrace, whose bonuses STACK on its parent race's."""
+    bonuses: dict = {}
+    for b in r.get("ability_bonuses") or []:
+        idx = ((b.get("ability_score") or {}).get("index") or "").upper()
+        if idx:
+            bonuses[idx] = bonuses.get(idx, 0) + int(b.get("bonus") or 0)
+    return {
+        "name":            r.get("name", ""),
+        "index":           r.get("index", _slugify(r.get("name", ""))),
+        "race":            (r.get("race") or {}).get("name", ""),
+        "ability_bonuses": bonuses,
+        "description":     _join_desc(r.get("desc", [])),
+        "traits":          [t.get("name", "") for t in (r.get("racial_traits") or [])],
     }
 
 
@@ -1592,6 +1665,8 @@ def _build_5ebits(ruleset: str = DEFAULT_RULESET) -> tuple[dict, list[str]]:
         "magic_items": _norm_magic_item,
         "conditions":  _norm_condition,
         "monsters":    _norm_monster,
+        "races":       _norm_race,
+        "subraces":    _norm_subrace,
         # 2024-only categories — keep raw shape (no custom normaliser yet);
         # they pass through as-is so lookup.py can consume them.
         "weapon_mastery_properties": lambda r: r,
@@ -1789,7 +1864,7 @@ def cmd_status(ruleset: str = DEFAULT_RULESET) -> None:
         print(f"Dataset not built for ruleset {ruleset}. "
               f"Run build_srd.py --ruleset {ruleset} to create it.")
         return
-    with open(out_file) as f:
+    with open(out_file, encoding="utf-8") as f:
         data = json.load(f)
     meta    = data.get("_meta", {})
     counts  = meta.get("record_counts", {})
@@ -1890,7 +1965,7 @@ def cmd_build(skip_fvtt: bool = False,
         **categories,
     }
 
-    with open(out_file, "w") as f:
+    with open(out_file, "w", encoding="utf-8") as f:
         json.dump(dataset, f, separators=(",", ":"))
 
     size_kb = os.path.getsize(out_file) // 1024
