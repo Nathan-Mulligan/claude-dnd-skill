@@ -57,9 +57,8 @@
       // Reading text size — a font-size multiplier (not page zoom). Applied here
       // to avoid a flash at the default size before the picker JS runs.
       var ts = parseFloat(window.localStorage.getItem('dnd-text-scale'));
-      if (ts && ts >= 0.5 && ts <= 3) {
-        document.documentElement.style.setProperty('--text-scale', String(ts));
-      }
+      if (!(ts >= 0.5 && ts <= 3)) ts = 1.4;   // local patch: readable default
+      document.documentElement.style.setProperty('--text-scale', String(ts));
     } catch (_) { /* private mode / disabled storage — silently fall back to dark */ }
   })();
 </script>
@@ -3310,7 +3309,28 @@
 
   /* DICE drawer — hosts the relocated phone #dice-pad on the TV view, slides in
      from the right like the other drawers. Editorial-only (the rail is too). */
+  /* local patch: upstream scopes the whole drawer to data-skin=editorial, so on
+     Vellum a prescribed roll shows a 'waiting' badge with nowhere to roll. These
+     rules are skin-agnostic; the editorial block below still overrides them. */
   #dice-drawer{ display:none; }
+  body:not(.input-only) #dice-drawer{
+    display:flex; position:fixed; top:0; bottom:0; right:0; left:auto;
+    transform:translateX(102%);
+    width:var(--ed-drawer-w, min(400px, 92vw)); height:100vh; z-index:32;
+    flex-direction:column;
+    background:var(--e-strong, #17120c); color:var(--e-on-strong, #e8dcc0);
+    border-left:1px solid var(--e-hair-strong, rgba(180,140,90,.45));
+    box-shadow:-2px 0 50px rgba(0,0,0,.5);
+    transition:transform .32s cubic-bezier(.4,0,.1,1); }
+  body:not(.input-only) #dice-drawer.ed-open{ transform:translateX(0); }
+  body:not(.input-only) #dice-drawer::before{
+    content:"Dice"; display:block; padding:18px 18px 13px;
+    font-weight:700; font-size:12px; letter-spacing:.28em; text-transform:uppercase;
+    color:var(--e-accent, #c8a45c);
+    border-bottom:1px solid var(--e-hair-strong, rgba(180,140,90,.45)); }
+  body:not(.input-only) #dice-drawer #dice-pad{
+    display:flex !important; flex-direction:column; gap:12px; padding:18px 18px 22px;
+    border-top:0; background:transparent; flex:1 1 auto; overflow-y:auto; }
   :root[data-skin="editorial"] body:not(.input-only) #dice-drawer{
     display:flex; position:fixed; top:0; bottom:0; right:0; left:auto; transform:translateX(102%);
     width:var(--ed-drawer-w); height:100vh; z-index:32; flex-direction:column;
@@ -6431,8 +6451,9 @@ async function _playSfx(name) {
   const row = document.getElementById('onscreen-dice-row');
   const track = document.getElementById('osd-track');
   if (!row || !track) return;
-  let on = false;
-  try { on = localStorage.getItem('dnd-onscreen-dice') === '1'; } catch (_) {}
+  let on = true;   // local patch: default ON (phoneless table)
+  try { const _v = localStorage.getItem('dnd-onscreen-dice');
+        if (_v !== null) on = (_v === '1'); } catch (_) {}
   _setTrack(track, on);
   row.addEventListener('click', () => {
     on = !on;
@@ -6496,6 +6517,45 @@ let _ttsVoice = (_narratorVoiceMeta && _narratorVoiceMeta.getAttribute('content'
   || 'Enceladus';
 
 let _ttsAutoNarrate = localStorage.getItem('dnd_tts_auto') === '1';
+
+// ── local patch: per-character voices ──────────────────────────────────
+// Upstream narrates every block with one global voice. The kit keeps a
+// speaker -> voice map in voice/cast.json, served by /cast. An NPC block
+// carries its speaker in .npc-name, so route on that and fall back to the
+// narrator voice for plain narration.
+// local patch: surface browser errors to the DM's terminal.
+(function _initClientLog() {
+  const post = (kind, message) => {
+    try {
+      fetch('/clientlog', { method: 'POST', headers: _authHeaders(),
+        body: JSON.stringify({ kind, message: String(message) }) });
+    } catch (_) {}
+  };
+  window.addEventListener('error', e => post('js-error',
+    (e.message || '?') + ' @ ' + (e.filename || '') + ':' + (e.lineno || 0)));
+  window.addEventListener('unhandledrejection', e => post('promise',
+    (e.reason && (e.reason.stack || e.reason.message)) || e.reason));
+})();
+
+let _CAST = {};
+fetch('/cast', { headers: _authHeaders() })
+  .then(r => r.ok ? r.json() : {})
+  .then(m => { _CAST = m || {}; })
+  .catch(() => {});
+
+function _voiceForBlock(blockEl) {
+  const narrator = _CAST._narrator || _ttsVoice;
+  if (!blockEl) return narrator;
+  const nameEl = blockEl.querySelector('.npc-name');
+  if (!nameEl) return narrator;
+  const raw = (nameEl.textContent || '').trim().toLowerCase();
+  if (!raw) return narrator;
+  if (_CAST[raw]) return _CAST[raw];
+  // Loose match so 'Cultist Sentry' finds 'cultist', as dm-speak.py does.
+  const hit = Object.keys(_CAST).filter(k => k[0] !== '_')
+                    .find(k => raw.includes(k));
+  return hit ? _CAST[hit] : narrator;
+}
 
 let _ttsCtx = null;
 let _ttsActiveSource = null;
@@ -6666,7 +6726,7 @@ async function _ttsPlayBlock(btn, blockEl) {
     const resp = await fetch('/tts', {
       method: 'POST',
       headers: _authHeaders(),
-      body: JSON.stringify({ text, voice: _ttsVoice }),
+      body: JSON.stringify({ text, voice: _voiceForBlock(blockEl) }),
     });
     if (!resp.ok) throw new Error('TTS ' + resp.status);
     const pcm = await resp.arrayBuffer();
@@ -6836,7 +6896,10 @@ function _addTtsBar(blockEl) {
 
   blockEl.appendChild(bar);
 
-  if (_ttsAutoNarrate) {
+  // local patch: _ttsReplaying guards the backlog. On connect the server
+  // sends replay_batch so a reloaded tab catches up; without this guard
+  // every one of those blocks starts speaking simultaneously.
+  if (_ttsAutoNarrate && !window._ttsReplaying) {
     // Defer one tick so the bar is in the DOM before triggering the click path
     setTimeout(() => _ttsPlayBlock(playBtn, blockEl), 0);
   }
@@ -7009,9 +7072,9 @@ function _effectiveTheme(theme) {
   const inc = document.getElementById('ts-inc');
   const val = document.getElementById('ts-val');
   if (!dec || !inc || !val) return;
-  const MIN = 0.8, MAX = 2.0, STEP = 0.1;
+  const MIN = 0.8, MAX = 3.0, STEP = 0.1;   // local patch
   let scale = parseFloat(localStorage.getItem('dnd-text-scale'));
-  if (!(scale >= MIN && scale <= MAX)) scale = 1;
+  if (!(scale >= MIN && scale <= MAX)) scale = 1.4;   // local patch
   const clamp = x => Math.min(MAX, Math.max(MIN, Math.round(x * 100) / 100));
   function apply() {
     document.documentElement.style.setProperty('--text-scale', String(scale));
@@ -7759,6 +7822,8 @@ function connect() {
       clearDisplay();
     }
     if (payload.replay_batch) {
+      window._ttsReplaying = true;   // local patch — see _ttsAutoNarrate guard
+      setTimeout(() => { window._ttsReplaying = false; }, 1500);
       renderReplayBatch(payload.replay_batch);
     }
     if (payload.replay) {
@@ -7866,7 +7931,7 @@ connect();
 }
 // Should a prescribed roll auto-open the Dice drawer? Settings override flag;
 // no-phone auto-detect is layered on in a follow-up step.
-function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dice') === '1'; } catch (_) { return false; } }
+function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dice') !== '0'; } catch (_) { return true; } }
 
 // ── Editorial right-rail drawers (TV view) + phone settings popover ──────────
 (function _initEditorialChrome() {
