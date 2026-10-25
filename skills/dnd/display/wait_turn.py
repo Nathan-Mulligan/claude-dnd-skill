@@ -33,13 +33,37 @@ import sys
 import json
 import time
 import argparse
+import ssl
 import subprocess
+import urllib.request
 
 DISPLAY = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, DISPLAY)
 from runtime_paths import rt  # noqa: E402
 
 QUEUE = rt(".input_queue")
+
+
+def _mark_consumed() -> None:
+    """Clear the panel's "queued" state on every display, as autorun_wait does."""
+    try:
+        scheme_file = os.path.join(DISPLAY, ".scheme")
+        scheme = "http"
+        if os.path.exists(scheme_file):
+            with open(scheme_file, encoding="utf-8") as f:
+                scheme = f.read().strip() or "http"
+        with open(rt(".token"), encoding="utf-8") as f:
+            token = f.read().strip()
+        ctx = None
+        if scheme == "https":
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(f"{scheme}://localhost:5001/queue/consumed", data=b"",
+                                     method="POST", headers={"X-DND-Token": token})
+        urllib.request.urlopen(req, timeout=1, context=ctx)
+    except Exception:
+        pass
 LOG   = rt("text_log.json")
 
 
@@ -85,6 +109,7 @@ def main() -> int:
                 os.unlink(QUEUE)
                 if content:
                     out.append(content)
+                    _mark_consumed()
             except Exception:
                 pass
 

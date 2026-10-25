@@ -1420,6 +1420,8 @@ def chunk():
     elif is_tutor:
         payload["tutor"] = True
     else:
+        if data.get("opener"):
+            payload["opener"] = True
         # Scene detection only on DM narration
         scene = _detect_scene(cleaned)
         if scene:
@@ -2034,6 +2036,41 @@ def cast_map():
                         if isinstance(v, str) and k != "_comment"})
     except Exception:
         return jsonify({})
+
+
+@app.route("/cast", methods=["POST"])
+def cast_set():
+    """Set one character's voice: {"name": "Haldryck", "voice": "bm_daniel"}.
+
+    Written straight into cast.json so the choice survives restarts, and
+    broadcast so every open page switches that character at once.
+    """
+    if _tts is None:
+        return "TTS module unavailable", 503
+    if not _token_ok():
+        return "Forbidden", 403
+    if not _rate_ok(request.remote_addr or "?"):
+        return "Rate limited", 429
+    d = request.get_json(silent=True) or {}
+    name = str(d.get("name") or "").strip().lower()
+    voice = str(d.get("voice") or "").strip()
+    if not name or len(name) > 40 or name.startswith("_") or not _voice_ok(voice):
+        return jsonify({"error": "bad name or voice"}), 400
+    try:
+        with open(CAST_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    key = next((k for k in data if k.lower() == name), name)
+    data[key] = voice
+    tmp = CAST_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, CAST_FILE)
+    cast = {k.lower(): v for k, v in data.items() if isinstance(v, str) and k != "_comment"}
+    _broadcast({"cast": cast})
+    return jsonify({"name": key, "voice": voice}), 200
 
 
 @app.route("/tts/voices", methods=["GET"])
