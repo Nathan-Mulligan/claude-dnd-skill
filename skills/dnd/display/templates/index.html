@@ -4923,11 +4923,17 @@ function _typewriterActive() {
 }
 
 function _releasePending() {
-  const items = _pendingBlocks;
-  _pendingBlocks = [];
   _pendingSince = 0;
-  for (const fn of items) {
+  while (_pendingBlocks.length) {
+    const fn = _pendingBlocks.shift();
     try { fn(); } catch (e) { console.error('deferred block failed', e); }
+    // Narration released from the queue starts typing again; whatever came
+    // after it waits for that reveal, so the page keeps arrival order.
+    if (_pendingBlocks.length && _typewriterActive()) {
+      _pendingSince = Date.now();
+      _schedulePendingFlush();
+      return;
+    }
   }
 }
 
@@ -6586,7 +6592,7 @@ let _ttsAutoNarrate = localStorage.getItem('dnd_tts_auto') === '1';
 let _CAST = {};
 fetch('/cast', { headers: _authHeaders() })
   .then(r => r.ok ? r.json() : {})
-  .then(m => { _CAST = m || {}; })
+  .then(m => { _CAST = m || {}; document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu); })
   .catch(() => {});
 
 function _narratorVoice() {
@@ -6704,7 +6710,7 @@ const _SVG_CHEVRON = '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="
 // with the audio already banked; a long sentence is split at a comma to fit.
 const _TTS_FIRST_CAP = 60, _TTS_MAX_CAP = 320;
 const _TTS_SPEAK_S_PER_CHAR = 0.064, _TTS_SYNTH_S_PER_CHAR = 0.019, _TTS_SYNTH_FIXED_S = 0.35;
-const _TTS_LINE_PAUSE = 0.25;            // seconds between lines, not chunks
+const _TTS_LINE_PAUSE = 0.1;             // seconds between lines; Kokoro pads each clip too
 let _ttsGen = 0;                         // bumped by stop; stale work checks it
 let _ttsFetchChain = Promise.resolve();
 let _ttsPlayChain = Promise.resolve();
@@ -6892,13 +6898,18 @@ function _ttsSaveVoice(voice) {
     headers: _authHeaders(),
     body: JSON.stringify({ voice }),
   }).catch(() => {});
-  document.querySelectorAll('.tts-voice-opt').forEach(o => {
-    o.classList.toggle('tts-voice-active', o.dataset.voice === voice);
-  });
+  document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
 }
 
 function _ttsFillVoiceMenu(menu) {
   menu.replaceChildren();
+  // A menu on an NPC line recasts that character; any other menu sets the narrator.
+  const speaker = menu.dataset.speaker || '';
+  const current = speaker ? _voiceForName(speaker) : _narratorVoice();
+  const title = document.createElement('div');
+  title.className = 'tts-voice-group';
+  title.textContent = speaker ? 'Voice for ' + speaker : 'Narrator voice';
+  menu.appendChild(title);
 
   function _addGroup(label, voices) {
     const hdr = document.createElement('div');
@@ -6910,23 +6921,35 @@ function _ttsFillVoiceMenu(menu) {
       opt.className = 'tts-voice-opt';
       opt.dataset.voice = v;
       opt.textContent = v;
-      if (v === _ttsVoice) opt.classList.add('tts-voice-active');
+      if (v === current) opt.classList.add('tts-voice-active');
       opt.addEventListener('click', e => {
         e.stopPropagation();
-        _ttsSaveVoice(v);
+        if (speaker) _ttsSaveCastVoice(speaker, v); else _ttsSaveVoice(v);
         menu.hidden = true;
       });
       menu.appendChild(opt);
     });
   }
+  if (current && !_TTS_VOICES_MALE.includes(current) && !_TTS_VOICES_FEMALE.includes(current)) {
+    _addGroup('Current', [current]);
+  }
   _addGroup('Male',   _TTS_VOICES_MALE);
   _addGroup('Female', _TTS_VOICES_FEMALE);
 }
 
-function _ttsBuildVoiceMenu() {
+function _ttsSaveCastVoice(name, voice) {
+  _CAST[String(name).trim().toLowerCase()] = voice;
+  fetch('/cast', {
+    method: 'POST', headers: _authHeaders(), body: JSON.stringify({ name, voice }),
+  }).catch(() => {});
+  document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+}
+
+function _ttsBuildVoiceMenu(speaker) {
   const menu = document.createElement('div');
   menu.className = 'tts-voice-menu';
   menu.hidden = true;
+  if (speaker) menu.dataset.speaker = speaker;
   _ttsFillVoiceMenu(menu);
   return menu;
 }
@@ -6979,7 +7002,8 @@ function _addTtsBar(blockEl) {
   voiceBtn.setAttribute('aria-label', 'Select narrator voice');
   bar.appendChild(voiceBtn);
 
-  const menu = _ttsBuildVoiceMenu();
+  const npcName = blockEl.querySelector('.npc-name');
+  const menu = _ttsBuildVoiceMenu(npcName ? (npcName.textContent || '').trim() : '');
   bar.appendChild(menu);
 
   voiceBtn.addEventListener('click', e => {
@@ -7932,6 +7956,10 @@ function connect() {
       _setSidebarVisible(true);   // reset to visible for next campaign
       clearDisplay();
     }
+    if (payload.cast && typeof payload.cast === 'object') {
+      _CAST = payload.cast;
+      document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+    }
     if (payload.replay_batch) {
       renderReplayBatch(payload.replay_batch);
     }
@@ -7967,7 +7995,11 @@ function connect() {
       } else if (payload.tutor) {
         renderTutorBlock(payload.text);
       } else {
-        handleIncomingText(payload.text, !!payload.opener);
+        // Narration that arrives behind waiting NPC or dice blocks waits too,
+        // or it would be typed into the paragraph above them.
+        const _txt = payload.text, _op = !!payload.opener;
+        if (_pendingBlocks.length) _deferBlock(() => handleIncomingText(_txt, _op));
+        else handleIncomingText(_txt, _op);
         if (_ttsAutoNarrate && _TTS_AVAILABLE) _narrate(payload.text, _narratorVoice());
       }
     }
@@ -8043,7 +8075,9 @@ connect();
         const onscreen = (Array.isArray(req.onscreen_targets) ? req.onscreen_targets : [])
           .map(c => String(c).toLowerCase());
         const tgt = targets.find(c => onscreen.includes(String(c).toLowerCase())) || targets[0] || '';
-        if (rid) _tvReqs.set(rid, req);
+        // An "any" request has nobody to track, so no pending update will
+        // ever close the tray for it; the roll itself does (see the Roll handler).
+        if (rid && targets.some(c => String(c).toLowerCase() !== 'any')) _tvReqs.set(rid, req);
         window._tvApplyDiceRequest(req, String(tgt).toLowerCase() === 'any' ? '' : tgt);
         // The server re-sends open requests on every reconnect; only a request
         // this page hasn't seen yet slides the tray open.
@@ -8594,8 +8628,13 @@ function _initDicePad() {
 
   rollBtn.addEventListener('click', async () => {
     window._dpRolling = true;
+    const rolledRid = _activeRequestId;
     try { await _dpRoll(); } finally {
       window._dpRolling = false;
+      if (rolledRid && window._tvDiceReqs && !window._tvDiceReqs.has(rolledRid)
+          && !window._tvHeldDiceEntries && typeof window._edCloseDrawer === 'function') {
+        setTimeout(() => window._edCloseDrawer('dice-drawer'), 1800);
+      }
       // The server's pending-roll update usually lands before this roll's own
       // reply; it was held back so the result is seen before the next
       // character is put on the pad.
@@ -8664,7 +8703,14 @@ function _initDicePad() {
     // afterwards so the player can't fire another unsolicited roll. The lock
     // is released only by the next dice_request arriving for this character
     // (which unlocks + re-pre-fills inside _applyDiceRequest).
-    if (_activeRequestId) {
+    // Phones stay locked after a prescribed roll so a player can't fire an
+    // unasked-for one; the shared screen also free-rolls, so it unlocks.
+    if (_activeRequestId && !document.body.classList.contains('input-only')) {
+      _activeRequestId = '';
+      rollBtn.disabled = false;
+      rollBtn.classList.remove('pulse', 'rolled');
+      if (_locked) _setLocked(false);
+    } else if (_activeRequestId) {
       _setLocked(true, spec, adv);          // keep die / adv selections frozen
       rollBtn.disabled = true;              // and disable Roll itself
       rollBtn.classList.add('rolled');
@@ -8717,6 +8763,8 @@ function _initDicePad() {
     if (!isAny && !targets.includes(me)) return;                  // not for this phone
 
     _activeRequestId = String(req.request_id || '');
+    const _resLine = document.getElementById('dp-result-line');
+    if (_resLine) _resLine.textContent = '';
     // The previous prescribed roll left every other die and adv button
     // disabled, and clicking a disabled button does nothing, so the pad kept
     // the old die. Unlock before selecting the new one.
