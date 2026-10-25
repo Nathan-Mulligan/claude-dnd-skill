@@ -8705,6 +8705,10 @@ function _initDicePad() {
     if (!isAny && !targets.includes(me)) return;                  // not for this phone
 
     _activeRequestId = String(req.request_id || '');
+    // The previous prescribed roll left every other die and adv button
+    // disabled, and clicking a disabled button does nothing, so the pad kept
+    // the old die. Unlock before selecting the new one.
+    if (_locked) _setLocked(false);
 
     // Spec → click the matching die button. If unknown, fall back to d20.
     const reqSpec = (req.spec || '1d20').toLowerCase();
