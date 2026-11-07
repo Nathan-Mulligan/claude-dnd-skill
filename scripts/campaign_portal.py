@@ -195,6 +195,8 @@ def create_app() -> Flask:
             if not running():
                 return jsonify(ok=False, message="No model session is running."), 409
             literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", text)
+            if literal.returncode == 0:
+                time.sleep(0.25)
             enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter") if literal.returncode == 0 else literal
         if enter.returncode:
             return jsonify(ok=False, message="Could not send the reply to the model."), 500
