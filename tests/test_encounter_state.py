@@ -16,7 +16,8 @@ def campaign(tmp_path, monkeypatch):
     root = tmp_path / "campaigns" / "trial"
     (root / "characters").mkdir(parents=True)
     (root / "state.md").write_text(
-        "# Trial\n\n## Pinned Facts\n- Keep the lantern lit.\n\n"
+        "# Trial\n\n- **Party:** Mira (Human Rogue 2, HP 12/12, AC 14)\n\n"
+        "## Pinned Facts\n- Keep the lantern lit.\n\n"
         "## Active Combat\nOld turn data\n\n## Live State Flags\n- Lantern: lit.\n",
         encoding="utf-8",
     )
@@ -62,6 +63,7 @@ def test_attack_uses_frozen_spec_and_cannot_repeat_a_turn(tmp_path, monkeypatch)
     assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text(encoding="utf-8")
     assert first["next"]["current"] == "Mira"
     state_text = (root / "state.md").read_text(encoding="utf-8")
+    assert "Mira (Human Rogue 2, HP 8/12, AC 14)" in state_text
     assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text(encoding="utf-8")
     assert "| Mira | pc | 8/12 | 14 |" in state_text
     assert "**Current turn:** 1:1:Mira" in state_text
@@ -269,3 +271,26 @@ def test_multiattack_round_cap_waits_until_all_strikes_finish(tmp_path, monkeypa
     assert end["next"]["round"] == 2
     resumed = encounter.resume("trial", 2)
     assert resumed["turn_token"] == "2:0:Goblin A:1"
+
+
+def test_party_summary_sync_updates_each_pc_without_rewriting_story(tmp_path, monkeypatch):
+    root = campaign(tmp_path, monkeypatch)
+    state_path = root / "state.md"
+    original = state_path.read_text(encoding="utf-8")
+    original = original.replace(
+        "Mira (Human Rogue 2, HP 12/12, AC 14)",
+        "Mira (Human Rogue 2, HP 12/12, AC 14); Aldric (Human Fighter 2, HP 16/16, AC 16)",
+    ).replace("- Keep the lantern lit.", "- Keep the lantern lit. Aldric began at HP 16/16.")
+    state_path.write_text(original, encoding="utf-8")
+    encounter._sync_active_combat("trial", {
+        "status": "paused", "round": 2,
+        "combatants": [
+            {"name": "Mira", "type": "pc", "hp": 8, "max_hp": 12, "ac": 14},
+            {"name": "Aldric", "type": "pc", "hp": 11, "max_hp": 16, "ac": 16},
+            {"name": "Bridge Ghoul", "type": "npc", "hp": 6, "max_hp": 18, "ac": 13},
+        ],
+    })
+    updated = state_path.read_text(encoding="utf-8")
+    assert "Mira (Human Rogue 2, HP 8/12, AC 14)" in updated
+    assert "Aldric (Human Fighter 2, HP 11/16, AC 16)" in updated
+    assert "Aldric began at HP 16/16." in updated

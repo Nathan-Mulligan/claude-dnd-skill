@@ -276,6 +276,35 @@ def sync_party(name: str) -> dict:
 def _sync_active_combat(name: str, state: dict) -> None:
     path = _campaign_path(name) / "state.md"
     content = path.read_text(encoding="utf-8")
+    # The compact party line is read at campaign load. Keep its HP in step with
+    # the sheets so a fresh DM process does not inherit a stale summary.
+    heading_start = re.search(r"(?m)^## ", content)
+    preamble_end = heading_start.start() if heading_start else len(content)
+    preamble, remainder = content[:preamble_end], content[preamble_end:]
+    lines = preamble.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if not re.match(r"^- \*\*Party:\*\*", line):
+            continue
+        for actor in state["combatants"]:
+            if actor["type"] != "pc":
+                continue
+            pattern = re.compile(
+                rf"(?P<prefix>(?<!\w){re.escape(actor['name'])}\s*\([^)]*?\bHP\s*)"
+                rf"\d+(?P<slash>\s*/\s*)(?P<maximum>\d+)"
+            )
+            line = pattern.sub(
+                lambda match: (
+                    f"{match.group('prefix')}{actor['hp']}"
+                    f"{match.group('slash')}{match.group('maximum')}"
+                    if int(match.group("maximum")) == actor["max_hp"]
+                    else match.group(0)
+                ),
+                line,
+                count=1,
+            )
+        lines[index] = line
+        break
+    content = "".join(lines) + remainder
     status = state["status"]
     if status == "paused":
         label = f"Paused before round {state['round']}"
