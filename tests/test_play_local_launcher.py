@@ -5,8 +5,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 REPO = Path(__file__).resolve().parents[1]
+pytestmark = pytest.mark.skipif(
+    os.name == "nt", reason="Bash launcher integration needs a POSIX shell"
+)
 
 
 def test_qwen_named_campaign_uses_one_system_prompt(tmp_path):
