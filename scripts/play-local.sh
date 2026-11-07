@@ -4,6 +4,11 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+data_root="${DND_CAMPAIGN_ROOT:-$HOME/.claude/dnd}"
+if [[ -x "$data_root/.venv/bin/python3" ]]; then
+  export PATH="$data_root/.venv/bin:$PATH"
+fi
+
 backend="${1:-}"
 shift || true
 

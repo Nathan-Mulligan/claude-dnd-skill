@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -12,10 +13,13 @@ def test_qwen_named_campaign_uses_one_system_prompt(tmp_path):
     campaign = tmp_path / "campaigns" / "trial"
     campaign.mkdir(parents=True)
     (campaign / "state.md").write_text("# Trial\n")
+    local_bin = tmp_path / ".venv" / "bin"
+    local_bin.mkdir(parents=True)
+    (local_bin / "python3").symlink_to(sys.executable)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in {
-        "qwen": "#!/bin/sh\nprintf '%s\\n' \"$@\"\n",
+        "qwen": "#!/bin/sh\nprintf '%s\\n' \"$@\"\nprintf 'PYTHON_PATH=%s\\n' \"$(command -v python3)\"\n",
         "curl": "#!/bin/sh\nexit 0\n",
     }.items():
         script = bin_dir / name
@@ -30,4 +34,5 @@ def test_qwen_named_campaign_uses_one_system_prompt(tmp_path):
     assert args.count("--append-system-prompt") == 1
     prompt = args[args.index("--append-system-prompt") + 1]
     assert str(campaign) in prompt
-    assert args[-1] == "--yolo"
+    assert args[-2] == "--yolo"
+    assert args[-1] == f"PYTHON_PATH={local_bin / 'python3'}"

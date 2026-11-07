@@ -89,12 +89,24 @@ sleep 0.3
 # Homebrew and most distro pythons refuse a bare `pip3 install` (PEP 668), so
 # bootstrap a venv beside the campaign data once and run the display from it.
 # It lives outside the plugin directory so a plugin update doesn't wipe it.
-if ! python3 -c "import flask, flask_cors" 2>/dev/null; then
+if ! python3 -c "import flask, flask_cors, yaml" 2>/dev/null; then
   VENV="$(dirname "$RT")/.venv"
-  if [[ ! -x "$VENV/bin/python" ]] || ! "$VENV/bin/python" -c "import flask, flask_cors" 2>/dev/null; then
-    echo "display   : installing flask into $VENV (one-time)"
-    python3 -m venv "$VENV" && "$VENV/bin/pip" install -q flask flask-cors \
-      || { echo "Error: could not install flask into $VENV"; exit 1; }
+  if [[ ! -x "$VENV/bin/python" ]]; then
+    python3 -m venv "$VENV" \
+      || { echo "Error: could not create Python environment at $VENV"; exit 1; }
+  fi
+  if ! "$VENV/bin/python" -c "import flask, flask_cors, yaml" 2>/dev/null; then
+    echo "display   : installing local display and graph dependencies into $VENV (one-time)"
+    if [[ -x "$VENV/bin/pip" ]]; then
+      "$VENV/bin/pip" install -q flask flask-cors pyyaml \
+        || { echo "Error: could not install display and graph dependencies into $VENV"; exit 1; }
+    elif command -v uv >/dev/null 2>&1; then
+      uv pip install --python "$VENV/bin/python" flask flask-cors pyyaml \
+        || { echo "Error: could not install display and graph dependencies into $VENV"; exit 1; }
+    else
+      echo "Error: $VENV has no pip; install pip or uv to add display dependencies" >&2
+      exit 1
+    fi
   fi
   export PATH="$VENV/bin:$PATH"
 fi
