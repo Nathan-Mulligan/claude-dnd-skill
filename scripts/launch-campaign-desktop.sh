@@ -18,7 +18,7 @@ display_ready() {
 import json, sys
 try:
     data = json.load(sys.stdin)
-    sys.exit(0 if data.get("alive") is True and all(k in data for k in ("campaign", "tail_buffer", "tail_path")) else 1)
+    sys.exit(0 if data.get("alive") is True and all(k in data for k in ("campaign", "tail_buffer", "data_root")) else 1)
 except (ValueError, AttributeError):
     sys.exit(1)
 ' <<< "$health"

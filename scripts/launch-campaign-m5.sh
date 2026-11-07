@@ -13,11 +13,17 @@ display_status() {
 import json, os, sys
 try:
     data = json.load(sys.stdin)
-    if data.get("alive") is not True or not all(k in data for k in ("campaign", "tail_buffer", "tail_path")):
+    if data.get("alive") is not True or not all(k in data for k in ("campaign", "tail_buffer")):
         sys.exit(1)
-    actual = os.path.realpath(data["tail_path"])
-    expected = os.path.realpath(os.path.join(sys.argv[1], "campaigns"))
-    sys.exit(0 if os.path.commonpath((actual, expected)) == expected else 2)
+    expected_root = os.path.realpath(sys.argv[1])
+    if data.get("data_root"):
+        sys.exit(0 if os.path.realpath(data["data_root"]) == expected_root else 2)
+    tail_path = data.get("tail_path")
+    if not tail_path:
+        sys.exit(1)
+    actual = os.path.realpath(tail_path)
+    expected_campaigns = os.path.join(expected_root, "campaigns")
+    sys.exit(0 if os.path.commonpath((actual, expected_campaigns)) == expected_campaigns else 2)
 except (ValueError, TypeError, OSError, KeyError):
     sys.exit(1)
 ' "$data_root" <<< "$health"

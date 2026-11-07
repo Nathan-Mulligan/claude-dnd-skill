@@ -25,7 +25,7 @@ def run_launcher(tmp_path, answers, *args, curl_response=None, port_occupied=Fal
         path = bin_dir / name
         path.write_text(body, encoding="utf-8")
         path.chmod(0o755)
-    health = curl_response or '{"alive":true,"campaign":"","tail_buffer":0,"tail_path":"/tmp/campaigns/demo/session_tail.json"}'
+    health = curl_response or '{"alive":true,"campaign":"","tail_buffer":0,"tail_path":"","data_root":"/tmp"}'
     env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}",
                DND_TEST_LOG=str(log), DND_TEST_HEALTH=health)
     result = subprocess.run(
@@ -74,12 +74,12 @@ def test_random_ping_listener_is_rejected(tmp_path):
     assert "play-local.sh" not in calls
 
 
-def run_m5_helper(tmp_path, mode, health_root):
+def run_m5_helper(tmp_path, mode, health_root, *, fresh=False):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "services.log"
     for name, body in {
-        "curl": f"#!/bin/sh\ncase \"$*\" in *'/health') printf '{{\"alive\":true,\"campaign\":\"demo\",\"tail_buffer\":0,\"tail_path\":\"{health_root}/campaigns/demo/session_tail.json\"}}' ;; esac\n",
+        "curl": f"#!/bin/sh\ncase \"$*\" in *'/health') printf '{{\"alive\":true,\"campaign\":\"{' ' if fresh else 'demo'}\",\"tail_buffer\":0,\"data_root\":\"{health_root}\",\"tail_path\":\"{'' if fresh else str(health_root) + '/campaigns/demo/session_tail.json'}\"}}' ;; esac\n",
         "docker": "#!/bin/sh\necho docker >> \"$DND_TEST_LOG\"\n",
         "ollama": "#!/bin/sh\necho ollama >> \"$DND_TEST_LOG\"\nprintf 'qwen3.6:35b-mlx\\n'\n",
         "qwen": "#!/bin/sh\necho qwen >> \"$DND_TEST_LOG\"\n",
@@ -110,8 +110,15 @@ def test_m5_start_reuses_healthy_services(tmp_path):
     assert calls == "ollama\n"
 
 
+def test_m5_start_accepts_fresh_display_without_campaign(tmp_path):
+    result, calls = run_m5_helper(tmp_path, "--start", tmp_path / "data", fresh=True)
+    assert result.returncode == 0, result.stderr
+    assert "Display: ready" in result.stdout
+    assert calls == "ollama\n"
+
+
 def test_m5_start_rejects_other_campaign_root(tmp_path):
-    result, calls = run_m5_helper(tmp_path, "--start", tmp_path / "other")
+    result, calls = run_m5_helper(tmp_path, "--start", tmp_path / "other", fresh=True)
     assert result.returncode == 1
     assert "another campaign data root" in result.stderr
     assert calls == ""
