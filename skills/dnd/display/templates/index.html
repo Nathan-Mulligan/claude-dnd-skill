@@ -6391,7 +6391,19 @@ let _currentTurnOrder = null;
 
 
 const _sfxTrack = document.getElementById('sfx-track');
-let _sfxOn = false;
+const _audioParams = new URLSearchParams(location.search);
+const _inputOnlyAudio = _audioParams.get('view') === 'input' || _audioParams.has('char') || _audioParams.has('character');
+const _startWithAudio = !_inputOnlyAudio && _audioParams.get('audio') === 'on';
+if (_startWithAudio) {
+  try {
+    for (const key of ['dnd_sfx_on', 'dnd_music_on', 'dnd_tts_auto']) localStorage.setItem(key, '1');
+  } catch (_) {}
+  _audioParams.delete('audio');
+  const remaining = _audioParams.toString();
+  try { history.replaceState(null, '', location.pathname + (remaining ? '?' + remaining : '') + location.hash); } catch (_) {}
+}
+let _sfxOn = !_inputOnlyAudio;
+try { _sfxOn = _sfxOn && (_startWithAudio || localStorage.getItem('dnd_sfx_on') !== '0'); } catch (_) {}
 
 // ── DM Help button ──────────────────────────────────────────────────
 const _dmHelpBtn = document.getElementById('dm-help-btn');
@@ -6513,8 +6525,8 @@ async function _playSfx(name) {
 // Music is local to the main display. The server owns entry IDs and rendered files.
 const _musicTrack = document.getElementById('music-track');
 const _musicVolumeControl = document.getElementById('music-volume');
-let _musicOn = true;
-try { _musicOn = localStorage.getItem('dnd_music_on') !== '0'; } catch (_) {}
+let _musicOn = !_inputOnlyAudio;
+try { _musicOn = _musicOn && (_startWithAudio || localStorage.getItem('dnd_music_on') !== '0'); } catch (_) {}
 _setTrack(_musicTrack, _musicOn);
 let _musicVolume = 0.18;
 let _musicState = null;
@@ -6644,7 +6656,7 @@ document.getElementById('music-row').addEventListener('click', () => {
   }
 });
 document.addEventListener('pointerdown', () => {
-  if (_musicOn) _audioCtx();
+  if (_musicOn || _sfxOn) _audioCtx();
 }, { capture: true, passive: true });
 _musicVolumeControl.addEventListener('click', e => e.stopPropagation());
 _musicVolumeControl.addEventListener('input', e => {
@@ -6670,16 +6682,19 @@ _musicVolumeControl.addEventListener('input', e => {
   });
 })();
 
+function _syncSfx() {
+  _setTrack(_sfxTrack, _sfxOn);
+  fetch('/audio-toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sfx: _sfxOn }),
+  }).catch(() => {});
+}
+if (!_inputOnlyAudio) _syncSfx();
 document.getElementById('sfx-row').addEventListener('click', () => {
   _sfxOn = !_sfxOn;
-  _setTrack(_sfxTrack, _sfxOn);
-  try {
-    fetch('/audio-toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sfx: _sfxOn }),
-    });
-  } catch (_) {}
+  try { localStorage.setItem('dnd_sfx_on', _sfxOn ? '1' : '0'); } catch (_) {}
+  _syncSfx();
 });
 
 // ── Typing speed toggle ──────────────────────────────────────────────
@@ -6724,7 +6739,8 @@ let _ttsVoice = (_narratorVoiceMeta && _narratorVoiceMeta.getAttribute('content'
   || localStorage.getItem('dnd_tts_voice')
   || 'Enceladus';
 
-let _ttsAutoNarrate = localStorage.getItem('dnd_tts_auto') === '1';
+let _ttsAutoNarrate = _TTS_AVAILABLE && !_inputOnlyAudio;
+try { _ttsAutoNarrate = _ttsAutoNarrate && (_startWithAudio || localStorage.getItem('dnd_tts_auto') !== '0'); } catch (_) {}
 
 // ── local patch: per-character voices ──────────────────────────────────
 // Upstream narrates every block with one global voice. The kit keeps a
@@ -6965,7 +6981,9 @@ function _ttsEnsureRunning(ctx) {
   }
 }
 document.addEventListener('pointerdown', () => {
-  if (_ttsCtx && _ttsCtx.state === 'suspended') _ttsCtx.resume().catch(() => {});
+  if (!_ttsAutoNarrate || !_TTS_AVAILABLE || _inputOnlyAudio) return;
+  const ctx = _getTtsCtx();
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
 }, { capture: true, passive: true });
 
 function _ttsSchedule(ctx, pcm, btn, first, last, gen) {

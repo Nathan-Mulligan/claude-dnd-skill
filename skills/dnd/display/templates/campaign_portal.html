@@ -111,7 +111,7 @@
         const mode = $('mode').value;
         const data = await api('/api/start', 'POST', {provider: $('provider').value, mode, name: mode === 'new' ? $('name').value : $('saved').value, description: $('description').value});
         message(`${data.message} Campaign: ${data.campaign}`);
-        $('display').src = 'http://127.0.0.1:5001/';
+        $('display').src = 'http://127.0.0.1:5001/?audio=on';
         await refresh();
       } catch (error) { message(error.message, true); $('start').disabled = false; }
     });
