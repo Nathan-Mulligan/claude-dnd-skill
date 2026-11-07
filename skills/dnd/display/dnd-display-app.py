@@ -60,6 +60,7 @@ import functools as _functools
 import script_ranges
 
 from paths import find_campaign as _find_campaign
+from paths import campaigns_dir as _campaigns_dir
 from utf8io import read_text as _read_text
 
 # Audio module — degrades silently if numpy not installed
@@ -1300,6 +1301,7 @@ def health():
 
     Returns the live counts the send-side cares about:
       - alive: always True if the route runs
+      - data_root: campaign data root used by this display process
       - tail_buffer: number of entries currently in the rolling tail
       - tail_file_size: size in bytes of the on-disk session_tail.json
       - text_log: number of entries in the replay log
@@ -1326,6 +1328,7 @@ def health():
         client_count = len(_clients)
     return {
         "alive": True,
+        "data_root": str(_campaigns_dir().parent),
         "tail_buffer": tail_count,
         "tail_file_size": tail_size,
         "tail_path": tail_path or "",
