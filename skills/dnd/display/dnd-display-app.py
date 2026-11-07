@@ -1433,14 +1433,12 @@ def chunk():
         return "", 204
 
     music_cue = data.get("music")
-    if music_cue is not None:
-        if not isinstance(music_cue, dict) or any((is_action, is_player, is_npc, is_dice, is_tutor)):
-            return "Invalid music cue", 400
+    if isinstance(music_cue, dict) and not any((is_action, is_player, is_npc, is_dice, is_tutor)):
         try:
             _music.transition(music_cue.get("event"), music_cue.get("id"),
                               music_cue.get("setting"), music_cue.get("mood", "ominous"))
         except ValueError:
-            return "Invalid music cue", 400
+            pass  # A malformed optional cue must not suppress valid narration.
 
     payload: dict = {"text": cleaned}
 

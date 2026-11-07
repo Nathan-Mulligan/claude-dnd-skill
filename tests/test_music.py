@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import queue
 import sys
 import tempfile
 import unittest
@@ -175,6 +176,16 @@ class MusicDirectorTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 204)
                 self.drain()
                 state = self.director.snapshot()
+                updates = queue.Queue()
+                appmod._clients.append(updates)
+                unchanged = self.director.snapshot()
+                bad = client.post("/chunk", json={"text": "A distant whisper follows you.",
+                    "music": {"event": "scene", "id": "bad-cue", "setting": "unknown"}})
+                self.assertEqual(bad.status_code, 204)
+                self.assertEqual(self.director.snapshot(), unchanged)
+                self.assertEqual(appmod._text_log[-1]["text"], "A distant whisper follows you.")
+                self.assertEqual(updates.get_nowait()["text"], "A distant whisper follows you.")
+                appmod._clients.remove(updates)
                 response = client.get(state["intro_url"])
                 self.assertEqual(response.status_code, 200)
                 response.close()
