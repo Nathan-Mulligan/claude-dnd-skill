@@ -64,6 +64,21 @@ def test_setup_question_sender_works_before_campaign_selection(tmp_path):
     assert b"What is your character's name?" in sent[0][1]
 
 
+def test_setup_question_sender_accepts_inline_text(tmp_path):
+    spec = importlib.util.spec_from_file_location("_setup_sender_inline_test", DISPLAY / "send.py")
+    assert spec and spec.loader
+    with mock.patch.dict(os.environ, {"DND_RUNTIME_DIR": str(tmp_path)}):
+        sender = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sender)
+    sent = []
+    with mock.patch.object(sys, "argv", ["send.py", "--setup-question", "Use point buy or roll?"]), \
+         mock.patch.object(sys, "stdin", io.StringIO("")), \
+         mock.patch.object(sender, "_post", side_effect=lambda *args: sent.append(args) or True):
+        sender.main()
+    assert sent[0][0] == sender.SETUP_URL
+    assert b"Use point buy or roll?" in sent[0][1]
+
+
 def test_setup_question_falls_back_during_display_upgrade(tmp_path):
     spec = importlib.util.spec_from_file_location("_setup_sender_fallback_test", DISPLAY / "send.py")
     assert spec and spec.loader
