@@ -70,7 +70,13 @@ case "${1:-}" in
         fi
         DND_NO_OPEN=1 bash "$repo_root/skills/dnd/display/start-display.sh" >/dev/null
       fi
-    elif [[ "$mode" == --check ]]; then echo 'Display: ready'; fi
+    elif [[ "$mode" == --check ]]; then
+      echo 'Display: ready'
+    elif [[ "${DND_PORTAL_START:-0}" == 1 &&
+            -f "$repo_root/skills/dnd/display/app.pid" &&
+            "$repo_root/skills/dnd/display/templates/index.html" -nt "$repo_root/skills/dnd/display/app.pid" ]]; then
+      DND_NO_OPEN=1 bash "$repo_root/skills/dnd/display/start-display.sh" >/dev/null
+    fi
     if ! ready http://127.0.0.1:8880/v1/audio/voices; then
       if [[ "$mode" == --check ]]; then
         echo 'Kokoro: stopped'

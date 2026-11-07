@@ -115,7 +115,7 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
             auth = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--claude-auth")
             if auth.returncode:
                 return False, "Claude Code is signed out on the M5. Sign in there or choose Qwen or Codex."
-        service = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", provider, timeout=60)
+        service = run("env", "DND_PORTAL_START=1", "bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", provider, timeout=60)
         if service.returncode:
             return False, (service.stderr or service.stdout or "M5 services did not start.").strip()[-800:]
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
