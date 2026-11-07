@@ -77,6 +77,56 @@ class MusicDirectorTest(unittest.TestCase):
         self.assertFalse(any(e["music"]["entry"] == old["entry"] and
                              e["music"]["intro_url"] for e in self.events))
 
+    def test_restart_reuses_current_files_and_duplicate_id(self) -> None:
+        first = self.director.transition("scene", "event-1", "cave")
+        self.drain()
+        restarted = music.MusicDirector(Path(self.temp.name), None, None,
+                                        renderer=fake_render, autostart=False)
+        self.assertEqual(restarted.snapshot()["entry"], first["entry"])
+        self.assertTrue(restarted.snapshot()["bed_url"])
+        self.assertEqual(restarted.transition("scene", "event-1", "cave")["entry"],
+                         first["entry"])
+        self.assertEqual(restarted.jobs.qsize(), 0)
+
+    def test_scene_cue_during_combat_only_updates_remembered_setting(self) -> None:
+        self.director.transition("scene", "scene-1", "cave")
+        combat = self.director.transition("combat_start", "combat-1")
+        pending = self.director.jobs.qsize()
+        update = self.director.transition("scene", "scene-2", "forest", "curious")
+        self.assertEqual(update["entry"], combat["entry"])
+        self.assertEqual(update["mode"], "combat")
+        self.assertEqual(update["setting"], "forest")
+        self.assertEqual(self.director.jobs.qsize(), pending)
+        after = self.director.transition("combat_end", "combat-2")
+        self.assertEqual(after["setting"], "forest")
+        self.assertEqual(after["mode"], "explore")
+
+    def test_restart_requeues_missing_current_jobs_only(self) -> None:
+        first = self.director.transition("scene", "scene-1", "cave")
+        restarted = music.MusicDirector(Path(self.temp.name), None, None,
+                                        renderer=fake_render, autostart=False)
+        self.assertEqual(restarted.snapshot()["entry"], first["entry"])
+        self.assertEqual(restarted.jobs.qsize(), 2)
+        while restarted.process_next():
+            pass
+        self.assertTrue(restarted.snapshot()["intro_url"])
+        self.assertTrue(restarted.snapshot()["bed_url"])
+
+    def test_scene_superseded_during_render_cannot_play_old_bed(self) -> None:
+        def interrupted_render(job: music.Job) -> None:
+            fake_render(job)
+            if job.kind == "intro":
+                self.director.transition("combat_start", "combat-1")
+        self.director.renderer = interrupted_render
+        old = self.director.transition("scene", "scene-1", "cave")
+        self.drain()
+        state = self.director.snapshot()
+        self.assertEqual(state["mode"], "combat")
+        self.assertIsNone(state["bed_url"])
+        self.assertTrue(state["combat_url"])
+        self.assertIsNone(self.director.file_for(old["entry"], "intro"))
+        self.assertFalse((Path(self.temp.name) / f"{old['entry']}-bed.wav").exists())
+
     def test_invalid_cue_does_not_change_state(self) -> None:
         with self.assertRaises(ValueError):
             self.director.transition("scene", "bad", "../../outside")
@@ -103,6 +153,18 @@ class MusicDirectorTest(unittest.TestCase):
                 response.close()
                 self.assertEqual(client.get("/audio/music/not-current/intro").status_code, 404)
                 self.assertEqual(client.get("/audio/music/../../etc/passwd").status_code, 404)
+                appmod._lan_token = "local-test-token"
+                self.assertEqual(client.get(state["intro_url"]).status_code, 403)
+                authorized = client.get(state["intro_url"], headers={"X-DND-Token": "local-test-token"})
+                self.assertEqual(authorized.status_code, 200)
+                authorized.close()
+                appmod._lan_token = None
+                self.assertEqual(client.post("/stats", json={"turn_order": {"current": "A", "round": 1}}).status_code, 204)
+                self.assertEqual(self.director.snapshot()["mode"], "combat")
+                self.assertEqual(client.post("/stats", json={"turn_order": {"current": "B", "round": 1}}).status_code, 204)
+                self.assertEqual(self.director.snapshot()["mode"], "combat")
+                self.assertEqual(client.post("/stats", json={"turn_order": None}).status_code, 204)
+                self.assertEqual(self.director.snapshot()["mode"], "explore")
 
 
 if __name__ == "__main__":

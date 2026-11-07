@@ -91,6 +91,8 @@ def runtime_config(config_path: Path) -> tuple[Path | None, Path | None]:
         saved = json.loads(config_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, ValueError):
         saved = {}
+    if not isinstance(saved, dict):
+        saved = {}
     cli_value = os.environ.get("DND_MUSIC_CLI") or saved.get("cli")
     hf_value = os.environ.get("DND_MUSIC_HF_HOME") or saved.get("hf_home")
     cli = Path(cli_value).expanduser() if cli_value else None
@@ -148,11 +150,77 @@ class MusicDirector:
         self.mood = "ominous"
         self.entry: str | None = None
         self.ready: dict[str, Path] = {}
+        self.expected: tuple[str, ...] = ()
         self.error: str | None = None
         self.seen: set[str] = set()
         self.seen_order: deque[str] = deque()
+        self._load_state()
         if autostart and self.available:
             threading.Thread(target=self._run, daemon=True, name="dnd-music").start()
+
+    def _load_state(self) -> None:
+        try:
+            data = json.loads((self.directory / "current.json").read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        entry = data.get("entry")
+        if not isinstance(entry, str) or len(entry) != 32 or any(
+                c not in "0123456789abcdef" for c in entry):
+            return
+        mode = data.get("mode")
+        setting = data.get("setting")
+        if mode not in {"explore", "combat"} or (setting not in SETTINGS and
+                                                         not (mode == "combat" and setting is None)):
+            return
+        revision = data.get("revision", 0)
+        if not isinstance(revision, int) or revision < 0:
+            return
+        self.revision = revision
+        self.mode = mode
+        self.setting = setting
+        mood = data.get("mood", "ominous")
+        self.mood = mood if mood in MOODS else "ominous"
+        self.entry = entry
+        self.ready = {}
+        expected = data.get("expected", [])
+        if not isinstance(expected, list):
+            expected = []
+        self.expected = tuple(kind for kind in expected if kind in {"intro", "bed", "combat"})
+        for kind in self.expected:
+            path = self.directory / f"{entry}-{kind}.wav"
+            if path.is_file():
+                self.ready[kind] = path
+            elif self.available:
+                self.jobs.put(self._make_job(kind))
+        seen = data.get("seen", [])
+        self.seen_order = deque(e for e in seen[-512:] if isinstance(e, str)) if isinstance(seen, list) else deque()
+        self.seen = set(self.seen_order)
+
+    def _persist_unlocked(self) -> None:
+        data = {
+            "revision": self.revision, "mode": self.mode,
+            "setting": self.setting, "mood": self.mood,
+            "entry": self.entry, "expected": list(self.expected),
+            "seen": list(self.seen_order),
+        }
+        target = self.directory / "current.json"
+        temporary = self.directory / "current.json.tmp"
+        try:
+            temporary.write_text(json.dumps(data), encoding="utf-8")
+            temporary.replace(target)
+        except OSError:
+            temporary.unlink(missing_ok=True)
+
+    def _make_job(self, kind: str) -> Job:
+        assert self.entry is not None
+        seconds = 120 if kind == "bed" else 10
+        return Job(self.revision, self.entry, kind,
+                   prompt_for(self.setting or "cave", self.mood, kind),
+                   seconds, secrets.randbelow(2**31),
+                   3.0 if kind == "bed" else 1.0,
+                   self.directory / f"{self.entry}-{kind}.wav")
 
     def set_broadcast(self, callback: Callable[[dict], None]) -> None:
         self.broadcast = callback
@@ -205,31 +273,33 @@ class MusicDirector:
                 return self._snapshot_unlocked()
             if event == "combat_end" and self.mode != "combat":
                 return self._snapshot_unlocked()
-            if event == "combat_start":
-                self.mode = "combat"
-                kinds = ("combat",)
-            elif event == "combat_end":
-                self.mode = "explore" if self.setting else "idle"
-                kinds = ("bed",) if self.setting else ()
-            else:
-                self.mode = "explore"
+            if event == "scene" and self.mode == "combat":
                 self.setting = setting
                 self.mood = mood
-                kinds = ("intro", "bed")
-            self.revision += 1
-            self.entry = uuid.uuid4().hex
-            self.ready = {}
-            self.error = None
-            for kind in kinds:
-                seconds = 120 if kind == "bed" else 10
-                job = Job(self.revision, self.entry, kind,
-                          prompt_for(self.setting or "cave", self.mood, kind),
-                          seconds, secrets.randbelow(2**31),
-                          3.0 if kind == "bed" else 1.0,
-                          self.directory / f"{self.entry}-{kind}.wav")
+                self._persist_unlocked()
+                state = self._snapshot_unlocked()
+            else:
+                if event == "combat_start":
+                    self.mode = "combat"
+                    kinds = ("combat",)
+                elif event == "combat_end":
+                    self.mode = "explore" if self.setting else "idle"
+                    kinds = ("bed",) if self.setting else ()
+                else:
+                    self.mode = "explore"
+                    self.setting = setting
+                    self.mood = mood
+                    kinds = ("intro", "bed")
+                self.revision += 1
+                self.entry = uuid.uuid4().hex
+                self.ready = {}
+                self.expected = kinds
+                self.error = None
                 if self.available:
-                    self.jobs.put(job)
-            state = self._snapshot_unlocked()
+                    for kind in kinds:
+                        self.jobs.put(self._make_job(kind))
+                self._persist_unlocked()
+                state = self._snapshot_unlocked()
         self._publish(state)
         return state
 
@@ -240,9 +310,11 @@ class MusicDirector:
             self.setting = None
             self.entry = None
             self.ready = {}
+            self.expected = ()
             self.error = None
             self.seen.clear()
             self.seen_order.clear()
+            self._persist_unlocked()
             state = self._snapshot_unlocked()
         self._publish(state)
 
@@ -273,6 +345,7 @@ class MusicDirector:
             with self.lock:
                 if job.revision == self.revision:
                     self.error = f"{job.kind} generation failed: {type(exc).__name__}"
+                    self._persist_unlocked()
                     state = self._snapshot_unlocked()
                 else:
                     state = None
@@ -282,6 +355,7 @@ class MusicDirector:
         with self.lock:
             if job.revision == self.revision and job.path.is_file():
                 self.ready[job.kind] = job.path
+                self._persist_unlocked()
                 state = self._snapshot_unlocked()
             else:
                 state = None
