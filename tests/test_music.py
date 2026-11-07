@@ -88,6 +88,14 @@ class MusicDirectorTest(unittest.TestCase):
                          first["entry"])
         self.assertEqual(restarted.jobs.qsize(), 0)
 
+    def test_idle_revision_survives_restart(self) -> None:
+        self.director.transition("scene", "scene-1", "cave")
+        self.director.reset()
+        restarted = music.MusicDirector(Path(self.temp.name), None, None,
+                                        renderer=fake_render, autostart=False)
+        self.assertEqual(restarted.snapshot()["revision"], self.director.snapshot()["revision"])
+        self.assertEqual(restarted.snapshot()["mode"], "idle")
+
     def test_scene_cue_during_combat_only_updates_remembered_setting(self) -> None:
         self.director.transition("scene", "scene-1", "cave")
         combat = self.director.transition("combat_start", "combat-1")

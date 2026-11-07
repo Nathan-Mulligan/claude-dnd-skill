@@ -61,9 +61,19 @@ class Job:
     path: Path
 
 
+INTRO_PROMPTS = {
+    "forest": "A ten-second instrumental fantasy forest scene introduction. A memorable rising wood flute melody answered by plucked harp, gentle strings and light hand percussion. Curious woodland exploration, bright but mysterious. One coherent musical phrase that grows and resolves on a clear final chord. No vocals, no speech, no sound effects.",
+    "tavern": "A ten-second instrumental fantasy tavern scene introduction. A catchy fiddle melody answered by lute over hand drum and warm bass. A bustling roadside inn, inviting and slightly mischievous. One coherent folk dance phrase that grows and resolves on a clear final chord. No vocals, no speech, no sound effects.",
+    "prison": "A ten-second instrumental dark fantasy prison dungeon scene introduction. A haunting, memorable cello melody answered by a distant bell over low strings and a restrained pulse. Captives behind iron bars deep underground. One coherent minor-key phrase that develops and resolves softly. No vocals, no speech, no sound effects.",
+    "cave": "A ten-second dark fantasy instrumental scene-opening cue for adventurers entering a cave occupied by cultists and goblins. A memorable four-note melody in D minor played by low strings, answered by a wooden flute; an ominous brass swell and restrained frame drum build to a clear final cadence. Coherent musical phrase with a beginning, development, and resolved ending. Cinematic orchestral dungeon music, no vocals, no speech, no sound effects.",
+}
+
+
 def prompt_for(setting: str, mood: str, kind: str) -> str:
     instruments = INSTRUMENTS[setting]
     if kind == "intro":
+        if setting in INTRO_PROMPTS:
+            return INTRO_PROMPTS[setting]
         return (
             f"A ten-second instrumental dark fantasy {setting} scene introduction. "
             f"A memorable melody played by {instruments}. {mood.capitalize()} atmosphere. "
@@ -166,6 +176,12 @@ class MusicDirector:
             return
         if not isinstance(data, dict):
             return
+        revision = data.get("revision", 0)
+        if not isinstance(revision, int) or revision < 0:
+            return
+        self.revision = revision
+        if data.get("mode") == "idle":
+            return
         entry = data.get("entry")
         if not isinstance(entry, str) or len(entry) != 32 or any(
                 c not in "0123456789abcdef" for c in entry):
@@ -173,12 +189,8 @@ class MusicDirector:
         mode = data.get("mode")
         setting = data.get("setting")
         if mode not in {"explore", "combat"} or (setting not in SETTINGS and
-                                                         not (mode == "combat" and setting is None)):
+                not (mode == "combat" and setting is None)):
             return
-        revision = data.get("revision", 0)
-        if not isinstance(revision, int) or revision < 0:
-            return
-        self.revision = revision
         self.mode = mode
         self.setting = setting
         mood = data.get("mood", "ominous")
