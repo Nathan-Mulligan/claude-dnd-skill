@@ -685,6 +685,22 @@ Run `scripts/dice.py <notation>`. Display output verbatim. Examples: `d20`, `2d6
 ---
 
 ## `/dm:dnd combat start`
+For a basic weapon encounter with one attack profile per combatant, use the persistent `encounter_state.py` path. It reuses `combat.py` rolls and makes `encounter.json` the mechanical source of truth across model sessions:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/encounter_state.py start --campaign <name> \
+  --combatants '[{"name":"Mira","type":"pc","dex_mod":3,"hp":12,"ac":14,"attack_bonus":5,"damage":"1d8+3"},{"name":"Goblin","type":"npc","dex_mod":2,"hp":5,"ac":15,"attack_bonus":4,"damage":"1d6+2"}]'
+python3 ${CLAUDE_SKILL_DIR}/scripts/encounter_state.py status --campaign <name>
+python3 ${CLAUDE_SKILL_DIR}/scripts/encounter_state.py attack --campaign <name> --token '<turn_token>' --target '<target name>'
+python3 ${CLAUDE_SKILL_DIR}/scripts/encounter_state.py pass --campaign <name> --token '<turn_token>'
+```
+
+`start` rolls initiative, freezes the attack specifications, and refuses a PC whose starting HP differs from their sheet. Each result gives the next turn token, exact roll, damage, HP transition and encounter status. Use that result for narration and display updates. Check named weapons, armour and established world facts against the character sheets and campaign state; use a neutral description when those details are unknown. A repeated call with the same token and target returns the saved result without rolling again. The wrapper refreshes `state.md → ## Active Combat` from the saved encounter and checkpoints completed rounds automatically into `state.md → ## Recent Events` and `session-log.md` with an idempotent marker; add only the fiction and unresolved threads that the mechanical record cannot know. Run `checkpoint --campaign <name>` to repair an interrupted checkpoint. For a bounded trial, add `--max-rounds N` to `start`; `resume --campaign <name> --max-rounds N` explicitly releases a paused next round. After a finished encounter, clear the display turn tracker, then run `archive --campaign <name>`. The archived JSON keeps the full roll history. At a fresh model session, run `status` before any new action.
+
+The wrapper handles one basic attack or pass per turn. Spells, reactions, extra attacks, movement effects, Sneak Attack and other conditional mechanics still require the existing D&D procedures and explicit adjudication. Do not describe those as resolved by this wrapper. Do not begin a second encounter while `encounter.json` is active or paused.
+
+For encounters outside that bounded path, use the existing manual procedure below:
+
 1. Identify combatants; collect name, DEX mod, HP, AC, type (pc/npc) for each.
 2. Run `combat.py init '<JSON>'` — auto-roll initiative for every combatant including PCs. Display tracker and per-combatant roll breakdown.
 3. Send initiative to display:
