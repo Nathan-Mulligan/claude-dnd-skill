@@ -8,6 +8,8 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 >
 > **Display checks:** `send.py` puts every text body in the player's story. Verify campaign selection with `GET http://localhost:5001/health`; do not send probe or debug text through `send.py`.
 
+> **M5 Safari portal setup:** The cinematic display is the player's question and answer surface. Before waiting on each campaign or character setup question, pipe the exact question to `send.py --setup-question` and ask it in the DM conversation too. This shows the question beside Party Input without adding it to story history. Treat input from **Everybody** as the answer to the latest setup question until setup is complete; do not narrate it as in-world dialogue. The portal passes ready Party Input to the active DM automatically.
+
 ---
 
 ## `/dm:dnd new <campaign-name> [theme]`

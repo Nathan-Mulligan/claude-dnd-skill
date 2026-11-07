@@ -34,6 +34,9 @@ Usage:
     # Short inline string
     echo "Short message" | python3 send.py
 
+    # Campaign or character setup question (shown beside Party Input, not in story history)
+    echo "What is your character's name?" | python3 send.py --setup-question
+
     # State changes bundled with narration (Option B)
     python3 send.py --stat-hp "Mira:12:17" --stat-slot-use "Aldric:1" << 'DNDEND'
     The goblin's blade finds a gap in her armor for 5 damage...
@@ -84,6 +87,7 @@ STATS_URL   = f"{BASE_URL}/stats"
 CLEAR_URL   = f"{BASE_URL}/clear"
 HEALTH_URL  = f"{BASE_URL}/health"
 DICE_REQ_URL = f"{BASE_URL}/dice-request"
+SETUP_URL  = f"{BASE_URL}/setup-question"
 TOKEN_FILE  = rt(".token")
 TIMEOUT     = 8.0
 RETRIES     = 1                # one retry on timeout/connection error
@@ -403,6 +407,8 @@ def _build_stats_payload(args) -> "dict | None":
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send text to the DnD display server.")
+    parser.add_argument("--setup-question", action="store_true",
+                        help="Show a setup question beside Party Input without adding story history")
     parser.add_argument(
         "--player", metavar="NAME",
         help="Send as a player action, prepending the character name on display",
@@ -511,6 +517,15 @@ def main() -> None:
              "Surfaces a clear stderr line on mismatch — use during dev/debug.")
 
     args = parser.parse_args()
+    if args.setup_question:
+        question = sys.stdin.read().strip()
+        if not question or len(question) > 1000:
+            parser.error("--setup-question requires 1-1000 characters on stdin")
+        token = _read_token()
+        if not _post(SETUP_URL, json.dumps({"text": question}).encode("utf-8"), token):
+            if not _post(FLASK_URL, json.dumps({"text": question}).encode("utf-8"), token):
+                raise SystemExit("send.py: setup question did not reach display")
+        return
     if args.music_event:
         if args.music_event == "scene" and not args.music_setting:
             parser.error("--music-event scene requires --music-setting")

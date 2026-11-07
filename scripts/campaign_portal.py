@@ -11,6 +11,7 @@ import shlex
 import subprocess
 import threading
 import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -59,6 +60,67 @@ def output() -> str:
     return result.stdout[-32000:] if result.returncode == 0 else ""
 
 
+def notify_party_consumed() -> None:
+    try:
+        urllib.request.urlopen(urllib.request.Request(
+            "http://127.0.0.1:5001/queue/consumed", data=b"", method="POST"), timeout=2).close()
+    except OSError:
+        pass
+
+
+def deliver_party_input() -> bool:
+    if not running():
+        return False
+    meta = read_meta()
+    queue = RUNTIME / ".input_queue"
+    claim = RUNTIME / ".portal-input-claim"
+    try:
+        started_at = float(meta.get("started_at", 0))
+    except (TypeError, ValueError):
+        started_at = 0
+    if claim.exists() and claim.stat().st_mtime < started_at:
+        return False
+    if not claim.exists():
+        try:
+            if queue.stat().st_mtime < started_at:
+                return False
+            queue.replace(claim)
+        except (FileNotFoundError, OSError, ValueError, TypeError):
+            return False
+    try:
+        content = claim.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if not content:
+        claim.unlink(missing_ok=True)
+        return False
+    prompt = (
+        "Party Input for the current DM turn. During campaign or character setup, treat it as "
+        "the answer to your latest question; during play, treat it as the party's action. "
+        "Send your next setup question to the cinematic display with send.py --setup-question before waiting. "
+        "Input: " + json.dumps(content, ensure_ascii=True)
+    )
+    literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", prompt)
+    if literal.returncode:
+        return False
+    time.sleep(0.25)
+    enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter")
+    if enter.returncode:
+        return False
+    claim.unlink(missing_ok=True)
+    notify_party_consumed()
+    return True
+
+
+def party_input_loop() -> None:
+    while True:
+        try:
+            deliver_party_input()
+        except Exception as error:
+            print(f"Party Input bridge: {type(error).__name__}", flush=True)
+        time.sleep(0.5)
+
+
 def initial_prompt(mode: str, name: str, description: str) -> str:
     if mode == "new":
         return (
@@ -66,13 +128,17 @@ def initial_prompt(mode: str, name: str, description: str) -> str:
             "The local cinematic display is already running at http://127.0.0.1:5001; reuse it without "
             "restarting the display or opening another tab. Ask each setup question in this interactive "
             "session and wait for my answer. Once the campaign is selected, send player-facing narration "
-            "to the display using its existing scripts. "
+            "to the display using its existing scripts. Send every setup question to the cinematic "
+            "display with send.py --setup-question before waiting; answers may arrive from the Party Input Everybody "
+            "field and should be treated as setup answers until character creation is complete. "
             f"My initial campaign idea is: {description or 'Start a new campaign with me.'}"
         )
     return (
         f"Read this repository's D&D skill and follow the /dm:dnd load procedure for campaign {name}. "
         "Reconstruct state from the saved campaign files before narrating. The local browser display "
         "is already running at http://127.0.0.1:5001; reuse it without restarting or opening a tab. "
+        "Send any setup question to the display with send.py --setup-question before waiting; Party Input Everybody "
+        "answers the question. "
         f"My note for this session is: {description or 'Continue from where we stopped.'}"
     )
 
@@ -127,7 +193,8 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False, "The M5 model or service did not respond. Check the local service logs."
     RUNTIME.mkdir(parents=True, exist_ok=True)
-    META_FILE.write_text(json.dumps({"provider": provider, "mode": mode, "campaign": name}), encoding="utf-8")
+    META_FILE.write_text(json.dumps({"provider": provider, "mode": mode, "campaign": name,
+                                     "started_at": time.time()}), encoding="utf-8")
     return True, "Model session started. Answer its setup questions below."
 
 
@@ -206,4 +273,5 @@ def create_app() -> Flask:
 
 
 if __name__ == "__main__":
+    threading.Thread(target=party_input_loop, daemon=True, name="dnd-party-input").start()
     create_app().run(host="127.0.0.1", port=PORT, debug=False, threaded=True)
