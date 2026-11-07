@@ -11,6 +11,18 @@ remote() {
   for part in "$@"; do printf -v part '%q' "$part"; command_string+="$part "; done
   ssh "$host" "$command_string"
 }
+display_ready() {
+  local health
+  health="$(curl --silent --fail --max-time 3 http://127.0.0.1:5001/health)" || return 1
+  python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    sys.exit(0 if data.get("alive") is True and all(k in data for k in ("campaign", "tail_buffer", "tail_path")) else 1)
+except (ValueError, AttributeError):
+    sys.exit(1)
+' <<< "$health"
+}
 
 printf '\nD&D Campaign — M5\n\n1. Qwen 35B MLX (fully local)\n2. Codex GPT Terra (medium)\n3. Claude Code\n\n'
 read -r -p 'Model [1-3]: ' model_choice
@@ -47,7 +59,7 @@ fi
 echo 'Checking M5 services...'
 remote bash "$repo/scripts/launch-campaign-m5.sh" --start "$provider"
 
-if ! curl --silent --fail --max-time 2 http://127.0.0.1:5001/ping >/dev/null; then
+if ! display_ready; then
   if lsof -nP -iTCP:5001 -sTCP:LISTEN >/dev/null 2>&1; then
     echo 'Laptop port 5001 is used by another service. Close it before launching.' >&2
     exit 1
@@ -55,7 +67,7 @@ if ! curl --silent --fail --max-time 2 http://127.0.0.1:5001/ping >/dev/null; th
   ssh -fN -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
     -L 127.0.0.1:5001:127.0.0.1:5001 "$host"
 fi
-curl --silent --fail --max-time 3 http://127.0.0.1:5001/ping >/dev/null || { echo 'Display tunnel is not ready.' >&2; exit 1; }
+display_ready || { echo 'Display tunnel is not connected to the D&D display.' >&2; exit 1; }
 
 if [[ "$(uname)" == Darwin ]]; then
   osascript <<'APPLESCRIPT'

@@ -6,6 +6,22 @@ export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
 data_root="${DND_CAMPAIGN_ROOT:-$HOME/.claude/dnd}"
 
 ready() { curl --silent --fail --max-time 3 "$1" >/dev/null; }
+display_status() {
+  local health
+  health="$(curl --silent --fail --max-time 3 http://127.0.0.1:5001/health)" || return 1
+  python3 -c '
+import json, os, sys
+try:
+    data = json.load(sys.stdin)
+    if data.get("alive") is not True or not all(k in data for k in ("campaign", "tail_buffer", "tail_path")):
+        sys.exit(1)
+    actual = os.path.realpath(data["tail_path"])
+    expected = os.path.realpath(os.path.join(sys.argv[1], "campaigns"))
+    sys.exit(0 if os.path.commonpath((actual, expected)) == expected else 2)
+except (ValueError, TypeError, OSError, KeyError):
+    sys.exit(1)
+' "$data_root" <<< "$health"
+}
 
 case "${1:-}" in
   --list)
@@ -30,7 +46,16 @@ case "${1:-}" in
     mode="$1"
     provider="${2:-}"
     [[ "$provider" == qwen || "$provider" == codex || "$provider" == claude ]] || { echo 'Unknown model choice.' >&2; exit 2; }
-    if ! ready http://127.0.0.1:5001/ping; then
+    display_code=0
+    display_status || display_code=$?
+    if [[ "$display_code" == 2 ]]; then
+      if [[ "$mode" == --check ]]; then
+        echo 'Display: attached to another campaign data root'
+      else
+        echo 'Display is attached to another campaign data root. Stop that display before launching this campaign.' >&2
+        exit 1
+      fi
+    elif [[ "$display_code" != 0 ]]; then
       if [[ "$mode" == --check ]]; then
         echo 'Display: stopped'
       else
@@ -60,10 +85,10 @@ case "${1:-}" in
     if [[ "$mode" == --start ]]; then
       command -v "$provider" >/dev/null || { echo "$provider CLI is not installed." >&2; exit 1; }
       for attempt in {1..20}; do
-        ready http://127.0.0.1:5001/ping && ready http://127.0.0.1:8880/v1/audio/voices && break
+        display_status && ready http://127.0.0.1:8880/v1/audio/voices && break
         sleep 1
       done
-      ready http://127.0.0.1:5001/ping || { echo 'Display did not become ready.' >&2; exit 1; }
+      display_status || { echo 'Display did not become ready with this campaign data root.' >&2; exit 1; }
       ready http://127.0.0.1:8880/v1/audio/voices || { echo 'Kokoro did not become ready.' >&2; exit 1; }
       if [[ "$provider" == qwen ]]; then
         for attempt in {1..20}; do
