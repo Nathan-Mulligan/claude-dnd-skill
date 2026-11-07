@@ -12,7 +12,7 @@ REPO = Path(__file__).resolve().parents[1]
 def test_qwen_named_campaign_uses_one_system_prompt(tmp_path):
     campaign = tmp_path / "campaigns" / "trial"
     campaign.mkdir(parents=True)
-    (campaign / "state.md").write_text("# Trial\n")
+    (campaign / "state.md").write_text("# Trial\n", encoding="utf-8")
     local_bin = tmp_path / ".venv" / "bin"
     local_bin.mkdir(parents=True)
     (local_bin / "python3").symlink_to(sys.executable)
@@ -23,7 +23,7 @@ def test_qwen_named_campaign_uses_one_system_prompt(tmp_path):
         "curl": "#!/bin/sh\nexit 0\n",
     }.items():
         script = bin_dir / name
-        script.write_text(body)
+        script.write_text(body, encoding="utf-8")
         script.chmod(0o755)
     env = dict(os.environ, DND_CAMPAIGN_ROOT=str(tmp_path), PATH=f"{bin_dir}:{os.environ['PATH']}")
     result = subprocess.run(

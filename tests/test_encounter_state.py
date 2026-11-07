@@ -17,10 +17,11 @@ def campaign(tmp_path, monkeypatch):
     (root / "characters").mkdir(parents=True)
     (root / "state.md").write_text(
         "# Trial\n\n## Pinned Facts\n- Keep the lantern lit.\n\n"
-        "## Active Combat\nOld turn data\n\n## Live State Flags\n- Lantern: lit.\n"
+        "## Active Combat\nOld turn data\n\n## Live State Flags\n- Lantern: lit.\n",
+        encoding="utf-8",
     )
-    (root / "session-log.md").write_text("# Session Log\n")
-    (root / "characters" / "Mira.md").write_text("# Mira\n- **HP:** 12 / 12\n")
+    (root / "session-log.md").write_text("# Session Log\n", encoding="utf-8")
+    (root / "characters" / "Mira.md").write_text("# Mira\n- **HP:** 12 / 12\n", encoding="utf-8")
     return root
 
 
@@ -58,10 +59,10 @@ def test_attack_uses_frozen_spec_and_cannot_repeat_a_turn(tmp_path, monkeypatch)
     assert calls == [(4, 14, "1d6+2")]
     assert first["event"]["hp_before"] == 12
     assert first["event"]["hp_after"] == 8
-    assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text()
+    assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text(encoding="utf-8")
     assert first["next"]["current"] == "Mira"
-    state_text = (root / "state.md").read_text()
-    assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text()
+    state_text = (root / "state.md").read_text(encoding="utf-8")
+    assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text(encoding="utf-8")
     assert "| Mira | pc | 8/12 | 14 |" in state_text
     assert "**Current turn:** 1:1:Mira" in state_text
     assert "Old turn data" not in state_text
@@ -90,8 +91,8 @@ def test_round_cap_pauses_before_next_round(tmp_path, monkeypatch):
     assert end["next"]["status"] == "paused"
     assert end["next"]["round"] == 2
     assert end["next"]["turn_token"] is None
-    state_text = (root / "state.md").read_text()
-    log_text = (root / "session-log.md").read_text()
+    state_text = (root / "state.md").read_text(encoding="utf-8")
+    log_text = (root / "session-log.md").read_text(encoding="utf-8")
     assert "Round 1: Goblin A passed; Mira passed." in state_text
     assert "Round 1: Goblin A passed; Mira passed." in log_text
     assert state_text.count("[encounter:") == 1
@@ -102,7 +103,7 @@ def test_round_cap_pauses_before_next_round(tmp_path, monkeypatch):
     resumed = encounter.resume("trial", 2)
     assert resumed["status"] == "active"
     assert resumed["current"] == "Goblin A"
-    assert "**Current turn:** 2:0:Goblin A" in (root / "state.md").read_text()
+    assert "**Current turn:** 2:0:Goblin A" in (root / "state.md").read_text(encoding="utf-8")
 
 
 def test_rejects_bad_specs_and_ambiguous_sheet_before_start(tmp_path, monkeypatch):
@@ -112,11 +113,11 @@ def test_rejects_bad_specs_and_ambiguous_sheet_before_start(tmp_path, monkeypatc
     with pytest.raises(ValueError, match="one dice expression"):
         encounter.start("trial", wrong)
     assert not (root / "encounter.json").exists()
-    (root / "characters" / "Mira.md").write_text("# Mira\nNo HP line\n")
+    (root / "characters" / "Mira.md").write_text("# Mira\nNo HP line\n", encoding="utf-8")
     with pytest.raises(ValueError, match="ambiguous"):
         encounter.start("trial", combatants())
     assert not (root / "encounter.json").exists()
-    (root / "characters" / "Mira.md").write_text("# Mira\n- **HP:** 8 / 12\n")
+    (root / "characters" / "Mira.md").write_text("# Mira\n- **HP:** 8 / 12\n", encoding="utf-8")
     with pytest.raises(ValueError, match="current HP differs"):
         encounter.start("trial", combatants())
     assert not (root / "encounter.json").exists()
@@ -136,15 +137,15 @@ def test_finished_encounter_archives_without_losing_roll_history(tmp_path, monke
     archive = encounter.archive("trial")
     assert archive == root / "encounters" / "encounter-0001.json"
     assert not (root / "encounter.json").exists()
-    assert '"hp_after": 0' in archive.read_text()
-    assert "Goblin A" in (root / "session-log.md").read_text()
+    assert '"hp_after": 0' in archive.read_text(encoding="utf-8")
+    assert "Goblin A" in (root / "session-log.md").read_text(encoding="utf-8")
     next_encounter = encounter.start("trial", combatants())
     assert next_encounter["status"] == "active"
 
 
 def test_same_side_attack_requires_explicit_override(tmp_path, monkeypatch):
     root = campaign(tmp_path, monkeypatch)
-    (root / "characters" / "Aldric.md").write_text("# Aldric\n- **HP:** 16 / 16\n")
+    (root / "characters" / "Aldric.md").write_text("# Aldric\n- **HP:** 16 / 16\n", encoding="utf-8")
     actors = combatants() + [{"name": "Aldric", "type": "pc", "dex_mod": 1,
                              "hp": 16, "ac": 16, "attack_bonus": 5, "damage": "1d8+3"}]
     monkeypatch.setattr(encounter, "initiative_order", fixed_order)
@@ -161,7 +162,7 @@ def test_corrupt_state_fails_without_replacing_it(tmp_path, monkeypatch):
     path.write_text('{"version":1,"campaign":"trial","combatants":[]}', encoding="utf-8")
     with pytest.raises(ValueError, match="invalid encounter state"):
         encounter._load("trial")
-    assert path.read_text() == '{"version":1,"campaign":"trial","combatants":[]}'
+    assert path.read_text(encoding="utf-8") == '{"version":1,"campaign":"trial","combatants":[]}'
 
 
 def test_fixed_multiattack_uses_each_profile_once_and_then_advances(tmp_path, monkeypatch):
@@ -194,8 +195,8 @@ def test_fixed_multiattack_uses_each_profile_once_and_then_advances(tmp_path, mo
     assert two["next"]["current"] == "Mira"
     assert two["next"]["turn_token"] == "1:1:Mira"
     assert calls == [(4, 14, "1d6+2"), (3, 14, "1d4+1")]
-    assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text()
-    assert "**Current attack:** Bite (2/2)" not in (root / "state.md").read_text()
+    assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text(encoding="utf-8")
+    assert "**Current attack:** Bite (2/2)" not in (root / "state.md").read_text(encoding="utf-8")
 
 
 def test_multiattack_pass_skips_remaining_strikes(tmp_path, monkeypatch):

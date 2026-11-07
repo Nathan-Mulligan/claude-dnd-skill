@@ -222,9 +222,9 @@ class TailLogicTest(unittest.TestCase):
         self.assertEqual(list(self._buffer), [])
         self._buffer.append({"text": "new scene", "_camp": "new-camp"})
         self._persist()
-        self.assertEqual(json.loads(self.tail_file.read_text())[0]["text"], "old scene")
+        self.assertEqual(json.loads(self.tail_file.read_text(encoding="utf-8"))[0]["text"], "old scene")
         new_tail = self.campaign_root / "new-camp" / "session_tail.json"
-        self.assertEqual(json.loads(new_tail.read_text()), [{"text": "new scene", "_camp": "new-camp"}])
+        self.assertEqual(json.loads(new_tail.read_text(encoding="utf-8")), [{"text": "new scene", "_camp": "new-camp"}])
 
     def test_persist_skips_empty_over_content(self):
         """The persistence guard: refuse to overwrite a content-bearing file
