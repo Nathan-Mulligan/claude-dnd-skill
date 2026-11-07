@@ -7753,12 +7753,11 @@ async function _skipTurn(char) {
 _stageBtn.addEventListener('click', _stageAction);
 _skipTurnBtn.addEventListener('click', () => _skipTurn(_selectedChar));
 
-// Ctrl/Cmd+Enter stages from textarea
+// Enter sends; Shift+Enter adds a line. Leave IME composition untouched.
 _inputText.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    e.preventDefault();
-    _stageAction();
-  }
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  if (!_stageBtn.disabled) _stageAction();
 });
 
 // ── Keep the reading column clear of the fixed PARTY INPUT panel ──────
