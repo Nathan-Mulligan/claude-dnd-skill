@@ -1851,6 +1851,8 @@ def _build_fvtt():
 
 def _latest_sha(url: str) -> str:
     data = _fetch_json(url)
+    if isinstance(data, dict):
+        return data.get("sha", "")
     if data and isinstance(data, list) and data:
         return data[0].get("sha", "")
     return ""
