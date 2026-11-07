@@ -84,6 +84,7 @@ def model_args(provider: str, mode: str, name: str, description: str) -> list[st
     prompt = initial_prompt(mode, name, description)
     if provider == "codex":
         args += ["-m", "gpt-6.1-terra", "-c", 'model_reasoning_effort="medium"',
+                 "-c", "sandbox_workspace_write.network_access=true",
                  "-s", "workspace-write",
                  "--add-dir", str(DATA_ROOT), prompt]
     elif provider == "qwen":

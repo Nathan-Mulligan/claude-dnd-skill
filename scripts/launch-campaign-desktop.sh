@@ -103,7 +103,10 @@ fi
 args=(bash "$repo/scripts/play-local.sh" "$provider")
 [[ -z "$campaign" ]] || args+=(--campaign "$campaign")
 case "$provider" in
-  codex) args+=(-m gpt-6.1-terra -c 'model_reasoning_effort="medium"' "$prompt") ;;
+  codex)
+    remote_home="$(remote printenv HOME)"
+    args+=(-m gpt-6.1-terra -c 'model_reasoning_effort="medium"' -c 'sandbox_workspace_write.network_access=true' -s workspace-write --add-dir "$remote_home/.claude/dnd" "$prompt")
+    ;;
   qwen) args+=(-i "$prompt") ;;
   claude) args+=("$prompt") ;;
 esac
