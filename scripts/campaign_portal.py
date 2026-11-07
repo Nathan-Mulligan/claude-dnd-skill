@@ -10,6 +10,7 @@ import secrets
 import shlex
 import subprocess
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -137,6 +138,7 @@ def create_app() -> Flask:
     app = Flask(__name__, template_folder=str(REPO / "skills/dnd/display/templates"))
     token = secrets.token_urlsafe(32)
     lock = threading.Lock()
+    last_browser_poll: float | None = None
 
     @app.before_request
     def protect():
@@ -158,10 +160,13 @@ def create_app() -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify(service="dnd-campaign-portal", ready=True, data_root=str(DATA_ROOT))
+        return jsonify(service="dnd-campaign-portal", ready=True, data_root=str(DATA_ROOT),
+                       browser_recent=last_browser_poll is not None and time.monotonic() - last_browser_poll < 5)
 
     @app.get("/api/state")
     def state():
+        nonlocal last_browser_poll
+        last_browser_poll = time.monotonic()
         active = running()
         return jsonify(active=active, meta=read_meta() if active else {}, output=output() if active else "",
                        campaigns=campaigns(), codex_enabled=CODEX_ENABLED)
