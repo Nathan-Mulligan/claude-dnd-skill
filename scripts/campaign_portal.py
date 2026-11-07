@@ -84,6 +84,7 @@ def model_args(provider: str, mode: str, name: str, description: str) -> list[st
     prompt = initial_prompt(mode, name, description)
     if provider == "codex":
         args += ["-m", "gpt-6.1-terra", "-c", 'model_reasoning_effort="medium"',
+                 "-c", "sandbox_workspace_write.network_access=true",
                  "-s", "workspace-write",
                  "--add-dir", str(DATA_ROOT), prompt]
     elif provider == "qwen":
@@ -194,6 +195,8 @@ def create_app() -> Flask:
             if not running():
                 return jsonify(ok=False, message="No model session is running."), 409
             literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", text)
+            if literal.returncode == 0:
+                time.sleep(0.25)
             enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter") if literal.returncode == 0 else literal
         if enter.returncode:
             return jsonify(ok=False, message="Could not send the reply to the model."), 500

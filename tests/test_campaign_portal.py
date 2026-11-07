@@ -121,6 +121,7 @@ def test_codex_can_write_selected_campaign_root(tmp_path, monkeypatch):
     assert args[args.index("-m") + 1] == "gpt-6.1-terra"
     assert args[args.index("--add-dir") + 1] == str(tmp_path)
     assert args[args.index("-s") + 1] == "workspace-write"
+    assert "sandbox_workspace_write.network_access=true" in args
 
 
 def test_codex_can_be_disabled_explicitly(client, monkeypatch):
