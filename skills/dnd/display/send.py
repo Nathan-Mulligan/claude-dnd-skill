@@ -62,6 +62,7 @@ import os
 import re
 import ssl
 import time
+import uuid
 import urllib.request
 
 # Windows CJK fix: Python decodes stdin via the system codepage (GBK), but
@@ -424,6 +425,12 @@ def main() -> None:
              "outcome is decided so the table hears it while the rest is written. "
              "The display holds the paragraph open for the next narration send.",
     )
+    parser.add_argument("--music-event", choices=["scene", "combat-start", "combat-end"],
+        help="Scene-entry, combat-start or combat-end music cue bundled with DM narration")
+    parser.add_argument("--music-setting", metavar="SETTING",
+        help="Setting for --music-event scene, such as cave, forest or tavern")
+    parser.add_argument("--music-mood", choices=["calm", "curious", "ominous", "tense", "warm"],
+        default=None, help="Optional mood for a scene cue")
     parser.add_argument(
         "--action", metavar="NAME",
         help="Send as a player action intent — subdued label echoing what the player declared",
@@ -504,6 +511,14 @@ def main() -> None:
              "Surfaces a clear stderr line on mismatch — use during dev/debug.")
 
     args = parser.parse_args()
+    if args.music_event:
+        if args.music_event == "scene" and not args.music_setting:
+            parser.error("--music-event scene requires --music-setting")
+        if args.music_event != "scene" and args.music_setting:
+            parser.error("--music-setting only applies to --music-event scene")
+    elif args.music_setting or args.music_mood:
+        parser.error("--music-setting/--music-mood require --music-event")
+    music_id = uuid.uuid4().hex if args.music_event else None
     _ensure_active_campaign()
 
     # Two categories of flags drive whether to read stdin:
@@ -679,6 +694,10 @@ def main() -> None:
         chunks = _split_paragraphs(text)
         for chunk in chunks:
             payload: dict = {"text": chunk}
+            if music_id and chunks_sent == 0:
+                payload["music"] = {"event": args.music_event.replace("-", "_"),
+                                    "id": music_id, "setting": args.music_setting,
+                                    "mood": args.music_mood or "ominous"}
             if args.action:
                 payload["action"] = args.action
             elif args.player:
@@ -700,6 +719,10 @@ def main() -> None:
             ok = _post(FLASK_URL, json.dumps(payload).encode("utf-8"), token)
             if ok:
                 chunks_sent += 1
+
+    if args.music_event and chunks_sent == 0:
+        print("send.py: music cue requires successfully sent narration", file=sys.stderr)
+        sys.exit(2)
 
     # ── Stat send (bundled) ───────────────────────────────────────────────────
     stats_payload = _build_stats_payload(args)

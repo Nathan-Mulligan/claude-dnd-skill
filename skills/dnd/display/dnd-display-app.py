@@ -30,8 +30,9 @@ import subprocess
 import sys
 import threading
 from collections import deque
+from pathlib import Path
 from typing import Optional
-from flask import Flask, Response, request, render_template, jsonify, send_from_directory
+from flask import Flask, Response, request, render_template, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 
 # This file lives at <code-root>/display/ — resolve dirs from its location so
@@ -71,6 +72,8 @@ try:
     _audio.init()
 except Exception:
     _audio = None   # type: ignore
+
+import music as _music_module
 
 # TTS module — degrades silently if Gemini API key not configured
 try:
@@ -1072,6 +1075,8 @@ def _set_campaign(name: str) -> None:
     except OSError:
         previous = ""
     if previous != name:
+        if "_music" in globals():
+            _music.reset()
         _persist_tail()
         with _tail_lock:
             _tail_buffer.clear()
@@ -1205,6 +1210,11 @@ def _broadcast(payload: dict) -> None:
         for q in dead:
             _clients.remove(q)
             _client_chars.pop(q, None)
+
+
+_music_cli, _music_hf = _music_module.runtime_config(Path(rt("music-config.json")))
+_music = _music_module.MusicDirector(Path(rt("music")), _music_cli, _music_hf)
+_music.set_broadcast(_broadcast)
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -1422,6 +1432,16 @@ def chunk():
     if not cleaned.strip():
         return "", 204
 
+    music_cue = data.get("music")
+    if music_cue is not None:
+        if not isinstance(music_cue, dict) or any((is_action, is_player, is_npc, is_dice, is_tutor)):
+            return "Invalid music cue", 400
+        try:
+            _music.transition(music_cue.get("event"), music_cue.get("id"),
+                              music_cue.get("setting"), music_cue.get("mood", "ominous"))
+        except ValueError:
+            return "Invalid music cue", 400
+
     payload: dict = {"text": cleaned}
 
     if is_action:
@@ -1494,6 +1514,7 @@ def stats():
 
     _effect_expire_events: list[dict] = []
     with _stats_lock:
+        old_combat = bool(_current_stats.get("turn_order"))
         if "players" in data:
             # replace_players=true wipes the list first — used on campaign load
             if data.get("replace_players"):
@@ -1677,6 +1698,7 @@ def stats():
             _current_stats["quests"] = data["quests"]
 
         current = dict(_current_stats)
+        new_combat = bool(_current_stats.get("turn_order"))
 
     # autorun_waiting / autorun_cycle — display-only signals, not stored in stats
     if "autorun_waiting" in data:
@@ -1738,6 +1760,9 @@ def stats():
                 _current_stats["ruleset"] = rs_in
             current = dict(_current_stats)
 
+    if "turn_order" in data and old_combat != new_combat:
+        _music.transition("combat_start" if new_combat else "combat_end",
+                          "stats-" + secrets.token_hex(12))
     _persist_stats()
     _broadcast({"stats": current})
     # Broadcast any round-based effect expiries after the stats update
@@ -1791,6 +1816,16 @@ def effects_expire():
     _broadcast({"stats": current})
     _persist_stats()
     return "", 204
+
+
+@app.route("/audio/music/<entry>/<kind>")
+def music_file(entry: str, kind: str):
+    if not _token_ok():
+        return "Forbidden", 403
+    path = _music.file_for(entry, kind)
+    if path is None:
+        return "Not found", 404
+    return send_file(path, mimetype="audio/wav", conditional=True, max_age=0)
 
 
 @app.route("/audio-toggle", methods=["POST"])
@@ -2153,6 +2188,7 @@ def clear():
             os.remove(path)
         except FileNotFoundError:
             pass
+    _music.reset()
     _broadcast({"clear": True})
     return "", 204
 
@@ -2748,6 +2784,7 @@ def stream():
     # starts with the right background even mid-session.
     initial_scene = SCENES[_current_scene_name] | {"name": _current_scene_name}
     q.put_nowait({"scene": initial_scene})
+    q.put_nowait({"music": _music.snapshot()})
 
     # Replay recent entries so late-connecting / reconnecting browsers catch up.
     # _text_log is the durable session record (maxlen=2000); replay only the
