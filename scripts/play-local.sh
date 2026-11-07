@@ -29,7 +29,7 @@ fi
 
 case "$backend" in
   claude)
-    exec claude "$@"
+    exec claude --plugin-dir "$repo_root" "$@"
     ;;
   qwen)
     if ! command -v qwen >/dev/null; then

@@ -1,6 +1,6 @@
 # Local Qwen campaign option
 
-The existing Claude plugin remains the default. To choose a DM from this checkout:
+The Claude launcher loads this checkout's plugin for its session; no separate plugin installation is needed. To choose a DM from this checkout:
 
 ```bash
 scripts/play-local.sh claude

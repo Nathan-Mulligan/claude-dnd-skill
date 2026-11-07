@@ -36,3 +36,17 @@ def test_qwen_named_campaign_uses_one_system_prompt(tmp_path):
     assert str(campaign) in prompt
     assert args[-2] == "--yolo"
     assert args[-1] == f"PYTHON_PATH={local_bin / 'python3'}"
+
+
+def test_claude_loads_this_checkout_plugin(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "claude"
+    stub.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n", encoding="utf-8")
+    stub.chmod(0o755)
+    env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}")
+    result = subprocess.run(
+        ["bash", "scripts/play-local.sh", "claude", "--model", "sonnet"],
+        cwd=REPO, env=env, capture_output=True, text=True, check=True,
+    )
+    assert result.stdout.splitlines() == ["--plugin-dir", str(REPO), "--model", "sonnet"]
