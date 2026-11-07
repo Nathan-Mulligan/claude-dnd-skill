@@ -78,6 +78,10 @@ def _load(name: str) -> dict:
             or not isinstance(data.get("cursor"), int)
             or not 0 <= data["cursor"] < len(data["combatants"])):
         raise ValueError("invalid encounter state")
+    slot = data.setdefault("attack_slot", 1)
+    if (not isinstance(slot, int) or isinstance(slot, bool) or slot < 1
+            or slot > len(_profiles(data["combatants"][data["cursor"]]))):
+        raise ValueError("invalid encounter attack slot")
     if not data.get("encounter_id"):
         data["encounter_id"] = uuid.uuid4().hex[:12]
         _atomic_json(path, data)
@@ -102,31 +106,68 @@ def _validate_combatants(combatants: list) -> list[dict]:
         if kind not in {"pc", "npc"}:
             raise ValueError(f"{name}: type must be pc or npc")
         values = {}
-        for field in ("dex_mod", "hp", "ac", "attack_bonus"):
+        for field in ("dex_mod", "hp", "ac"):
             value = source.get(field)
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{name}: {field} must be an integer")
             values[field] = value
         if values["hp"] <= 0 or values["ac"] <= 0:
             raise ValueError(f"{name}: HP and AC must be positive")
-        damage = source.get("damage")
-        match = DAMAGE_RE.fullmatch(damage) if isinstance(damage, str) else None
-        if not match:
-            raise ValueError(f"{name}: damage must be one dice expression such as 1d8+3")
-        if int(match.group(1) or 1) > 100 or int(match.group(2)) > 1000:
-            raise ValueError(f"{name}: damage dice size exceeds the encounter limit")
+        if "attacks" in source:
+            if "attack_bonus" in source or "damage" in source:
+                raise ValueError(f"{name}: cannot mix attacks with attack_bonus or damage")
+            raw_profiles = source["attacks"]
+            if not isinstance(raw_profiles, list) or not 1 <= len(raw_profiles) <= 4:
+                raise ValueError(f"{name}: attacks must contain 1 to 4 fixed profiles")
+        else:
+            raw_profiles = [{"name": "Attack", "attack_bonus": source.get("attack_bonus"),
+                             "damage": source.get("damage")}]
+        profiles = []
+        for profile in raw_profiles:
+            if not isinstance(profile, dict):
+                raise ValueError(f"{name}: each attack profile must be an object")
+            label = profile.get("name")
+            if (not isinstance(label, str) or not label.strip() or len(label) > 80
+                    or any(char in label for char in ("\n", "\r", "|"))):
+                raise ValueError(f"{name}: attack name must be a short plain label")
+            bonus = profile.get("attack_bonus")
+            if isinstance(bonus, bool) or not isinstance(bonus, int):
+                raise ValueError(f"{name}: attack_bonus must be an integer")
+            damage = profile.get("damage")
+            match = DAMAGE_RE.fullmatch(damage) if isinstance(damage, str) else None
+            if not match:
+                raise ValueError(f"{name}: damage must be one dice expression such as 1d8+3")
+            if int(match.group(1) or 1) > 100 or int(match.group(2)) > 1000:
+                raise ValueError(f"{name}: damage dice size exceeds the encounter limit")
+            profiles.append({"name": label, "attack_bonus": bonus, "damage": damage})
         result.append({"name": name, "type": kind, **values,
-                       "max_hp": values["hp"], "damage": damage})
+                       "max_hp": values["hp"], "attacks": profiles})
     if {c["type"] for c in result} != {"pc", "npc"}:
         raise ValueError("encounter needs both PCs and NPCs")
     return result
+
+
+def _profiles(actor: dict) -> list[dict]:
+    """Legacy saved encounters have one attack without an attacks array."""
+    if not isinstance(actor, dict):
+        raise ValueError("invalid encounter combatant")
+    if "attacks" in actor:
+        profiles = actor["attacks"]
+        if not isinstance(profiles, list) or not 1 <= len(profiles) <= 4:
+            raise ValueError("invalid saved attack profiles")
+        return profiles
+    if "attack_bonus" not in actor or "damage" not in actor:
+        raise ValueError("invalid legacy attack profile")
+    return [{"name": "Attack", "attack_bonus": actor["attack_bonus"],
+             "damage": actor["damage"]}]
 
 
 def _token(state: dict) -> str | None:
     if state["status"] != "active":
         return None
     actor = state["combatants"][state["cursor"]]
-    return f"{state['round']}:{state['cursor']}:{actor['name']}"
+    base = f"{state['round']}:{state['cursor']}:{actor['name']}"
+    return f"{base}:{state['attack_slot']}" if len(_profiles(actor)) > 1 else base
 
 
 def _view(state: dict) -> dict:
@@ -134,6 +175,7 @@ def _view(state: dict) -> dict:
             "round": state["round"], "turn_token": _token(state),
             "current": (state["combatants"][state["cursor"]]["name"]
                         if state["status"] == "active" else None),
+            "attack_slot": state["attack_slot"],
             "combatants": state["combatants"], "events": state["events"]}
 
 
@@ -153,7 +195,8 @@ def start(name: str, combatants: list, max_rounds: int | None = None) -> dict:
     ordered = initiative_order(validated)
     state = {"version": 1, "encounter_id": uuid.uuid4().hex[:12],
              "campaign": name, "status": "active", "round": 1,
-             "cursor": 0, "max_rounds": max_rounds, "combatants": ordered, "events": []}
+             "cursor": 0, "attack_slot": 1, "max_rounds": max_rounds,
+             "combatants": ordered, "events": []}
     _atomic_json(path, state)
     _sync_active_combat(name, state)
     return _view(state)
@@ -166,11 +209,16 @@ def _find(state: dict, name: str) -> dict:
     raise ValueError(f"unknown combatant: {name}")
 
 
-def _advance(state: dict) -> None:
+def _advance(state: dict, continue_attacks: bool = False) -> None:
     alive_types = {c["type"] for c in state["combatants"] if c["hp"] > 0}
     if len(alive_types) < 2:
         state["status"] = "finished"
         return
+    actor = state["combatants"][state["cursor"]]
+    if continue_attacks and state["attack_slot"] < len(_profiles(actor)):
+        state["attack_slot"] += 1
+        return
+    state["attack_slot"] = 1
     count = len(state["combatants"])
     for step in range(1, count + 1):
         index = (state["cursor"] + step) % count
@@ -242,6 +290,12 @@ def _sync_active_combat(name: str, state: dict) -> None:
     for actor in state["combatants"]:
         lines.append(f"| {actor['name']} | {actor['type']} | "
                      f"{actor['hp']}/{actor['max_hp']} | {actor['ac']} |")
+    if status == "active":
+        actor = state["combatants"][state["cursor"]]
+        profiles = _profiles(actor)
+        slot = state["attack_slot"]
+        lines.extend(["", f"**Current attack:** {profiles[slot - 1]['name']} "
+                      f"({slot}/{len(profiles)})"])
     section = "## Active Combat\n" + "\n".join(lines) + "\n"
     heading = re.search(r"(?m)^## Active Combat[ \t]*$", content)
     if heading:
@@ -264,8 +318,9 @@ def _round_summary(state: dict, round_number: int) -> str:
         attack = event["attack"]
         outcome = "hit" if attack["hit"] else "missed"
         damage = attack.get("damage", 0)
+        label = f" ({event['attack_name']})" if "attack_name" in event else ""
         actions.append(
-            f"{event['actor']} {outcome} {event['target']} "
+            f"{event['actor']}{label} {outcome} {event['target']} "
             f"(d20 {attack['d20']}+{attack['attack_bonus']}={attack['total']} "
             f"vs AC {attack['target_ac']}; {damage} damage; "
             f"HP {event['hp_before']}→{event['hp_after']})"
@@ -337,15 +392,17 @@ def _act(name: str, token: str, kind: str, target_name: str | None = None,
         if target["type"] == "pc":
             sheet = _campaign_path(name) / "characters" / f"{target['name']}.md"
             _validate_sheet(sheet, target["max_hp"], target["hp"])
-        result = resolve_attack(actor["attack_bonus"], target["ac"], actor["damage"])
+        profile = _profiles(actor)[state["attack_slot"] - 1]
+        result = resolve_attack(profile["attack_bonus"], target["ac"], profile["damage"])
         before = target["hp"]
-        target["hp"] = max(0, before - result.get("damage", 0))
-        event.update({"target": target["name"], "attack": result,
+        target["hp"] = max(0, before - max(0, result.get("damage", 0)))
+        event.update({"target": target["name"], "attack_name": profile["name"],
+                      "attack_slot": state["attack_slot"], "attack": result,
                       "hp_before": before, "hp_after": target["hp"]})
     elif kind != "pass":
         raise ValueError(f"unsupported action: {kind}")
     state["events"].append(event)
-    _advance(state)
+    _advance(state, continue_attacks=(kind == "attack"))
     _atomic_json(_state_file(name), state)
     sync_party(name)
     _sync_active_combat(name, state)

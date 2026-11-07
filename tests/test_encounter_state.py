@@ -162,3 +162,109 @@ def test_corrupt_state_fails_without_replacing_it(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="invalid encounter state"):
         encounter._load("trial")
     assert path.read_text() == '{"version":1,"campaign":"trial","combatants":[]}'
+
+
+def test_fixed_multiattack_uses_each_profile_once_and_then_advances(tmp_path, monkeypatch):
+    root = campaign(tmp_path, monkeypatch)
+    monkeypatch.setattr(encounter, "initiative_order", fixed_order)
+    actors = combatants()
+    actors[0].pop("attack_bonus")
+    actors[0].pop("damage")
+    actors[0]["attacks"] = [
+        {"name": "Claw", "attack_bonus": 4, "damage": "1d6+2"},
+        {"name": "Bite", "attack_bonus": 3, "damage": "1d4+1"},
+    ]
+    calls = []
+
+    def roll(bonus, ac, damage):
+        calls.append((bonus, ac, damage))
+        return {"d20": 18, "attack_bonus": bonus, "target_ac": ac,
+                "total": 18 + bonus, "hit": True, "crit": False, "damage": 2}
+
+    monkeypatch.setattr(encounter, "resolve_attack", roll)
+    first = encounter.start("trial", actors)
+    assert first["turn_token"] == "1:0:Goblin A:1"
+    one = encounter._act("trial", first["turn_token"], "attack", "Mira")
+    assert one["event"]["attack_name"] == "Claw"
+    assert one["next"]["current"] == "Goblin A"
+    assert one["next"]["turn_token"] == "1:0:Goblin A:2"
+    assert encounter._act("trial", first["turn_token"], "attack", "Mira")["replayed"]
+    two = encounter._act("trial", one["next"]["turn_token"], "attack", "Mira")
+    assert two["event"]["attack_name"] == "Bite"
+    assert two["next"]["current"] == "Mira"
+    assert two["next"]["turn_token"] == "1:1:Mira"
+    assert calls == [(4, 14, "1d6+2"), (3, 14, "1d4+1")]
+    assert "**HP:** 8 / 12" in (root / "characters" / "Mira.md").read_text()
+    assert "**Current attack:** Bite (2/2)" not in (root / "state.md").read_text()
+
+
+def test_multiattack_pass_skips_remaining_strikes(tmp_path, monkeypatch):
+    campaign(tmp_path, monkeypatch)
+    monkeypatch.setattr(encounter, "initiative_order", fixed_order)
+    actors = combatants()
+    actors[0]["attacks"] = [
+        {"name": "Claw", "attack_bonus": 4, "damage": "1d6+2"},
+        {"name": "Bite", "attack_bonus": 3, "damage": "1d4+1"},
+    ]
+    with pytest.raises(ValueError, match="cannot mix"):
+        encounter.start("trial", actors)
+    actors[0].pop("attack_bonus")
+    actors[0].pop("damage")
+    first = encounter.start("trial", actors)
+    skipped = encounter._act("trial", first["turn_token"], "pass")
+    assert skipped["next"]["current"] == "Mira"
+    assert len(skipped["next"]["events"]) == 1
+
+
+def test_multiattack_ends_when_last_enemy_falls_on_first_strike(tmp_path, monkeypatch):
+    campaign(tmp_path, monkeypatch)
+    monkeypatch.setattr(encounter, "initiative_order", fixed_order)
+    actors = combatants()
+    actors[0].pop("attack_bonus")
+    actors[0].pop("damage")
+    actors[0]["attacks"] = [
+        {"name": "Claw", "attack_bonus": 4, "damage": "1d6+2"},
+        {"name": "Bite", "attack_bonus": 3, "damage": "1d4+1"},
+    ]
+    monkeypatch.setattr(encounter, "resolve_attack", lambda *_: {
+        "d20": 20, "attack_bonus": 4, "target_ac": 14, "total": 24,
+        "hit": True, "crit": True, "damage": 12,
+    })
+    first = encounter.start("trial", actors)
+    result = encounter._act("trial", first["turn_token"], "attack", "Mira")
+    assert result["next"]["status"] == "finished"
+    assert result["next"]["turn_token"] is None
+    assert len(result["next"]["events"]) == 1
+
+
+def test_negative_damage_never_heals_a_target(tmp_path, monkeypatch):
+    campaign(tmp_path, monkeypatch)
+    monkeypatch.setattr(encounter, "initiative_order", fixed_order)
+    monkeypatch.setattr(encounter, "resolve_attack", lambda *_: {
+        "d20": 18, "attack_bonus": 4, "target_ac": 14, "total": 22,
+        "hit": True, "crit": False, "damage": -1,
+    })
+    first = encounter.start("trial", combatants())
+    result = encounter._act("trial", first["turn_token"], "attack", "Mira")
+    assert result["event"]["hp_before"] == 12
+    assert result["event"]["hp_after"] == 12
+
+
+def test_multiattack_round_cap_waits_until_all_strikes_finish(tmp_path, monkeypatch):
+    campaign(tmp_path, monkeypatch)
+    monkeypatch.setattr(encounter, "initiative_order", fixed_order)
+    actors = combatants()
+    actors[0].pop("attack_bonus")
+    actors[0].pop("damage")
+    actors[0]["attacks"] = [
+        {"name": "Claw", "attack_bonus": 4, "damage": "1d6+2"},
+        {"name": "Bite", "attack_bonus": 3, "damage": "1d4+1"},
+    ]
+    first = encounter.start("trial", actors, max_rounds=1)
+    one = encounter._act("trial", first["turn_token"], "pass")
+    assert one["next"]["current"] == "Mira"
+    end = encounter._act("trial", one["next"]["turn_token"], "pass")
+    assert end["next"]["status"] == "paused"
+    assert end["next"]["round"] == 2
+    resumed = encounter.resume("trial", 2)
+    assert resumed["turn_token"] == "2:0:Goblin A:1"

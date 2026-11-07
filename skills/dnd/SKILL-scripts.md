@@ -91,7 +91,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/xp.py award \
 
 ## Persistent Basic Encounter — `scripts/encounter_state.py`
 
-For combatants with one fixed weapon attack, this wrapper calls `combat.py` for initiative and attacks while persisting order, HP and the roll history in `<campaign>/encounter.json`. `start` needs each combatant's `name`, `type` (`pc`/`npc`), `dex_mod`, `hp`, `ac`, `attack_bonus` and a single `damage` expression such as `1d8+3`.
+For combatants with fixed weapon attacks, this wrapper calls `combat.py` for initiative and attacks while persisting order, HP and the roll history in `<campaign>/encounter.json`. `start` needs each combatant's `name`, `type` (`pc`/`npc`), `dex_mod`, `hp`, `ac`, plus either top-level `attack_bonus` and `damage` for one strike or an `attacks` array of 1–4 fixed profiles with `name`, `attack_bonus` and `damage` (for example `[{"name":"Claw","attack_bonus":4,"damage":"1d6+2"},{"name":"Bite","attack_bonus":3,"damage":"1d4+1"}]`).
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/encounter_state.py start --campaign $CAMP --combatants '[...]'
@@ -103,7 +103,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/encounter_state.py checkpoint --campaign $CA
 python3 ${CLAUDE_SKILL_DIR}/scripts/encounter_state.py archive --campaign $CAMP
 ```
 
-Each action returns its event and the next token. The PC sheets' HP lines and `state.md → ## Active Combat` are synced from encounter state; `sync` repeats the sheet write after an interrupted action. Completed rounds are appended once to `state.md → ## Recent Events` and `session-log.md`; `checkpoint --campaign $CAMP` repairs a missed write. `archive` works only after one side has been defeated and preserves the complete roll record. `--max-rounds N` on `start` pauses before round N+1; `resume --campaign $CAMP --max-rounds N` permits further play. The tool does not implement spells, reactions, extra attacks or conditional damage; use the normal rules for those.
+Each action returns its event and the next token. For a multiattack, the next token stays with the same actor and advances to the next fixed profile; `pass` ends any remaining strikes. The PC sheets' HP lines and `state.md → ## Active Combat` are synced from encounter state; `sync` repeats the sheet write after an interrupted action. Completed rounds are appended once to `state.md → ## Recent Events` and `session-log.md`; `checkpoint --campaign $CAMP` repairs a missed write. `archive` works only after one side has been defeated and preserves the complete roll record. `--max-rounds N` on `start` pauses before round N+1; `resume --campaign $CAMP --max-rounds N` permits further play. The tool does not implement spells, reactions, Action Surge or conditional damage; use the normal rules for those.
 
 ---
 
