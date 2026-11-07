@@ -108,7 +108,7 @@ case "$provider" in
   claude) args+=("$prompt") ;;
 esac
 printf -v quoted_repo '%q' "$repo"
-remote_command="export PATH=/opt/homebrew/bin:\$HOME/.local/bin:\$PATH; cd $quoted_repo && "
+remote_command="export PATH=\$HOME/.local/bin:/opt/homebrew/bin:\$PATH; cd $quoted_repo && "
 for arg in "${args[@]}"; do printf -v quoted_arg '%q' "$arg"; remote_command+="$quoted_arg "; done
 printf '\nOpening %s on the M5. Keep this window open while you play.\n\n' "$provider"
 exec ssh -t "$host" "$remote_command"

@@ -42,7 +42,7 @@
       <h2>Start or resume</h2>
       <p class="muted">Choose your DM. A new campaign begins with a clean save; your description becomes its starting idea.</p>
       <label for="provider">Model</label>
-      <select id="provider"><option value="qwen">Qwen 35B MLX (local)</option><option id="codex-option" value="codex" disabled>Codex (M5 model access unavailable)</option><option value="claude">Claude Code</option></select>
+      <select id="provider"><option value="qwen">Qwen 35B MLX (local)</option><option id="codex-option" value="codex">Codex GPT Terra (medium)</option><option value="claude">Claude Code</option></select>
       <label for="mode">Campaign</label>
       <select id="mode"><option value="new">New campaign</option><option value="resume">Resume saved campaign</option></select>
       <div id="new-fields">
@@ -89,7 +89,7 @@
       try {
         const data = await api('/api/state');
         $('codex-option').disabled = !data.codex_enabled;
-        $('codex-option').textContent = data.codex_enabled ? 'Codex subscription (medium)' : 'Codex (M5 model access unavailable)';
+        $('codex-option').textContent = data.codex_enabled ? 'Codex GPT Terra (medium)' : 'Codex (unavailable on this M5)';
         const oldValue = $('saved').value;
         $('saved').replaceChildren(...data.campaigns.map(name => new Option(name, name)));
         if (data.campaigns.includes(oldValue)) $('saved').value = oldValue;

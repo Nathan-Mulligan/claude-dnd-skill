@@ -118,13 +118,15 @@ def test_send_passes_literal_reply_to_tmux(client, monkeypatch):
 def test_codex_can_write_selected_campaign_root(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
     args = portal.model_args("codex", "new", "demo", "start")
+    assert args[args.index("-m") + 1] == "gpt-6.1-terra"
     assert args[args.index("--add-dir") + 1] == str(tmp_path)
     assert args[args.index("-s") + 1] == "workspace-write"
 
 
-def test_codex_is_unavailable_until_account_model_access_is_repaired(client):
+def test_codex_can_be_disabled_explicitly(client, monkeypatch):
+    monkeypatch.setattr(portal, "CODEX_ENABLED", False)
     response = api(client, "/api/start", method="post", data={
         "provider": "codex", "mode": "new", "name": "demo", "description": "start",
     })
     assert response.status_code == 409
-    assert "unavailable" in response.json["message"]
+    assert "disabled" in response.json["message"]
