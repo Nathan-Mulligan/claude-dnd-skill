@@ -44,6 +44,15 @@ def test_missing_token_and_wrong_origin_rejected(client):
     assert api(client, "/api/start", method="post", data=body, origin="http://evil.example").status_code == 403
 
 
+def test_health_reports_recent_browser_poll(client, monkeypatch):
+    test_client, _ = client
+    monkeypatch.setattr(portal, "running", lambda: False)
+    health = lambda: test_client.get("/health", base_url="http://127.0.0.1:5002").json
+    assert health()["browser_recent"] is False
+    assert api(client, "/api/state").status_code == 200
+    assert health()["browser_recent"] is True
+
+
 def test_new_start_builds_interactive_qwen_session(client, monkeypatch):
     calls = []
 
