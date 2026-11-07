@@ -18,6 +18,18 @@ Built for groups who want a real DM experience without needing one at the table.
 
 ## What This Is
 
+### Choose the DM environment
+
+From this checkout, use one launcher to start Codex, Claude Code or local Qwen Code:
+
+```bash
+scripts/play-local.sh codex --campaign my-campaign
+scripts/play-local.sh claude --campaign my-campaign
+scripts/play-local.sh qwen --campaign my-campaign
+```
+
+`--campaign` selects an existing saved campaign. Leave it out and ask the chosen DM to create a new one. Codex reads this repo's `AGENTS.md`; Claude loads this repo as a session plugin; Qwen reads `.qwen/skills/dnd-local/SKILL.md`. All three use the same campaign files under `~/.claude/dnd` by default, or under `DND_CAMPAIGN_ROOT` when set. Finish and save before changing DMs, and open only one DM against a campaign at a time. The local Qwen setup and its tested limits are in [Local Qwen campaign option](docs/local-qwen.md).
+
 You run `/dm:dnd load my-campaign` in Claude Code. Claude becomes your DM — rolling dice, voicing NPCs, tracking HP and XP, and running combat. If you have a TV or tablet nearby, the **cinematic display companion** puts the narration on screen in real time — typewriter effect, atmospheric backgrounds that shift with the scene, a dynamic sky canvas, and a live party stat sidebar. Open it on any device on your network and everyone at the table can follow along. Players submit their actions from their phones; Claude picks them up automatically and runs the next turn.
 
 There are two ways to play, and they serve different needs:

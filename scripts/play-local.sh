@@ -28,6 +28,13 @@ if [[ "${1:-}" == "--campaign" ]]; then
 fi
 
 case "$backend" in
+  codex)
+    if ! command -v codex >/dev/null; then
+      echo 'Codex CLI is not installed.' >&2
+      exit 1
+    fi
+    exec codex "$@"
+    ;;
   claude)
     exec claude --plugin-dir "$repo_root" "$@"
     ;;
@@ -59,7 +66,7 @@ case "$backend" in
       --model qwen3.6:35b-mlx "${qwen_args[@]}" "$@"
     ;;
   *)
-    echo 'Usage: scripts/play-local.sh {claude|qwen} [--campaign NAME] [CLI arguments]' >&2
+    echo 'Usage: scripts/play-local.sh {codex|claude|qwen} [--campaign NAME] [CLI arguments]' >&2
     exit 2
     ;;
 esac
