@@ -24,6 +24,7 @@ SESSION = os.environ.get("DND_PORTAL_TMUX_SESSION", "dnd-campaign-portal")
 PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 ALLOWED_PROVIDERS = {"qwen", "codex", "claude"}
+CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX") == "1"
 
 
 def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess[str]:
@@ -53,7 +54,7 @@ def campaigns() -> list[str]:
 def output() -> str:
     if not running():
         return ""
-    result = run("tmux", "capture-pane", "-pt", f"={SESSION}", "-S", "-200")
+    result = run("tmux", "capture-pane", "-pt", f"{SESSION}:0.0", "-S", "-200")
     return result.stdout[-32000:] if result.returncode == 0 else ""
 
 
@@ -61,14 +62,16 @@ def initial_prompt(mode: str, name: str, description: str) -> str:
     if mode == "new":
         return (
             f"Read this repository's D&D skill and begin the /dm:dnd new procedure for campaign {name}. "
-            "Use the local cinematic browser display. Ask each setup question in this interactive session "
-            "and wait for my answer. Send player-facing narration and setup questions to the display "
-            "using its existing scripts when appropriate. "
+            "The local cinematic display is already running at http://127.0.0.1:5001; reuse it without "
+            "restarting the display or opening another tab. Ask each setup question in this interactive "
+            "session and wait for my answer. Once the campaign is selected, send player-facing narration "
+            "to the display using its existing scripts. "
             f"My initial campaign idea is: {description or 'Start a new campaign with me.'}"
         )
     return (
         f"Read this repository's D&D skill and follow the /dm:dnd load procedure for campaign {name}. "
-        "Reconstruct state from the saved campaign files before narrating. Use the local browser display. "
+        "Reconstruct state from the saved campaign files before narrating. The local browser display "
+        "is already running at http://127.0.0.1:5001; reuse it without restarting or opening a tab. "
         f"My note for this session is: {description or 'Continue from where we stopped.'}"
     )
 
@@ -79,7 +82,9 @@ def model_args(provider: str, mode: str, name: str, description: str) -> list[st
         args += ["--campaign", name]
     prompt = initial_prompt(mode, name, description)
     if provider == "codex":
-        args += ["-m", "gpt-6.1-terra", "-c", 'model_reasoning_effort="medium"', prompt]
+        args += ["-c", 'model_reasoning_effort="medium"',
+                 "-s", "workspace-write",
+                 "--add-dir", str(DATA_ROOT), prompt]
     elif provider == "qwen":
         args += ["-i", prompt]
     else:
@@ -90,6 +95,8 @@ def model_args(provider: str, mode: str, name: str, description: str) -> list[st
 def start_session(provider: str, mode: str, name: str, description: str) -> tuple[bool, str]:
     if provider not in ALLOWED_PROVIDERS or mode not in {"new", "resume"}:
         return False, "Choose a model and New or Resume."
+    if provider == "codex" and not CODEX_ENABLED:
+        return False, "Codex model access is unavailable on this M5 account. Choose Qwen, or enable Codex after its account access is repaired."
     if not NAME_RE.fullmatch(name) or name in {".", ".."}:
         return False, "Campaign name must use letters, numbers, dots, dashes or underscores."
     if len(description) > 3000:
@@ -151,12 +158,13 @@ def create_app() -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify(service="dnd-campaign-portal", ready=True)
+        return jsonify(service="dnd-campaign-portal", ready=True, data_root=str(DATA_ROOT))
 
     @app.get("/api/state")
     def state():
         active = running()
-        return jsonify(active=active, meta=read_meta() if active else {}, output=output() if active else "", campaigns=campaigns())
+        return jsonify(active=active, meta=read_meta() if active else {}, output=output() if active else "",
+                       campaigns=campaigns(), codex_enabled=CODEX_ENABLED)
 
     @app.post("/api/start")
     def start():
@@ -180,8 +188,8 @@ def create_app() -> Flask:
         with lock:
             if not running():
                 return jsonify(ok=False, message="No model session is running."), 409
-            literal = run("tmux", "send-keys", "-t", f"={SESSION}", "-l", "--", text)
-            enter = run("tmux", "send-keys", "-t", f"={SESSION}", "Enter") if literal.returncode == 0 else literal
+            literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", text)
+            enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter") if literal.returncode == 0 else literal
         if enter.returncode:
             return jsonify(ok=False, message="Could not send the reply to the model."), 500
         return jsonify(ok=True)

@@ -42,7 +42,7 @@
       <h2>Start or resume</h2>
       <p class="muted">Choose your DM. A new campaign begins with a clean save; your description becomes its starting idea.</p>
       <label for="provider">Model</label>
-      <select id="provider"><option value="qwen">Qwen 35B MLX (local)</option><option value="codex">GPT Terra (medium)</option><option value="claude">Claude Code</option></select>
+      <select id="provider"><option value="qwen">Qwen 35B MLX (local)</option><option id="codex-option" value="codex" disabled>Codex (M5 model access unavailable)</option><option value="claude">Claude Code</option></select>
       <label for="mode">Campaign</label>
       <select id="mode"><option value="new">New campaign</option><option value="resume">Resume saved campaign</option></select>
       <div id="new-fields">
@@ -66,7 +66,7 @@
     </section>
     <section>
       <h2>Cinematic display · <a href="http://127.0.0.1:5001/" target="_blank" rel="noopener">Open full screen</a></h2>
-      <iframe src="http://127.0.0.1:5001/" title="D&D cinematic display"></iframe>
+      <iframe id="display" src="http://127.0.0.1:5001/" title="D&D cinematic display"></iframe>
     </section>
   </main>
   <script>
@@ -88,6 +88,8 @@
     async function refresh() {
       try {
         const data = await api('/api/state');
+        $('codex-option').disabled = !data.codex_enabled;
+        $('codex-option').textContent = data.codex_enabled ? 'Codex subscription (medium)' : 'Codex (M5 model access unavailable)';
         const oldValue = $('saved').value;
         $('saved').replaceChildren(...data.campaigns.map(name => new Option(name, name)));
         if (data.campaigns.includes(oldValue)) $('saved').value = oldValue;
@@ -109,6 +111,7 @@
         const mode = $('mode').value;
         const data = await api('/api/start', 'POST', {provider: $('provider').value, mode, name: mode === 'new' ? $('name').value : $('saved').value, description: $('description').value});
         message(`${data.message} Campaign: ${data.campaign}`);
+        $('display').src = 'http://127.0.0.1:5001/';
         await refresh();
       } catch (error) { message(error.message, true); $('start').disabled = false; }
     });

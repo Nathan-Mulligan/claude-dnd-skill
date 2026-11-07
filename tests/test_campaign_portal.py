@@ -24,6 +24,8 @@ def client(tmp_path, monkeypatch):
     test_client = app.test_client()
     page = test_client.get("/", base_url="http://127.0.0.1:5002")
     assert page.status_code == 200
+    health = test_client.get("/health", base_url="http://127.0.0.1:5002")
+    assert health.json["data_root"] == str(tmp_path)
     token = re.search(rb'const token = "([^"]+)";', page.data).group(1).decode()
     return test_client, token
 
@@ -65,6 +67,7 @@ def test_new_start_builds_interactive_qwen_session(client, monkeypatch):
 
 def test_start_refuses_second_model(client, monkeypatch):
     monkeypatch.setattr(portal, "running", lambda: True)
+    monkeypatch.setattr(portal, "CODEX_ENABLED", True)
     response = api(client, "/api/start", method="post", data={
         "provider": "codex", "mode": "new", "name": "demo", "description": "start",
     })
@@ -75,7 +78,7 @@ def test_start_refuses_second_model(client, monkeypatch):
 def test_resume_requires_existing_save(client, monkeypatch):
     monkeypatch.setattr(portal, "running", lambda: False)
     response = api(client, "/api/start", method="post", data={
-        "provider": "codex", "mode": "resume", "name": "missing", "description": "",
+        "provider": "qwen", "mode": "resume", "name": "missing", "description": "",
     })
     assert response.status_code == 409
     assert "not found" in response.json["message"]
@@ -99,4 +102,20 @@ def test_send_passes_literal_reply_to_tmux(client, monkeypatch):
     response = api(client, "/api/send", method="post", data={"text": "I choose the forest; no scripts"})
     assert response.status_code == 200
     assert calls[0][-2:] == ("--", "I choose the forest; no scripts")
+    assert calls[0][3] == "dnd-campaign-portal:0.0"
     assert calls[1][-1] == "Enter"
+
+
+def test_codex_can_write_selected_campaign_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
+    args = portal.model_args("codex", "new", "demo", "start")
+    assert args[args.index("--add-dir") + 1] == str(tmp_path)
+    assert args[args.index("-s") + 1] == "workspace-write"
+
+
+def test_codex_is_unavailable_until_account_model_access_is_repaired(client):
+    response = api(client, "/api/start", method="post", data={
+        "provider": "codex", "mode": "new", "name": "demo", "description": "start",
+    })
+    assert response.status_code == 409
+    assert "unavailable" in response.json["message"]
