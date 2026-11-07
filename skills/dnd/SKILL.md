@@ -348,6 +348,17 @@ DNDEND
 ```
 Skip the opener for one-line replies, out-of-character answers, and turns whose narration is only a sentence or two anyway.
 
+*Scene music.* Bundle a cue with the opener of a genuine new location or atmosphere. This is an entry event, even when the party returns to the same kind of place. Do not cue music on ordinary turns or NPC dialogue. Use one of `arcane`, `castle`, `cave`, `city`, `crypt`, `desert`, `dungeon`, `fire`, `forest`, `mine`, `mountain`, `night`, `ocean`, `prison`, `ruins`, `swamp`, `tavern`, `temple`, plus an optional mood of `calm`, `curious`, `ominous`, `tense`, or `warm`. The display builds the prompt and renders a fresh ten-second intro followed by sparse two-minute ambience. Do not request a character theme.
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --opener \
+  --music-event scene --music-setting cave --music-mood ominous << 'DNDEND'
+The cave opens into a vast chamber where the cultists' torches burn low.
+DNDEND
+```
+
+At the start of a fight, send `--music-event combat-start` with the first combat narration. The display stops the ambience and plays one fresh ten-second battle cue, then silence. At the end, send `--music-event combat-end` with the first post-combat narration. The display makes a new texture for the remembered location. Combat turn-order stats also provide a fallback if one of these cues is missed. The cues never block narration and should not be repeated on every round.
+
 *DM narration* — **CRITICAL:** compose the complete narration (after any opener) first, then call `send.py` as the very last action. Never call `send.py` mid-response apart from the opener. The send must contain the **complete, unabridged text** — do not summarize or condense. **Bundle all stat changes (HP, spell slots, conditions, concentration, inventory) into this same send.py call** using `--stat-*` flags — no separate `push_stats.py` call needed for turn-resolution state:
 ```bash
 # With stat changes (any HP/slot/condition that changed this turn):

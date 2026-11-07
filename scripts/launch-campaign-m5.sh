@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:$PATH"
+export PATH="$PATH:/opt/homebrew/bin:$HOME/.local/bin"
 data_root="${DND_CAMPAIGN_ROOT:-$HOME/.claude/dnd}"
 
 ready() { curl --silent --fail --max-time 3 "$1" >/dev/null; }

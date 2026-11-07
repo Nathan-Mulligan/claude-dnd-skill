@@ -1844,6 +1844,7 @@
      under the cursor reads as the active click target. Pairs with the brighter
      label colors below. */
   .audio-row:hover { background: rgba(180,140,60,0.10); }
+  #music-volume { width: 54px; accent-color: #dcb964; }
   .audio-label {
     font-family: 'Cinzel', serif;
     font-size: 7.5px;
@@ -3664,6 +3665,11 @@
   <div class="audio-row" id="sfx-row" title="Sound effects (triggered by narration)">
     <span class="audio-label">Sound Effects</span>
     <div class="toggle-track" id="sfx-track"><div class="toggle-thumb"></div></div>
+  </div>
+  <div class="audio-row" id="music-row" title="Scene music on this display only">
+    <span class="audio-label">Music</span>
+    <div class="toggle-track" id="music-track"><div class="toggle-thumb"></div></div>
+    <input id="music-volume" type="range" min="0" max="30" value="18" aria-label="Music volume">
   </div>
   <div class="audio-row" id="verbosity-row" title="Narration length the DM targets each turn — shorter = faster turns">
     <span class="audio-label">Narration</span>
@@ -6496,6 +6502,138 @@ async function _playSfx(name) {
   } catch (_) {}
 }
 
+// Music is local to the main display. The server owns entry IDs and rendered files.
+const _musicTrack = document.getElementById('music-track');
+const _musicVolumeControl = document.getElementById('music-volume');
+let _musicOn = false;
+let _musicVolume = 0.18;
+let _musicState = null;
+let _musicSource = null;
+let _musicGain = null;
+let _musicKind = null;
+let _musicLoading = null;
+let _musicIntroPlayed = false;
+let _musicCombatPlayed = false;
+
+function _stopMusic() {
+  _musicLoading = null;
+  const source = _musicSource;
+  const gain = _musicGain;
+  _musicSource = null;
+  _musicGain = null;
+  _musicKind = null;
+  if (!source) return;
+  try {
+    const ctx = _audioCtx();
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setTargetAtTime(0, ctx.currentTime, 0.04);
+    setTimeout(() => { try { source.stop(); } catch (_) {} }, 220);
+  } catch (_) { try { source.stop(); } catch (_) {} }
+}
+
+async function _startMusic(kind, url) {
+  if (!_musicOn || !url || _musicSource || _musicLoading ||
+      document.body.classList.contains('input-only')) return;
+  const entry = _musicState && _musicState.entry;
+  const loading = entry + ':' + kind;
+  _musicLoading = loading;
+  try {
+    const response = await fetch(url, {headers: _dndToken ? {'X-DND-Token': _dndToken} : {}});
+    if (!response.ok) return;
+    const bytes = await response.arrayBuffer();
+    if (_musicLoading !== loading || !_musicOn || !_musicState ||
+        _musicState.entry !== entry) return;
+    const buffer = await _audioCtx().decodeAudioData(bytes);
+    if (_musicLoading !== loading || !_musicOn || !_musicState ||
+        _musicState.entry !== entry) return;
+    const ctx = _audioCtx();
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buffer;
+    source.loop = kind === 'bed';
+    if (kind === 'bed') {
+      const overlap = Math.min(Math.floor(buffer.sampleRate * 0.4), Math.floor(buffer.length / 8));
+      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        const samples = buffer.getChannelData(channel);
+        for (let i = 0; i < overlap; i++) {
+          const mix = (i + 1) / overlap;
+          const tail = buffer.length - overlap + i;
+          samples[tail] = samples[tail] * (1 - mix) + samples[i] * mix;
+        }
+      }
+      source.loopStart = overlap / buffer.sampleRate;
+    }
+    gain.gain.value = 0;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    _musicSource = source;
+    _musicGain = gain;
+    _musicKind = kind;
+    if (kind === 'intro') _musicIntroPlayed = true;
+    if (kind === 'combat') _musicCombatPlayed = true;
+    source.onended = () => {
+      if (_musicSource !== source) return;
+      _musicSource = null;
+      _musicGain = null;
+      _musicKind = null;
+      if (kind === 'intro') _maybeMusic();
+    };
+    source.start();
+    gain.gain.setTargetAtTime(_musicVolume, ctx.currentTime, 0.18);
+  } catch (_) {
+    // Music failure must not interrupt narration or sound effects.
+  } finally {
+    if (_musicLoading === loading) _musicLoading = null;
+  }
+}
+
+function _maybeMusic() {
+  if (!_musicOn || !_musicState || !_musicState.available || _musicSource || _musicLoading ||
+      document.body.classList.contains('input-only')) return;
+  const state = _musicState;
+  if (state.mode === 'combat') {
+    if (!_musicCombatPlayed && state.combat_url) _startMusic('combat', state.combat_url);
+    return;
+  }
+  if (state.mode !== 'explore') return;
+  if (!_musicIntroPlayed && state.intro_url) {
+    _startMusic('intro', state.intro_url);
+  } else if (state.bed_url && (_musicIntroPlayed || !state.intro_url)) {
+    _startMusic('bed', state.bed_url);
+  }
+}
+
+function _onMusicState(state) {
+  if (!state || typeof state.revision !== 'number') return;
+  if (_musicState && state.revision < _musicState.revision) return;
+  if (!_musicState || state.entry !== _musicState.entry || state.mode !== _musicState.mode) {
+    const joiningExistingBed = !_musicState && !!state.bed_url;
+    _stopMusic();
+    _musicIntroPlayed = joiningExistingBed;
+    _musicCombatPlayed = false;
+  }
+  _musicState = state;
+  _maybeMusic();
+}
+
+document.getElementById('music-row').addEventListener('click', () => {
+  if (document.body.classList.contains('input-only')) return;
+  _musicOn = !_musicOn;
+  _setTrack(_musicTrack, _musicOn);
+  if (_musicOn) {
+    _audioCtx();
+    if (_musicState && !_musicState.available) _showToast('Music is not configured on this Mac');
+    _maybeMusic();
+  } else {
+    _stopMusic();
+  }
+});
+_musicVolumeControl.addEventListener('click', e => e.stopPropagation());
+_musicVolumeControl.addEventListener('input', e => {
+  _musicVolume = Number(e.target.value) / 100;
+  if (_musicGain) _musicGain.gain.setTargetAtTime(_musicVolume, _audioCtx().currentTime, 0.05);
+});
+
 // "Roll on screen" toggle — when on, a DM-prescribed roll auto-opens the Dice
 // drawer on this display (for games with no phones). Persisted per-browser;
 // _onscreenDiceOn() reads the same flag.
@@ -7955,6 +8093,10 @@ function connect() {
       _sidebarBtn.classList.remove('visible');
       _setSidebarVisible(true);   // reset to visible for next campaign
       clearDisplay();
+      _stopMusic();
+      _musicState = null;
+      _musicIntroPlayed = false;
+      _musicCombatPlayed = false;
     }
     if (payload.cast && typeof payload.cast === 'object') {
       _CAST = payload.cast;
@@ -7968,6 +8110,9 @@ function connect() {
     }
     if (payload.scene) {
       applyScene(payload.scene);
+    }
+    if (payload.music) {
+      _onMusicState(payload.music);
     }
     if (payload.sfx) {
       _playSfx(payload.sfx);
