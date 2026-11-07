@@ -5,6 +5,8 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 > **Path note:** commands below use `${CLAUDE_SKILL_DIR}` for the skill directory. This file is read verbatim, so that token is **not** auto-expanded here — substitute the absolute skill-dir path (from `SKILL.md`) before running any command, or it will fail with a broken `/scripts/…` path.
 >
 > **Campaign data path:** Any `~/.claude/dnd` path below describes the default only. When `DND_CAMPAIGN_ROOT` is set, never execute that literal path. Resolve the target first with `python3 ${CLAUDE_SKILL_DIR}/scripts/paths.py campaign-path <campaign-name>` and use the returned absolute path for reads and writes. This command only prints the configured path; it does not copy a legacy campaign. Check the resolved path before saving. This applies to Claude, Qwen, and any other DM using these procedures.
+>
+> **Display checks:** `send.py` puts every text body in the player's story. Verify campaign selection with `GET http://localhost:5001/health`; do not send probe or debug text through `send.py`.
 
 ---
 
