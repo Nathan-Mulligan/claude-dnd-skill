@@ -6481,7 +6481,7 @@ function _setTrack(el, on) {
 
 function _audioCtx() {
   if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
-  if (_actx.state === 'suspended') _actx.resume();
+  if (_actx.state === 'suspended') _actx.resume().catch(() => {});
   return _actx;
 }
 
@@ -6505,7 +6505,9 @@ async function _playSfx(name) {
 // Music is local to the main display. The server owns entry IDs and rendered files.
 const _musicTrack = document.getElementById('music-track');
 const _musicVolumeControl = document.getElementById('music-volume');
-let _musicOn = false;
+let _musicOn = true;
+try { _musicOn = localStorage.getItem('dnd_music_on') !== '0'; } catch (_) {}
+_setTrack(_musicTrack, _musicOn);
 let _musicVolume = 0.18;
 let _musicState = null;
 let _musicSource = null;
@@ -6580,6 +6582,10 @@ async function _startMusic(kind, url) {
     };
     source.start();
     gain.gain.setTargetAtTime(_musicVolume, ctx.currentTime, 0.18);
+    setTimeout(() => {
+      if (_musicOn && _musicSource === source && ctx.state === 'suspended')
+        _showToast('Click inside the display to enable music');
+    }, 700);
   } catch (_) {
     // Music failure must not interrupt narration or sound effects.
   } finally {
@@ -6620,6 +6626,7 @@ document.getElementById('music-row').addEventListener('click', () => {
   if (document.body.classList.contains('input-only')) return;
   _musicOn = !_musicOn;
   _setTrack(_musicTrack, _musicOn);
+  try { localStorage.setItem('dnd_music_on', _musicOn ? '1' : '0'); } catch (_) {}
   if (_musicOn) {
     _audioCtx();
     if (_musicState && !_musicState.available) _showToast('Music is not configured on this Mac');
@@ -6628,6 +6635,9 @@ document.getElementById('music-row').addEventListener('click', () => {
     _stopMusic();
   }
 });
+document.addEventListener('pointerdown', () => {
+  if (_musicOn) _audioCtx();
+}, { capture: true, passive: true });
 _musicVolumeControl.addEventListener('click', e => e.stopPropagation());
 _musicVolumeControl.addEventListener('input', e => {
   _musicVolume = Number(e.target.value) / 100;
