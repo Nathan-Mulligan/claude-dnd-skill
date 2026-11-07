@@ -102,7 +102,7 @@ case "${1:-}" in
           sleep 1
         done
         ready http://127.0.0.1:11434/api/version || { echo 'Ollama did not become ready.' >&2; exit 1; }
-        ollama list | grep -Fq 'qwen3.6:35b-mlx' || { echo 'Qwen 35B MLX is not installed in Ollama.' >&2; exit 1; }
+        ollama list | awk '$1 == "qwen3.6:35b-mlx" { found = 1 } END { exit !found }' || { echo 'Qwen 35B MLX is not installed in Ollama.' >&2; exit 1; }
       fi
       if [[ -x "$repo_root/scripts/start-campaign-extras.sh" ]]; then
         "$repo_root/scripts/start-campaign-extras.sh"
