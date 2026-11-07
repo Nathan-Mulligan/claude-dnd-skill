@@ -24,7 +24,7 @@ except (ValueError, AttributeError):
 ' <<< "$health"
 }
 
-printf '\nD&D Campaign — M5\n\n1. Qwen 35B MLX (fully local)\n2. Codex GPT Terra (medium)\n3. Claude Code\n\n'
+printf '\nD&D Campaign on M5\n\n1. Qwen 35B MLX (fully local)\n2. Codex GPT Terra (medium)\n3. Claude Code\n\n'
 read -r -p 'Model [1-3]: ' model_choice
 case "$model_choice" in
   1) provider=qwen ;;
