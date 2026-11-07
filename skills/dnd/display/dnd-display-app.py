@@ -347,6 +347,7 @@ _autorun_threshold: Optional[int] = None  # overrides _expected_count when set v
 # initial data and is broadcast to all connected clients on change.
 _queue_status: list = []
 _queue_status_lock = threading.Lock()
+_setup_question = ""
 
 # Last autorun cycle broadcast — replayed on SSE reconnect so late-joining
 # clients start the countdown from the correct elapsed position.
@@ -384,11 +385,10 @@ def _staged_snapshot() -> dict:
 
 
 def _check_auto_trigger() -> None:
-    """Move staged-and-ready actions into the DM-gated queue file (.input_queue).
+    """Append staged-and-ready actions to the DM-gated queue file (.input_queue).
 
-    .input_queue is NOT injected immediately — wrapper.py picks it up the next
-    time the DM presses Enter (or Claude explicitly triggers via .input_trigger).
-    This gives the DM control over when player actions enter Claude's context.
+    The Safari portal delivers queued input to its active DM. Other launch paths
+    can still read it at the next turn with check_input.py or wrapper.py.
     """
     with _staged_lock:
         if not _staged:
@@ -400,21 +400,25 @@ def _check_auto_trigger() -> None:
         if not (all_ready and enough):
             return
         char_names = list(_staged.keys())
-        lines      = [f'[{c}]: {e["text"]}' for c, e in _staged.items()]
-        content    = "\n".join(lines)
+        lines = [f'[{c}]: {e["text"]}' for c, e in _staged.items()]
+        content = "\n".join(lines)
+        try:
+            with open(QUEUE_FILE, "a+", encoding="utf-8") as f:
+                f.seek(0, os.SEEK_END)
+                if f.tell():
+                    f.write("\n")
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError:
+            return
         _staged.clear()
-
-    try:
-        with open(QUEUE_FILE, "w", encoding="utf-8") as f:
-            f.write(content)
-    except Exception:
-        char_names = []
 
     if char_names:
         with _queue_status_lock:
-            _queue_status.clear()
             _queue_status.extend(char_names)
-    _broadcast({"staged_inputs": {}, "queue_status": list(char_names)})
+            pending = list(_queue_status)
+    _broadcast({"staged_inputs": {}, "queue_status": pending})
 
 
 def _token_ok() -> bool:
@@ -2178,12 +2182,13 @@ def clear():
     """
     if not _token_ok():
         return "Forbidden", 403
-    global _scene_buffer, _current_stats
+    global _scene_buffer, _current_stats, _setup_question
     with _text_log_lock:
         _text_log.clear()
     with _stats_lock:
         _current_stats = {}
     _scene_buffer = []
+    _setup_question = ""
     for path in (LOG_FILE, STATS_FILE):
         try:
             os.remove(path)
@@ -2191,6 +2196,21 @@ def clear():
             pass
     _music.reset()
     _broadcast({"clear": True})
+    return "", 204
+
+
+@app.route("/setup-question", methods=["POST"])
+def setup_question():
+    """Show a DM setup question beside Party Input without adding story history."""
+    if not _token_ok():
+        return "Forbidden", 403
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text", ""))
+    if len(text) > 1000:
+        return "Question too long", 400
+    global _setup_question
+    _setup_question = _clean(text).strip()
+    _broadcast({"setup_question": _setup_question})
     return "", 204
 
 
@@ -2786,6 +2806,8 @@ def stream():
     initial_scene = SCENES[_current_scene_name] | {"name": _current_scene_name}
     q.put_nowait({"scene": initial_scene})
     q.put_nowait({"music": _music.snapshot()})
+    if _setup_question:
+        q.put_nowait({"setup_question": _setup_question})
 
     # Replay recent entries so late-connecting / reconnecting browsers catch up.
     # _text_log is the durable session record (maxlen=2000); replay only the

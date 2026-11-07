@@ -131,3 +131,36 @@ def test_codex_can_be_disabled_explicitly(client, monkeypatch):
     })
     assert response.status_code == 409
     assert "disabled" in response.json["message"]
+
+
+def test_party_input_is_sent_to_active_model(client, monkeypatch):
+    root = portal.RUNTIME
+    root.mkdir(parents=True, exist_ok=True)
+    portal.META_FILE.write_text('{"campaign":"demo","mode":"new"}', encoding="utf-8")
+    (root / ".campaign").write_text("demo", encoding="utf-8")
+    queue = root / ".input_queue"
+    queue.write_text("[Everybody]: My name is Enther", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(portal, "running", lambda: True)
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: (calls.append(args), subprocess.CompletedProcess(args, 0, "", ""))[1])
+    monkeypatch.setattr(portal, "notify_party_consumed", lambda: calls.append(("consumed",)))
+
+    assert portal.deliver_party_input() is True
+    assert not queue.exists()
+    assert any("My name is Enther" in " ".join(args) for args in calls)
+    assert any("setup question" in " ".join(args) for args in calls)
+    assert calls[-1] == ("consumed",)
+    assert portal.deliver_party_input() is False
+
+
+def test_party_input_waits_for_matching_campaign(client, monkeypatch):
+    root = portal.RUNTIME
+    root.mkdir(parents=True, exist_ok=True)
+    portal.META_FILE.write_text('{"campaign":"new-campaign","mode":"new","started_at":9999999999}', encoding="utf-8")
+    (root / ".campaign").write_text("old-campaign", encoding="utf-8")
+    queue = root / ".input_queue"
+    queue.write_text("[Everybody]: Old answer", encoding="utf-8")
+    monkeypatch.setattr(portal, "running", lambda: True)
+
+    assert portal.deliver_party_input() is False
+    assert queue.read_text(encoding="utf-8") == "[Everybody]: Old answer"

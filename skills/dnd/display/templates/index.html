@@ -1647,6 +1647,13 @@
     padding: 8px 10px; resize: none; outline: none;
     transition: border-color 0.15s ease;
   }
+  #setup-question {
+    margin: 8px 0; padding: 10px 12px;
+    border-left: 2px solid rgba(220,185,105,0.8);
+    background: rgba(40,28,10,0.75); color: rgba(245,225,180,0.95);
+    font-family: 'IM Fell English', serif; font-size: 15px; line-height: 1.45;
+  }
+  #setup-question[hidden] { display: none; }
   #player-input-text:focus { border-color: rgba(180,140,60,0.45); }
   #player-input-text::placeholder { color: rgba(180,140,60,0.28); }
   #input-footer { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
@@ -3793,6 +3800,7 @@
       <button class="dp-tab"        data-tab="character" type="button">Sheet</button>
     </div>
     <div id="phone-status" data-tab-section="move"></div>
+    <div id="setup-question" data-tab-section="move" role="status" hidden></div>
     <div id="staged-queue" data-tab-section="move"></div>
     <div id="waiting-indicator" data-tab-section="move"></div>
     <div id="char-tabs" data-tab-section="move">
@@ -7389,6 +7397,7 @@ const _waitingEl       = document.getElementById('waiting-indicator');
 
 let _selectedChar     = 'Everybody';
 let _stagedData       = {};   // {char: {text, ready, timestamp}} — mirror of server state
+let _lastSetupQuestion = '';
 let _autorunThreshold = null; // null = use player count; int = explicit threshold
 
 // ── Toggle open/closed ────────────────────────────────────────────
@@ -8041,6 +8050,18 @@ function connect() {
     if (payload.staged_inputs !== undefined) {
       _handleStagedInputs(payload.staged_inputs);
     }
+    if (payload.setup_question !== undefined) {
+      const question = String(payload.setup_question || '');
+      const el = document.getElementById('setup-question');
+      el.textContent = question;
+      el.hidden = !question;
+      if (question && question !== _lastSetupQuestion) {
+        _inputPanel.classList.remove('collapsed');
+        if (document.documentElement.dataset.skin === 'editorial') _inputPanel.classList.add('ed-open');
+        if (_ttsAutoNarrate && _TTS_AVAILABLE) _narrate(question, _narratorVoice());
+      }
+      _lastSetupQuestion = question;
+    }
     if (payload.queue_status !== undefined) {
       _renderQueueStatus(payload.queue_status);
     }
@@ -8103,6 +8124,10 @@ function connect() {
       _sidebarBtn.classList.remove('visible');
       _setSidebarVisible(true);   // reset to visible for next campaign
       clearDisplay();
+      const setupQuestion = document.getElementById('setup-question');
+      setupQuestion.textContent = '';
+      setupQuestion.hidden = true;
+      _lastSetupQuestion = '';
       _stopMusic();
       _musicState = null;
       _musicIntroPlayed = false;
