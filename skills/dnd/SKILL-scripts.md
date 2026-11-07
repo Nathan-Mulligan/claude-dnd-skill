@@ -39,7 +39,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/dice.py d20+5 --label "Goblin attack"
 
 Then run the command. The Bash call will block while the player picks up the phone, sees the prompt, and casts; the result returns to you afterward. Without the verbal prompt the player won't know to look, and the call will sit waiting for ~3 minutes before timing out into an auto-roll.
 
-Flags nat 20 (CRITICAL HIT) and nat 1 (FUMBLE) automatically. If output contains `[auto]` the target's phone wasn't connected and the server rolled itself — no action needed, just narrate the result.
+Flags a raw natural 20 or natural 1 without deciding whether the roll was an attack, ability check, or save. Apply critical attack rules only to attacks. If output contains `[auto]` the target's phone wasn't connected and the server rolled itself — no action needed, just narrate the result.
 
 To force-skip the physical roller (e.g. high-volume NPC rolls you don't want to surface): `--auto` flag, or `DND_DICE_PHYSICAL=0 python3 ...`.
 

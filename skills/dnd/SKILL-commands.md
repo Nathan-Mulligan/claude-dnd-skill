@@ -3,6 +3,8 @@
 Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at `/dm:dnd load` or before executing any slash command.
 
 > **Path note:** commands below use `${CLAUDE_SKILL_DIR}` for the skill directory. This file is read verbatim, so that token is **not** auto-expanded here — substitute the absolute skill-dir path (from `SKILL.md`) before running any command, or it will fail with a broken `/scripts/…` path.
+>
+> **Campaign data path:** Any `~/.claude/dnd` path below describes the default only. When `DND_CAMPAIGN_ROOT` is set, never execute that literal path. Resolve the target first with `python3 ${CLAUDE_SKILL_DIR}/scripts/paths.py campaign-path <campaign-name>` and use the returned absolute path for reads and writes. This command only prints the configured path; it does not copy a legacy campaign. Check the resolved path before saving. This applies to Claude, Qwen, and any other DM using these procedures.
 
 ---
 
@@ -23,7 +25,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 2. **Ruleset selection (added 2026-05-08).** Ask: *"D&D 5e ruleset for this campaign? **2014** (SRD 5.1, default — full mechanics, classic Player's Handbook structure) or **2024** (SRD 5.2, weapon mastery + origin feats + background ASIs + revised exhaustion)?"* Default to `2014` if no answer or ambiguous. Write the chosen value to `state.md` header line as `**Ruleset:** 2014` or `**Ruleset:** 2024`.
 
    If 2024 was chosen: verify the dataset exists with `ls ${CLAUDE_SKILL_DIR}/data/dnd5e_srd_2024.json`. If missing, run `python3 ${CLAUDE_SKILL_DIR}/scripts/build_srd.py --ruleset 2024` (one-time, ~3 min). Until the dataset exists, lookup-based features will fall back to 2014.
-3. `mkdir -p ~/.claude/dnd/campaigns/<name>/characters`
+3. Resolve the campaign path with `python3 ${CLAUDE_SKILL_DIR}/scripts/paths.py campaign-path <name>`, then create its `characters/` directory there.
 4. Copy and populate templates from `${CLAUDE_SKILL_DIR}/templates/` — state.md, world.md, npcs.md, session-log.md. The state.md header keeps the `**Ruleset:**` field set in step 2.
 5. Ask: **party size** and **starting level**
 6. **Tone/Genre Wizard** — present all four in one message:

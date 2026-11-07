@@ -59,6 +59,7 @@ import sys
 import json
 import argparse
 import os
+import re
 import ssl
 import time
 import urllib.request
@@ -79,6 +80,7 @@ _SCHEME = open(_SCHEME_FILE, encoding="utf-8").read().strip() if os.path.exists(
 BASE_URL    = f"{_SCHEME}://localhost:5001"
 FLASK_URL   = f"{BASE_URL}/chunk"
 STATS_URL   = f"{BASE_URL}/stats"
+CLEAR_URL   = f"{BASE_URL}/clear"
 HEALTH_URL  = f"{BASE_URL}/health"
 DICE_REQ_URL = f"{BASE_URL}/dice-request"
 TOKEN_FILE  = rt(".token")
@@ -212,6 +214,32 @@ def _verify_health() -> "dict | None":
     except Exception as e:
         print(f"send.py: /health unreachable ({e})", file=sys.stderr)
         return None
+
+
+def _ensure_active_campaign() -> None:
+    name = os.environ.get("DND_ACTIVE_CAMPAIGN", "").strip()
+    if not name:
+        return
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) or name in (".", ".."):
+        raise SystemExit("send.py: invalid DND_ACTIVE_CAMPAIGN")
+    scripts_dir = os.path.abspath(os.path.join(_DISPLAY_DIR, "..", "scripts"))
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from paths import campaign_dir
+
+    expected_tail = str(campaign_dir(name) / "session_tail.json")
+    health = _verify_health()
+    if health is None:
+        raise SystemExit("send.py: display unavailable for active campaign check")
+    if health.get("campaign") != name:
+        if not _post(CLEAR_URL, b"{}", _read_token()):
+            raise SystemExit("send.py: failed to clear previous campaign display")
+        payload = json.dumps({"campaign": name}).encode("utf-8")
+        if not _post(STATS_URL, payload, _read_token()):
+            raise SystemExit("send.py: failed to select active campaign")
+        health = _verify_health()
+    if health is None or health.get("tail_path") != expected_tail:
+        raise SystemExit("send.py: display campaign root differs from DND_CAMPAIGN_ROOT")
 
 
 def _split_paragraphs(text: str, limit: int = CHUNK_LIMIT) -> list:
@@ -476,6 +504,7 @@ def main() -> None:
              "Surfaces a clear stderr line on mismatch — use during dev/debug.")
 
     args = parser.parse_args()
+    _ensure_active_campaign()
 
     # Two categories of flags drive whether to read stdin:
     #   1. Content flags (--player/--npc/--dice/--tutor/--action): body REQUIRED.

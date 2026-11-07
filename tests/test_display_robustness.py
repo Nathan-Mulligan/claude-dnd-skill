@@ -215,6 +215,17 @@ class TailLogicTest(unittest.TestCase):
         self.assertEqual(len(self._buffer), 2)
         self.assertEqual([e["text"] for e in self._buffer], ["fresh-1", "fresh-2"])
 
+    def test_switch_to_empty_campaign_does_not_copy_previous_tail(self):
+        self._buffer.append({"text": "old scene", "_camp": "test-camp"})
+        (self.campaign_root / "new-camp").mkdir()
+        self._namespace["_set_campaign"]("new-camp")
+        self.assertEqual(list(self._buffer), [])
+        self._buffer.append({"text": "new scene", "_camp": "new-camp"})
+        self._persist()
+        self.assertEqual(json.loads(self.tail_file.read_text())[0]["text"], "old scene")
+        new_tail = self.campaign_root / "new-camp" / "session_tail.json"
+        self.assertEqual(json.loads(new_tail.read_text()), [{"text": "new scene", "_camp": "new-camp"}])
+
     def test_persist_skips_empty_over_content(self):
         """The persistence guard: refuse to overwrite a content-bearing file
         with an empty buffer. This is what bit us when the buffer got wiped

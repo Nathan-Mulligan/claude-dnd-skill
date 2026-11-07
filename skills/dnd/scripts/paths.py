@@ -224,12 +224,16 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "campaign-dir":
         print(find_campaign(sys.argv[2]))
         sys.exit(0)
+    if len(sys.argv) >= 3 and sys.argv[1] == "campaign-path":
+        print(campaign_dir(sys.argv[2]))
+        sys.exit(0)
     print(
         "usage:\n"
         "  python3 paths.py campaign-ruleset <campaign-name>\n"
         "  python3 paths.py srd-path [2014|2024]\n"
         "  python3 paths.py runtime-dir\n"
-        "  python3 paths.py campaign-dir <campaign-name>",
+        "  python3 paths.py campaign-dir <campaign-name>\n"
+        "  python3 paths.py campaign-path <campaign-name>",
         file=sys.stderr,
     )
     sys.exit(2)

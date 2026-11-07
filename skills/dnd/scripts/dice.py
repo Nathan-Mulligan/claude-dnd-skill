@@ -229,9 +229,9 @@ def run(notation: str, silent: bool = False, label: str = "",
             raw = rolls[0]
             flag = ""
             if raw == 20:
-                flag = "  *** CRITICAL HIT (nat 20)! ***"
+                flag = "  *** NATURAL 20! ***"
             elif raw == 1:
-                flag = "  *** FUMBLE (nat 1)! ***"
+                flag = "  *** NATURAL 1! ***"
             print(f"Roll: {raw}{format_modifier(modifier)} = {result}{flag}")
         else:
             print(f"Rolls: {rolls}{format_modifier(modifier)} = {result}")
@@ -281,9 +281,9 @@ def _print_physical(res: dict, num_dice: int, die_size: int, modifier: int,
         raw = rolls[0]
         flag = ""
         if raw == 20:
-            flag = "  *** CRITICAL HIT (nat 20)! ***"
+            flag = "  *** NATURAL 20! ***"
         elif raw == 1:
-            flag = "  *** FUMBLE (nat 1)! ***"
+            flag = "  *** NATURAL 1! ***"
         print(f"Roll: {raw}{format_modifier(modifier)} = {total}{flag}{auto_tag}")
     else:
         print(f"Rolls: {rolls}{format_modifier(modifier)} = {total}{auto_tag}")

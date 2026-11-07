@@ -5142,8 +5142,8 @@ function _renderDiceBlockNow(text, isReplay) {
     el.className = 'dice-result';
     el.textContent = trimmed;
     resultsWrap.appendChild(el);
-    if (/CRITICAL HIT/i.test(trimmed)) hasCrit = true;
-    if (/FUMBLE/i.test(trimmed))        hasFumble = true;
+    if (/CRITICAL HIT|NATURAL 20/i.test(trimmed)) hasCrit = true;
+    if (/FUMBLE|NATURAL 1/i.test(trimmed))        hasFumble = true;
   });
   block.appendChild(resultsWrap);
 

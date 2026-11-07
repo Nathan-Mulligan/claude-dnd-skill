@@ -1065,6 +1065,21 @@ def _load_tail() -> None:
             _tail_buffer.append(item)
 
 
+def _set_campaign(name: str) -> None:
+    try:
+        with open(CAMP_FILE, encoding="utf-8") as f:
+            previous = f.read().strip()
+    except OSError:
+        previous = ""
+    if previous != name:
+        _persist_tail()
+        with _tail_lock:
+            _tail_buffer.clear()
+    with open(CAMP_FILE, "w", encoding="utf-8") as f:
+        f.write(name)
+    _load_tail()
+
+
 _load_tail()
 
 
@@ -1699,9 +1714,7 @@ def stats():
     # display replay at /dnd load shows the correct campaign's last session.
     if "campaign" in data:
         try:
-            with open(CAMP_FILE, "w", encoding="utf-8") as f:
-                f.write(str(data["campaign"]).strip())
-            _load_tail()
+            _set_campaign(str(data["campaign"]).strip())
         except Exception:
             pass
         # Resolve and stash the ruleset for this campaign so the sidebar badge
