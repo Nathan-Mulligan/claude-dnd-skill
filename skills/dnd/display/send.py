@@ -407,8 +407,8 @@ def _build_stats_payload(args) -> "dict | None":
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send text to the DnD display server.")
-    parser.add_argument("--setup-question", action="store_true",
-                        help="Show a setup question beside Party Input without adding story history")
+    parser.add_argument("--setup-question", nargs="?", const="", metavar="TEXT",
+                        help="Show a setup question beside Party Input without adding story history; pass text or pipe stdin")
     parser.add_argument(
         "--player", metavar="NAME",
         help="Send as a player action, prepending the character name on display",
@@ -517,8 +517,8 @@ def main() -> None:
              "Surfaces a clear stderr line on mismatch — use during dev/debug.")
 
     args = parser.parse_args()
-    if args.setup_question:
-        question = sys.stdin.read().strip()
+    if args.setup_question is not None:
+        question = args.setup_question.strip() if args.setup_question else sys.stdin.read().strip()
         if not question or len(question) > 1000:
             parser.error("--setup-question requires 1-1000 characters on stdin")
         token = _read_token()
