@@ -25,12 +25,12 @@ SESSION = os.environ.get("DND_PORTAL_TMUX_SESSION", "dnd-campaign-portal")
 PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 ALLOWED_PROVIDERS = {"qwen", "codex", "claude"}
-CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX") == "1"
+CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
 
 
 def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
-    env["PATH"] = f"/opt/homebrew/bin:{Path.home() / '.local/bin'}:{env.get('PATH', '')}"
+    env["PATH"] = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{env.get('PATH', '')}"
     return subprocess.run(args, cwd=REPO, env=env, capture_output=True, text=True, timeout=timeout)
 
 
@@ -83,7 +83,7 @@ def model_args(provider: str, mode: str, name: str, description: str) -> list[st
         args += ["--campaign", name]
     prompt = initial_prompt(mode, name, description)
     if provider == "codex":
-        args += ["-c", 'model_reasoning_effort="medium"',
+        args += ["-m", "gpt-6.1-terra", "-c", 'model_reasoning_effort="medium"',
                  "-s", "workspace-write",
                  "--add-dir", str(DATA_ROOT), prompt]
     elif provider == "qwen":
@@ -97,7 +97,7 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
     if provider not in ALLOWED_PROVIDERS or mode not in {"new", "resume"}:
         return False, "Choose a model and New or Resume."
     if provider == "codex" and not CODEX_ENABLED:
-        return False, "Codex model access is unavailable on this M5 account. Choose Qwen, or enable Codex after its account access is repaired."
+        return False, "Codex is disabled on this M5. Choose Qwen or remove the DND_PORTAL_ENABLE_CODEX=0 override."
     if not NAME_RE.fullmatch(name) or name in {".", ".."}:
         return False, "Campaign name must use letters, numbers, dots, dashes or underscores."
     if len(description) > 3000:
@@ -117,7 +117,7 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
         service = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", provider, timeout=60)
         if service.returncode:
             return False, (service.stderr or service.stdout or "M5 services did not start.").strip()[-800:]
-        path = f"/opt/homebrew/bin:{Path.home() / '.local/bin'}:{os.environ.get('PATH', '')}"
+        path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
         command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}",
                                *model_args(provider, mode, name, description)])
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
