@@ -348,7 +348,7 @@ DNDEND
 ```
 Skip the opener for one-line replies, out-of-character answers, and turns whose narration is only a sentence or two anyway.
 
-*Scene music.* When music is enabled on the display, bundle a cue with the opener of a genuine new location or atmosphere. This is an entry event, even when the party returns to the same kind of place. Do not cue music on ordinary turns or NPC dialogue. Use one of `arcane`, `castle`, `cave`, `city`, `crypt`, `desert`, `dungeon`, `fire`, `forest`, `mine`, `mountain`, `night`, `ocean`, `prison`, `ruins`, `swamp`, `tavern`, `temple`, plus an optional mood of `calm`, `curious`, `ominous`, `tense`, or `warm`. The display builds the prompt and renders a fresh ten-second intro followed by sparse two-minute ambience. Do not request a character theme.
+*Scene music.* Bundle a cue with the opener of a genuine new location or atmosphere. This is an entry event, even when the party returns to the same kind of place. Do not cue music on ordinary turns or NPC dialogue. Use one of `arcane`, `castle`, `cave`, `city`, `crypt`, `desert`, `dungeon`, `fire`, `forest`, `mine`, `mountain`, `night`, `ocean`, `prison`, `ruins`, `swamp`, `tavern`, `temple`, plus an optional mood of `calm`, `curious`, `ominous`, `tense`, or `warm`. The display builds the prompt and renders a fresh ten-second intro followed by sparse two-minute ambience. Do not request a character theme.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/display/send.py --opener \

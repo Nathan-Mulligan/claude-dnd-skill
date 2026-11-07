@@ -127,6 +127,25 @@ class MusicDirectorTest(unittest.TestCase):
         self.assertIsNone(self.director.file_for(old["entry"], "intro"))
         self.assertFalse((Path(self.temp.name) / f"{old['entry']}-bed.wav").exists())
 
+    def test_prunes_only_old_owned_wavs_and_keeps_current_entry(self) -> None:
+        old_paths = []
+        for index, digit in enumerate("abcd"):
+            path = Path(self.temp.name) / f"{digit * 32}-bed.wav"
+            path.write_bytes(b"RIFF")
+            os.utime(path, (100 + index, 100 + index))
+            old_paths.append(path)
+        unrelated = Path(self.temp.name) / "other-file.wav"
+        unrelated.write_text("keep", encoding="utf-8")
+        current = self.director.transition("scene", "current", "cave")
+        self.drain()
+        self.director._prune_old()
+        self.assertFalse(old_paths[0].exists())
+        self.assertFalse(old_paths[1].exists())
+        self.assertTrue(old_paths[2].exists())
+        self.assertTrue(old_paths[3].exists())
+        self.assertTrue(self.director.file_for(current["entry"], "bed"))
+        self.assertTrue(unrelated.exists())
+
     def test_invalid_cue_does_not_change_state(self) -> None:
         with self.assertRaises(ValueError):
             self.director.transition("scene", "bad", "../../outside")

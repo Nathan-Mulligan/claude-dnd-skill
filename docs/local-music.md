@@ -29,7 +29,7 @@ DNDEND
 
 The same sender accepts `--music-event combat-start` and `--music-event combat-end` with narration. Entering a setting makes a new ten-second intro and sparse two-minute texture. Starting combat stops the current sound and makes one fresh ten-second battle intro, then silence. Ending combat makes a new two-minute texture for the remembered setting. The display's `turn_order` status provides a fallback for combat transitions. There are no character-specific themes in this version.
 
-Each cue carries an ID so send retries cannot start duplicate jobs. Music jobs run one at a time, and a late result from an older scene is discarded. A browser reconnect or display restart loads the current rendered entry without generating another variation. Older generated files stay under the display runtime's `music` directory until a later cleanup pass; do not point that runtime at NAS or `/Volumes`.
+Each cue carries an ID so send retries cannot start duplicate jobs. Music jobs run one at a time, and a late result from an older scene is discarded. A browser reconnect or display restart loads the current rendered entry without generating another variation. The runtime keeps the current entry and two recent entries, pruning older finished WAVs that it created; do not point that runtime at NAS or `/Volumes`.
 
 ## Quality and limits
 

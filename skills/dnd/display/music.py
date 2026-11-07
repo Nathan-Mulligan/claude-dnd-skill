@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import secrets
 import subprocess
 import threading
@@ -325,6 +326,20 @@ class MusicDirector:
             path = self.ready.get(kind)
             return path if path and path.is_file() else None
 
+    def _prune_old(self) -> None:
+        files = sorted((p for p in self.directory.glob("*.wav")
+                        if re.fullmatch(r"[0-9a-f]{32}-(intro|bed|combat)\.wav", p.name)),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+        with self.lock:
+            current = self.entry
+        keep = {current} if current else set()
+        for path in files:
+            entry = path.name.split("-", 1)[0]
+            if len(keep) < 3:
+                keep.add(entry)
+            elif entry not in keep:
+                path.unlink(missing_ok=True)
+
     def process_next(self) -> bool:
         try:
             job = self.jobs.get_nowait()
@@ -361,6 +376,7 @@ class MusicDirector:
                 state = None
         if state:
             self._publish(state)
+            self._prune_old()
         else:
             job.path.unlink(missing_ok=True)
 
