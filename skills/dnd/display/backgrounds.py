@@ -100,6 +100,15 @@ def runtime_config(config_path: Path | None = None) -> LocalConfig | None:
     return LocalConfig(python, runner, model, reference, guard, width, height, steps, timeout, density_map)
 
 
+ERA_GUIDANCE = {
+    "medieval": "A pre-industrial medieval fantasy world, historically inspired rather than contemporary. Period material culture throughout: rough-hewn timber, limewashed stone, hand-forged iron, pottery, wooden furnishings, beeswax candles and hearth light. Any tiny incidental background figures are dressed in long-sleeved linen tunics, woollen cloaks, long skirts, leather belts and plain leather boots, with hand-sewn garments. ",
+    "renaissance": "A Renaissance-inspired fantasy world with carved stone and timber architecture, period furnishings, oil lamps and candles. Any incidental figures wear era-appropriate doublets, long gowns, cloaks, hose and leather shoes. ",
+    "ancient": "An ancient-world fantasy setting with era-appropriate stone, plaster and timber architecture, pottery and oil lamps. Any incidental figures wear draped linen or wool robes, tunics and sandals appropriate to the established culture. ",
+    "modern": "An explicitly modern world with contemporary architecture, furnishings, technology and everyday clothing appropriate to the described scene. ",
+    "futuristic": "An explicitly futuristic world with advanced architecture, technology, materials and future-era clothing appropriate to the described scene. ",
+}
+
+
 def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bool = False,
                scene: SceneContext | None = None) -> str:
     opening = ("Use the reference only for its painterly style, composition and gradual shading. "
@@ -112,12 +121,19 @@ def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bo
                    "painting of the requested environment, not a grayscale image or a visible map. ")
     environment = scene.description if scene else ENVIRONMENTS[setting]
     profile = MOOD_PROFILES[mood]
-    tone = (scene.place_guidance() + profile["atmosphere"] + " " + profile["visual"] + " "
+    era = scene.era if scene and scene.era else "medieval"
+    fantasy_era = era.casefold() in {"medieval", "renaissance", "ancient"}
+    atmosphere = profile["atmosphere"] if fantasy_era else profile["atmosphere"].replace("fantasy ", "")
+    tone = (scene.place_guidance() + atmosphere + " " + profile["visual"] + " "
             if scene else "")
     palette = ("Subdued saturation and gentle scenic contrast, with no glaring highlights. " if tone else
                "Subtle muted ink blue, teal, stone grey and restrained amber, low saturation and very low tonal contrast, dim light, no bright highlights. ")
+    guidance = ERA_GUIDANCE.get(era.casefold(),
+        f"The established world era is {era}. Use clothing, architecture, materials and technology appropriate to that era and the described scene. ")
+    genre = "fantasy " if fantasy_era else ""
     return (
-        opening + f"Paint a very wide shallow illustrated fantasy panorama of {environment}. " + tone +
+        guidance + "Preserve any fantastical machines, constructs or other exceptional elements explicitly described in this world. " +
+        opening + f"Paint a very wide shallow illustrated {genre}panorama of {environment}. " + tone +
         f"{mood.capitalize()} atmosphere. Recognisable distant scenery, soft painterly forms and shaded depth. "
         "Place the horizon and major landmarks in the upper quarter, with restrained framing at the outer edges. "
         "The lower three quarters and central reading area are a dark reading area, quiet low-contrast shadow with subtle visible "
