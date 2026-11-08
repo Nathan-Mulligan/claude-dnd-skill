@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import json
 import os
 import re
 import secrets
 import shlex
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -27,6 +30,26 @@ PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 ALLOWED_PROVIDERS = {"qwen", "codex", "claude"}
 CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
+SESSION_LOCK = threading.RLock()
+HANDOFF_TIMEOUT = 180
+_handoff_lock = threading.Lock()
+_handoff = {"status": "idle", "message": ""}
+
+
+def handoff_state() -> dict:
+    with _handoff_lock:
+        return dict(_handoff)
+
+
+def handoff_busy() -> bool:
+    return handoff_state()["status"] in {"saving", "starting"}
+
+
+def set_handoff(status: str, message: str, **details) -> None:
+    with _handoff_lock:
+        _handoff.clear()
+        _handoff.update(status=status, message=message, **details)
+
 
 
 def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess[str]:
@@ -41,7 +64,8 @@ def running() -> bool:
 
 def read_meta() -> dict:
     try:
-        return json.loads(META_FILE.read_text(encoding="utf-8"))
+        data = json.loads(META_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
@@ -62,7 +86,7 @@ def output() -> str:
 
 def notify_display(route: str, payload: dict) -> bool:
     try:
-        payload = payload | {"campaign": read_meta().get("campaign")}
+        payload = {"campaign": read_meta().get("campaign")} | payload
         token_file = RUNTIME / ".token"
         token = token_file.read_text(encoding="utf-8").strip() if token_file.is_file() else ""
         urllib.request.urlopen(urllib.request.Request(
@@ -78,13 +102,20 @@ def notify_party_consumed(reply: str | None = None) -> None:
 
 
 def deliver_party_input() -> bool:
+    with SESSION_LOCK:
+        if handoff_busy():
+            return False
+        return _deliver_party_input()
+
+
+def _deliver_party_input() -> bool:
     if not running():
         return False
     meta = read_meta()
     queue = RUNTIME / ".input_queue"
     claim = RUNTIME / ".portal-input-claim"
     try:
-        started_at = float(meta.get("started_at", 0))
+        started_at = float(meta.get("input_started_at", meta.get("started_at", 0)))
     except (TypeError, ValueError):
         started_at = 0
     if claim.exists() and claim.stat().st_mtime < started_at:
@@ -156,6 +187,8 @@ def initial_prompt(mode: str, name: str, description: str) -> str:
         f"Read this repository's D&D skill and follow the /dm:dnd load procedure for campaign {name}. "
         "Reconstruct state from the saved campaign files before narrating. The local browser display "
         "is already running at http://127.0.0.1:5001; reuse it without restarting or opening a tab. "
+        "If the display already contains narration for this campaign, keep it and its current scene without clearing or replaying it. "
+        "If the display is empty, restore the saved scene. "
         "Send any setup question to the display with send.py --setup-question before waiting; Party Input Everybody "
         "answers the question. "
         f"My note for this session is: {description or 'Continue from where we stopped.'}"
@@ -179,12 +212,17 @@ def model_args(provider: str, mode: str, name: str, description: str) -> list[st
     return args
 
 
-def prepare_display(name: str) -> None:
+def prepare_display(name: str, reset: bool = True) -> None:
     base = "http://127.0.0.1:5001"
     with urllib.request.urlopen(base + "/health", timeout=5) as response:
         health = json.load(response)
     if health.get("data_root") != str(DATA_ROOT):
         raise ValueError("Display uses a different campaign data root")
+    expected = str(DATA_ROOT / "campaigns" / name / "session_tail.json")
+    if not reset and health.get("campaign") == name:
+        if health.get("tail_path") != expected:
+            raise ValueError("Display did not select the requested campaign")
+        return
     token_file = RUNTIME / ".token"
     token = token_file.read_text(encoding="utf-8").strip() if token_file.is_file() else ""
     headers = {"Content-Type": "application/json", "X-DND-Token": token}
@@ -195,37 +233,67 @@ def prepare_display(name: str) -> None:
             pass
     with urllib.request.urlopen(base + "/health", timeout=5) as response:
         selected = json.load(response)
-    expected = str(DATA_ROOT / "campaigns" / name / "session_tail.json")
     if selected.get("campaign") != name or selected.get("tail_path") != expected:
         raise ValueError("Display did not select the requested campaign")
 
 
-def start_session(provider: str, mode: str, name: str, description: str) -> tuple[bool, str]:
+def selection_error(provider: str, mode: str, name: str, description: str) -> str | None:
     if provider not in ALLOWED_PROVIDERS or mode not in {"new", "resume"}:
-        return False, "Choose a model and New or Resume."
+        return "Choose a model and New or Resume."
     if provider == "codex" and not CODEX_ENABLED:
-        return False, "Codex is disabled on this M5. Choose Qwen or remove the DND_PORTAL_ENABLE_CODEX=0 override."
+        return "Codex is disabled on this M5. Choose Qwen or remove the DND_PORTAL_ENABLE_CODEX=0 override."
     if not NAME_RE.fullmatch(name) or name in {".", ".."}:
-        return False, "Campaign name must use letters, numbers, dots, dashes or underscores."
+        return "Campaign name must use letters, numbers, dots, dashes or underscores."
+    try:
+        campaign_path(name)
+    except ValueError as error:
+        return str(error)
     if len(description) > 3000:
-        return False, "Campaign description is too long."
+        return "Campaign description is too long."
     existing = name in campaigns()
     if mode == "new" and existing:
-        return False, "That campaign already exists. Choose Resume or another name."
+        return "That campaign already exists. Choose Resume or another name."
     if mode == "resume" and not existing:
-        return False, "Saved campaign not found on the M5."
+        return "Saved campaign not found on the M5."
+    return None
+
+
+def provider_error(provider: str) -> str | None:
+    installed = run("bash", "-c", 'command -v "$1" >/dev/null', "dnd-provider-check", provider)
+    if installed.returncode:
+        return f"The selected DM ({provider}) is not installed. Choose another model."
+    if provider == "claude":
+        auth = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--claude-auth")
+        if auth.returncode:
+            return "Claude Code is signed out on the M5. Sign in there or choose Qwen or Codex."
+    return None
+
+
+def start_session(provider: str, mode: str, name: str, description: str) -> tuple[bool, str]:
+    error = selection_error(provider, mode, name, description)
+    if error:
+        return False, error
     if running():
         return False, "A model session is already running. Finish it before changing models or campaigns."
+    input_started_at = None
+    previous = read_meta()
+    if mode == "resume" and previous.get("campaign") == name:
+        try:
+            input_started_at = float(previous.get("input_started_at", previous["started_at"]))
+            for pending in (RUNTIME / ".input_queue", RUNTIME / ".portal-input-claim"):
+                if pending.is_symlink() or (pending.exists() and pending.stat().st_size and pending.stat().st_mtime < input_started_at):
+                    return False, "An older reply cannot be assigned to this campaign safely. Your reply was kept; recover it before resuming."
+        except (OSError, KeyError, TypeError, ValueError):
+            return False, "A pending reply could not be verified. Your reply was kept; recover it before resuming."
     try:
-        if provider == "claude":
-            auth = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--claude-auth")
-            if auth.returncode:
-                return False, "Claude Code is signed out on the M5. Sign in there or choose Qwen or Codex."
+        error = provider_error(provider)
+        if error:
+            return False, error
         service = run("env", "DND_PORTAL_START=1", "bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", provider, timeout=60)
         if service.returncode:
             return False, (service.stderr or service.stdout or "M5 services did not start.").strip()[-800:]
         try:
-            prepare_display(name)
+            prepare_display(name, reset=mode == "new")
         except (OSError, ValueError):
             return False, "Could not prepare a clean display for this campaign. No model session was started."
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
@@ -238,10 +306,223 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False, "The M5 model or service did not respond. Check the local service logs."
     RUNTIME.mkdir(parents=True, exist_ok=True)
-    META_FILE.write_text(json.dumps({"provider": provider, "mode": mode, "campaign": name,
-                                     "started_at": time.time()}), encoding="utf-8")
+    metadata = {"provider": provider, "mode": mode, "campaign": name, "started_at": time.time()}
+    if input_started_at is not None:
+        metadata["input_started_at"] = input_started_at
+    META_FILE.write_text(json.dumps(metadata), encoding="utf-8")
     notify_party_consumed()
     return True, "Model session started. Answer its setup questions below."
+
+
+def campaign_path(name: str) -> Path:
+    if not NAME_RE.fullmatch(name) or name in {".", ".."}:
+        raise ValueError("Invalid campaign name")
+    folder = DATA_ROOT.resolve() / "campaigns" / name
+    if folder.is_symlink() or folder.resolve().parent != DATA_ROOT.resolve() / "campaigns":
+        raise ValueError("Campaign directory must stay inside the campaign data root")
+    return folder
+
+
+def handoff_paths(token: str) -> tuple[Path, Path]:
+    if not re.fullmatch(r"[0-9a-f]{32}", token):
+        raise ValueError("Invalid handoff token")
+    folder = RUNTIME / "handoffs"
+    if RUNTIME.is_symlink() or folder.is_symlink():
+        raise ValueError("Handoff directory cannot be a symbolic link")
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if folder.resolve().parent != RUNTIME.resolve():
+        raise ValueError("Handoff directory is outside the display runtime")
+    paths = (folder / f"{token}.request.json", folder / f"{token}.ack.json")
+    if any(path.is_symlink() for path in paths):
+        raise ValueError("Handoff files cannot be symbolic links")
+    return paths
+
+
+def write_private_json(path: Path, data: dict) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump(data, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def session_identity(meta: dict) -> tuple:
+    return tuple(meta.get(key) for key in ("campaign", "provider", "started_at"))
+
+
+def tmux_identity() -> str:
+    result = run("tmux", "display-message", "-p", "-t", f"={SESSION}:", "#{session_id}")
+    identity = result.stdout.strip()
+    if result.returncode or not re.fullmatch(r"\$[0-9]+", identity):
+        raise ValueError("Could not identify the active DM session")
+    return identity
+
+
+def checkpoint_files(name: str, requested_at_ns: int) -> dict:
+    folder = campaign_path(name)
+    required = {"state.md", "session-log.md"}
+    paths = list(folder.glob("*.md")) + list((folder / "characters").glob("*.md"))
+    if (folder / "graph.json").exists():
+        paths.append(folder / "graph.json")
+    files = {}
+    for path in paths:
+        relative = path.relative_to(folder).as_posix()
+        if path.is_symlink() or not path.resolve().is_relative_to(folder):
+            raise ValueError("Checkpoint files must stay inside their campaign")
+        before = path.stat()
+        if relative in required and (before.st_size == 0 or before.st_mtime_ns < requested_at_ns):
+            raise ValueError("The DM has not saved a fresh state and session log yet")
+        hasher = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                hasher.update(chunk)
+        after = path.stat()
+        if (before.st_mtime_ns, before.st_size) != (after.st_mtime_ns, after.st_size):
+            raise ValueError("Campaign files are still changing; wait for the save to finish")
+        files[relative] = hasher.hexdigest()
+    if not required.issubset(files):
+        raise ValueError("The campaign needs a saved state and session log before changing models")
+    return files
+
+
+def read_handoff_json(path: Path) -> dict:
+    if (RUNTIME.is_symlink() or path.parent.is_symlink() or path.is_symlink() or
+            path.parent.resolve().parent != RUNTIME.resolve() or path.stat().st_size > 131072):
+        raise ValueError("Invalid handoff file")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("Invalid handoff data")
+    return data
+
+
+def acknowledge_handoff(token: str) -> None:
+    request_path, ack_path = handoff_paths(token)
+    pending = read_handoff_json(request_path)
+    if pending.get("token") != token or session_identity(read_meta()) != tuple(pending.get("session", [])):
+        raise ValueError("The active campaign changed before this checkpoint")
+    name = pending.get("campaign", "")
+    files = checkpoint_files(name, pending["requested_at_ns"])
+    temporary = ack_path.with_suffix(".writing")
+    written = False
+    try:
+        write_private_json(temporary, {"token": token, "campaign": name, "complete": True, "files": files})
+        written = True
+        if ack_path.exists() or ack_path.is_symlink():
+            raise ValueError("This checkpoint already has an acknowledgement")
+        temporary.replace(ack_path)
+    finally:
+        if written and temporary.exists() and not temporary.is_symlink():
+            temporary.unlink()
+
+
+def send_checkpoint_request(prompt: str) -> None:
+    literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", prompt)
+    if literal.returncode:
+        raise ValueError("Could not ask the current DM to save")
+    time.sleep(0.25)
+    probe = run("tmux", "capture-pane", "-pt", f"{SESSION}:0.0", "-S", "-80")
+    visible = re.sub(r"\s+", "", probe.stdout)
+    tail = re.sub(r"\s+", "", prompt[-160:])
+    if probe.returncode or (tail not in visible and not re.search(r"pasted (?:text|content)", probe.stdout, re.I)):
+        raise ValueError("The save request was not visible in the DM composer; it was not submitted")
+    enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter")
+    if enter.returncode:
+        raise ValueError("The save request could not be submitted")
+
+
+def queued_party_input() -> bool:
+    for path in (RUNTIME / ".input_queue", RUNTIME / ".portal-input-claim"):
+        try:
+            if path.stat().st_size:
+                return True
+        except FileNotFoundError:
+            pass
+    return False
+
+
+def perform_handoff(provider: str, mode: str, name: str, description: str,
+                    previous: dict, identity: str, token: str) -> None:
+    stopped = False
+    leased = False
+    request_path = ack_path = None
+    try:
+        old_campaign = previous["campaign"]
+        old_path = campaign_path(old_campaign)
+        request_path, ack_path = handoff_paths(token)
+        requested_at_ns = time.time_ns()
+        pending = {"token": token, "campaign": old_campaign, "session": list(session_identity(previous)),
+                   "requested_at_ns": requested_at_ns}
+        write_private_json(request_path, pending)
+        command = shlex.join(["env", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", sys.executable,
+                              str(REPO / "scripts/campaign_portal.py"), "--acknowledge-handoff", token])
+        prompt = (
+            f"Finish your response, then quietly save campaign {old_campaign} in {old_path}. "
+            "Checkpoint state.md, session-log.md, all character sheets and graph using the D&D save procedure. "
+            "Rewrite state.md and session-log.md even if unchanged. Do not narrate or ask a question. "
+            f"After every save finishes, run {command}. If saving fails, do not acknowledge. "
+            "Then stop generating and wait for the portal to change models."
+        )
+        with SESSION_LOCK:
+            if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
+                raise ValueError("The active DM changed before saving began")
+            error = selection_error(provider, mode, name, description) or provider_error(provider)
+            if error:
+                raise ValueError(error)
+            if not notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True}):
+                raise ValueError("The display has pending replies or could not pause input safely")
+            leased = True
+            send_checkpoint_request(prompt)
+        deadline = time.monotonic() + HANDOFF_TIMEOUT
+        while time.monotonic() < deadline:
+            if session_identity(read_meta()) != session_identity(previous) or not running() or tmux_identity() != identity:
+                raise ValueError("The active DM session changed before its save was confirmed")
+            if ack_path.exists():
+                ack = read_handoff_json(ack_path)
+                if ack.get("token") != token or ack.get("campaign") != old_campaign or ack.get("complete") is not True:
+                    raise ValueError("The save acknowledgement did not match this campaign")
+                if ack.get("files") != checkpoint_files(old_campaign, requested_at_ns):
+                    raise ValueError("Campaign files changed after the checkpoint acknowledgement")
+                break
+            time.sleep(0.25)
+        else:
+            raise ValueError("The DM did not confirm a complete save in time")
+        with SESSION_LOCK:
+            if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
+                raise ValueError("The active DM changed before the model switch")
+            if queued_party_input():
+                raise ValueError("A party reply arrived while saving. Let the current DM answer it before changing models")
+            error = selection_error(provider, mode, name, description) or provider_error(provider)
+            if error:
+                raise ValueError(error)
+            if not notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True}):
+                raise ValueError("Could not keep player input paused safely for the model change")
+            if ack.get("files") != checkpoint_files(old_campaign, requested_at_ns):
+                raise ValueError("Campaign files changed before the model switch. Save again before changing DMs")
+            set_handoff("starting", "Campaign saved. Starting the selected DM…", campaign=name, provider=provider)
+            result = run("tmux", "kill-session", "-t", identity)
+            if result.returncode:
+                raise ValueError("Could not close the saved DM session")
+            stopped = True
+            if running():
+                raise ValueError("Another DM session is active; the replacement was not started")
+            ok, message = start_session(provider, mode, name, description)
+            if not ok:
+                raise ValueError(message)
+        set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        suffix = (" Your campaign is saved. Reopen it to try the new DM again." if stopped else
+                  " The original DM was not stopped.")
+        set_handoff("failed", str(error) + suffix, campaign=name, provider=provider)
+    finally:
+        if leased:
+            notify_display("/campaign-handoff", {"campaign": previous["campaign"], "token": token, "active": False})
+        try:
+            owned_paths = handoff_paths(token)
+        except (OSError, ValueError):
+            owned_paths = ()
+        for path in (request_path, ack_path):
+            if path in owned_paths and not path.is_symlink():
+                path.unlink(missing_ok=True)
 
 
 def create_app() -> Flask:
@@ -251,7 +532,7 @@ def create_app() -> Flask:
         raise ValueError("Invalid DND_PORTAL_PORT")
     app = Flask(__name__, template_folder=str(REPO / "skills/dnd/display/templates"))
     token = secrets.token_urlsafe(32)
-    lock = threading.Lock()
+    lock = SESSION_LOCK
     last_browser_poll: float | None = None
 
     @app.before_request
@@ -283,7 +564,7 @@ def create_app() -> Flask:
         last_browser_poll = time.monotonic()
         active = running()
         return jsonify(active=active, meta=read_meta() if active else {}, output=output() if active else "",
-                       campaigns=campaigns(), codex_enabled=CODEX_ENABLED)
+                       campaigns=campaigns(), codex_enabled=CODEX_ENABLED, handoff=handoff_state())
 
     @app.post("/api/start")
     def start():
@@ -295,8 +576,62 @@ def create_app() -> Flask:
         if mode == "new" and not name:
             name = datetime.now().strftime("adventure-%Y%m%d-%H%M%S")
         with lock:
+            if handoff_busy():
+                return jsonify(ok=False, message="The current campaign is being saved. Wait for the model change to finish."), 409
             ok, message = start_session(provider, mode, name, description)
         return jsonify(ok=ok, message=message, campaign=name if ok else None), 200 if ok else 409
+
+    @app.post("/api/switch")
+    def switch():
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify(ok=False, message="Choose a campaign and model."), 400
+        provider = str(data.get("provider", ""))
+        mode = str(data.get("mode", ""))
+        name = str(data.get("name", "")).strip()
+        description = str(data.get("description", "")).strip()
+        if mode == "new" and not name:
+            name = datetime.now().strftime("adventure-%Y%m%d-%H%M%S")
+        with lock:
+            if handoff_busy():
+                return jsonify(ok=False, message="A campaign save and model change is already in progress."), 409
+            error = selection_error(provider, mode, name, description)
+            if error:
+                return jsonify(ok=False, message=error), 409
+            if not running():
+                ok, message = start_session(provider, mode, name, description)
+                if ok:
+                    set_handoff("complete", message, campaign=name, provider=provider)
+                return jsonify(ok=ok, message=message, campaign=name if ok else None), 200 if ok else 409
+            previous = read_meta()
+            if mode == "new" and previous.get("campaign") == name:
+                return jsonify(ok=False, message="This campaign is already in use. Choose Resume to change its DM, or choose a new name."), 409
+            if mode == "resume" and previous.get("campaign") == name and previous.get("provider") == provider:
+                return jsonify(ok=True, message="The selected DM is already running this campaign.", campaign=name,
+                               continuing=True), 200
+            try:
+                old_campaign = previous.get("campaign")
+                if not isinstance(old_campaign, str) or previous.get("provider") not in ALLOWED_PROVIDERS:
+                    raise ValueError("Unknown active campaign")
+                campaign_path(old_campaign)
+                identity = tmux_identity()
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                return jsonify(ok=False, message="Could not identify the current campaign safely. Its DM was left running."), 409
+            if queued_party_input():
+                return jsonify(ok=False, message="A party reply is still queued. Let the current DM answer it before changing models."), 409
+            try:
+                error = provider_error(provider)
+            except (OSError, subprocess.TimeoutExpired):
+                error = "Could not check whether the selected DM is available. The current DM was left running."
+            if error:
+                return jsonify(ok=False, message=error), 409
+            token = secrets.token_hex(16)
+            set_handoff("saving", "Saving the current campaign before changing DMs…", campaign=name, provider=provider)
+            worker = threading.Thread(target=perform_handoff,
+                                      args=(provider, mode, name, description, previous, identity, token),
+                                      daemon=True, name="dnd-model-handoff")
+            worker.start()
+        return jsonify(ok=True, message="Saving the current campaign before changing DMs…", campaign=name), 202
 
     @app.post("/api/send")
     def send():
@@ -305,6 +640,8 @@ def create_app() -> Flask:
         if not text or len(text) > 3000 or any(c in text for c in "\r\n\x00"):
             return jsonify(ok=False, message="Enter one reply, up to 3000 characters."), 400
         with lock:
+            if handoff_busy():
+                return jsonify(ok=False, message="The campaign is being saved. Your reply was not sent; wait for the model change."), 409
             if not running():
                 return jsonify(ok=False, message="No model session is running."), 409
             literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", text)
@@ -320,5 +657,15 @@ def create_app() -> Flask:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--acknowledge-handoff", metavar="TOKEN")
+    args = parser.parse_args()
+    if args.acknowledge_handoff:
+        try:
+            acknowledge_handoff(args.acknowledge_handoff)
+        except (OSError, ValueError) as error:
+            raise SystemExit(f"Checkpoint not acknowledged: {error}")
+        print("Campaign checkpoint verified and acknowledged.")
+        raise SystemExit(0)
     threading.Thread(target=party_input_loop, daemon=True, name="dnd-party-input").start()
     create_app().run(host="127.0.0.1", port=PORT, debug=False, threaded=True)

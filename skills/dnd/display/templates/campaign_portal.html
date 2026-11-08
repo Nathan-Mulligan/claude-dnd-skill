@@ -6,124 +6,201 @@
   <title>D&D Campaign</title>
   <link rel="icon" type="image/png" href="/icon.png">
   <style>
-    :root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #110e1b; color: #f4edda; }
-    * { box-sizing: border-box; }
-    body { margin: 0; }
-    header { display: flex; align-items: center; gap: 14px; padding: 14px 24px; border-bottom: 1px solid #49385d; background: #1b1428; }
-    header img { width: 42px; height: 42px; }
-    h1 { font-size: 20px; margin: 0; }
-    main { display: grid; grid-template-columns: minmax(340px, 42%) minmax(420px, 1fr); min-height: calc(100vh - 72px); }
-    section { padding: 22px; }
-    .control { border-right: 1px solid #49385d; }
-    h2 { font-size: 18px; margin: 0 0 18px; }
-    label { display: block; margin: 14px 0 6px; color: #d6c6e6; }
-    select, input, textarea, button { font: inherit; }
-    select, input, textarea { width: 100%; padding: 11px; border: 1px solid #5a456d; border-radius: 8px; background: #21182f; color: #fff; }
-    textarea { resize: vertical; min-height: 100px; }
-    button { border: 0; border-radius: 8px; padding: 11px 16px; background: #a36ce3; color: #150d22; font-weight: 700; cursor: pointer; }
-    button:disabled { opacity: .5; cursor: default; }
-    .muted { color: #c7b5d5; font-size: 14px; line-height: 1.45; }
-    .row { display: flex; gap: 10px; align-items: end; }
-    .row > * { flex: 1; }
-    .row button { flex: 0 0 auto; }
-    #status { min-height: 2em; color: #c9f59a; }
-    #status.error { color: #ffac9d; }
-    #terminal { background: #090a12; color: #ddd8e6; min-height: 260px; max-height: 45vh; overflow: auto; padding: 15px; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #49385d; border-radius: 8px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
-    #reply { min-height: 74px; }
-    iframe { display: block; width: 100%; height: 48vh; border: 1px solid #49385d; border-radius: 8px; background: #0d0a14; }
-    a { color: #cba6ff; }
-    @media (max-width: 900px) { main { display: block; } .control { border-right: 0; border-bottom: 1px solid #49385d; } }
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; background:#0b1117; color:#f2e5c8; }
+    * { box-sizing:border-box; }
+    body { margin:0; height:100dvh; overflow:hidden; }
+    button, input, select, textarea { font:inherit; }
+    button { border:1px solid #b28d4e; border-radius:7px; padding:11px 16px; background:#d8b675; color:#1d170f; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:default; }
+    button.secondary { background:transparent; color:#ead7ae; border-color:#685333; }
+    :focus-visible { outline:3px solid #edcf87; outline-offset:3px; }
+    #display { display:block; width:100%; height:100%; border:0; background:#0b1117; }
+    #campaign-menu { position:fixed; z-index:2; top:14px; right:16px; display:flex; align-items:center; gap:12px; max-width:calc(100% - 32px); padding:6px 8px 6px 15px; border:1px solid #685333; border-radius:10px; background:rgba(13,15,17,.94); box-shadow:0 4px 20px #0006; }
+    #session-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:#d5c9b2; }
+    #open-campaign { padding:7px 11px; font-size:13px; white-space:nowrap; }
+    dialog { width:min(560px, calc(100vw - 32px)); max-height:calc(100dvh - 40px); margin:auto; padding:0; border:1px solid #80643c; border-radius:15px; background:#171a1e; color:#f2e5c8; box-shadow:0 25px 100px #000a; }
+    dialog::backdrop { background:rgba(3,7,12,.78); backdrop-filter:blur(6px); }
+    .dialog-body { padding:28px; }
+    .heading { display:flex; gap:14px; align-items:center; padding-right:24px; }
+    .heading img { width:44px; height:44px; }
+    h1 { margin:0; font-size:24px; font-weight:600; }
+    .intro { margin:16px 0 22px; color:#bdb7ac; font-size:14px; line-height:1.5; }
+    #close-campaign { position:absolute; right:12px; top:12px; padding:4px 9px; font-size:22px; border:0; background:transparent; color:#c7bba4; }
+    label { display:block; margin:16px 0 7px; color:#d2c3a9; font-size:13px; }
+    input, select, textarea { display:block; width:100%; padding:11px 12px; border:1px solid #514b40; border-radius:7px; background:#0e1217; color:#f2e5c8; }
+    textarea { min-height:90px; resize:vertical; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:22px; }
+    #continue { margin-right:auto; }
+    #status { margin:16px 0 0; min-height:1.5em; color:#d6d8b2; font-size:14px; line-height:1.5; }
+    #status.error { color:#ffb2a7; }
+    details { margin-top:18px; border-top:1px solid #38362f; padding-top:12px; color:#a69f94; font-size:12px; }
+    summary { cursor:pointer; }
+    #terminal { margin:12px 0 0; max-height:180px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.5 ui-monospace, monospace; color:#c5c1b9; }
+    [hidden] { display:none !important; }
+    @media (max-width:520px) { .dialog-body { padding:23px 20px; } .grid { grid-template-columns:1fr; gap:0; } #session-label { max-width:44vw; } }
   </style>
 </head>
 <body>
-  <header><img src="/icon.png" alt=""><h1>D&D Campaign on M5</h1></header>
-  <main>
-    <section class="control">
-      <h2>Start or resume</h2>
-      <p class="muted">Choose your DM. A new campaign begins with a clean save; your description becomes its starting idea.</p>
-      <label for="provider">Model</label>
-      <select id="provider"><option value="qwen">Qwen 35B MLX (local)</option><option id="codex-option" value="codex">Codex GPT Terra (medium)</option><option value="claude">Claude Code</option></select>
-      <label for="mode">Campaign</label>
-      <select id="mode"><option value="new">New campaign</option><option value="resume">Resume saved campaign</option></select>
-      <div id="new-fields">
-        <label for="name">Name (optional)</label>
-        <input id="name" maxlength="60" placeholder="A name is made if you leave this empty" autocomplete="off">
-      </div>
-      <div id="resume-fields" hidden>
-        <label for="saved">Saved campaign</label>
-        <select id="saved"></select>
-      </div>
-      <label for="description">What kind of campaign would you like?</label>
-      <textarea id="description" maxlength="3000" placeholder="Type start, or describe the world, characters and tone you want."></textarea>
-      <p><button id="start">Start campaign</button></p>
-      <p id="status" role="status"></p>
-      <p class="muted">One DM runs at a time. Finish and save the current session before changing models. Claude requires sign-in on the M5.</p>
-      <h2>DM conversation</h2>
-      <pre id="terminal" aria-live="polite">No model session is running.</pre>
-      <label for="reply">Reply to the DM</label>
-      <div class="row"><textarea id="reply" maxlength="3000" placeholder="Answer a setup question or describe your next action." disabled></textarea><button id="send" disabled>Send</button></div>
-      <p class="muted">This conversation stays on the M5. The cinematic display on the right shows the story and narration.</p>
-    </section>
-    <section>
-      <h2>Cinematic display · <a href="http://127.0.0.1:5001/" target="_blank" rel="noopener">Open full screen</a></h2>
-      <iframe id="display" src="http://127.0.0.1:5001/" title="D&D cinematic display"></iframe>
-    </section>
-  </main>
+  <iframe id="display" src="http://127.0.0.1:5001/?style=illustrated-vellum" title="D&D cinematic display" allow="autoplay; fullscreen"></iframe>
+  <nav id="campaign-menu" aria-label="Campaign controls">
+    <span id="session-label">Your next adventure</span>
+    <button id="open-campaign" class="secondary" type="button">Campaign &amp; model</button>
+  </nav>
+  <dialog id="campaign-dialog" aria-labelledby="dialog-title" aria-describedby="dialog-description">
+    <div class="dialog-body">
+      <button id="close-campaign" type="button" aria-label="Return to the display">×</button>
+      <div class="heading"><img src="/icon.png" alt=""><h1 id="dialog-title">Choose your adventure</h1></div>
+      <p class="intro" id="dialog-description">Start a new story, return to a saved campaign, or choose a different Dungeon Master.</p>
+      <form id="campaign-form">
+        <div class="grid">
+          <div><label for="mode">Campaign</label><select id="mode"><option value="new">New campaign</option><option value="resume">Load campaign</option></select></div>
+          <div><label for="provider">Dungeon Master</label><select id="provider"><option value="qwen">Qwen · local</option><option id="codex-option" value="codex">Codex</option><option value="claude">Claude</option></select></div>
+        </div>
+        <div id="new-fields"><label for="name">Campaign name · optional</label><input id="name" maxlength="60" placeholder="Name your adventure" autocomplete="off"></div>
+        <div id="resume-fields" hidden><label for="saved">Saved campaign</label><select id="saved"></select></div>
+        <label for="description" id="description-label">What kind of adventure?</label>
+        <textarea id="description" maxlength="3000" placeholder="Mountains, friendly dragons, and a missing golden diamond…"></textarea>
+        <div class="actions"><button id="continue" class="secondary" type="button" hidden>Continue current campaign</button><button id="start" type="submit" disabled>Start campaign</button></div>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+      <details><summary>DM console</summary><pre id="terminal">No model session is running.</pre></details>
+    </div>
+  </dialog>
   <script>
     const token = {{ token|tojson }};
     const $ = id => document.getElementById(id);
+    const dialog = $('campaign-dialog');
     const api = async (path, method='GET', body) => {
-      const response = await fetch(path, { method, headers: {'X-DND-Portal-Token': token, 'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined });
+      const response = await fetch(path, {method, headers:{'X-DND-Portal-Token':token, 'Content-Type':'application/json'}, body:body ? JSON.stringify(body) : undefined});
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || data.error || 'Request failed');
       return data;
     };
-    const message = (text, error=false) => { $('status').textContent = text; $('status').classList.toggle('error', error); };
-    $('mode').addEventListener('change', () => {
+    let state = null;
+    let initialized = false;
+    let busy = false;
+    let switching = false;
+    let keepDisplayDuringSwitch = false;
+    let refreshing = false;
+    const providerNames = {qwen:'Qwen', codex:'Codex', claude:'Claude'};
+    const message = (text, error=false) => { $('status').textContent=text; $('status').classList.toggle('error', error); };
+    const selectedName = () => $('mode').value === 'new' ? $('name').value.trim() : $('saved').value;
+    const continuing = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider;
+    function updateControls() {
       const resume = $('mode').value === 'resume';
       $('new-fields').hidden = resume;
       $('resume-fields').hidden = !resume;
-    });
-    let active = false;
-    async function refresh() {
-      try {
-        const data = await api('/api/state');
-        $('codex-option').disabled = !data.codex_enabled;
-        $('codex-option').textContent = data.codex_enabled ? 'Codex GPT Terra (medium)' : 'Codex (unavailable on this M5)';
-        const oldValue = $('saved').value;
-        $('saved').replaceChildren(...data.campaigns.map(name => new Option(name, name)));
-        if (data.campaigns.includes(oldValue)) $('saved').value = oldValue;
-        active = data.active;
-        $('start').disabled = active;
-        $('reply').disabled = !active;
-        $('send').disabled = !active;
-        const terminal = $('terminal');
-        if (terminal.textContent !== data.output && active) {
-          terminal.textContent = data.output || 'Model starting…';
-          terminal.scrollTop = terminal.scrollHeight;
-        } else if (!active) terminal.textContent = 'No model session is running.';
-      } catch (error) { message(error.message, true); }
+      $('description-label').textContent = resume ? 'Anything to tell your DM? · optional' : 'What kind of adventure?';
+      $('description').placeholder = resume ? 'A note for the next part of your adventure…' : 'Mountains, friendly dragons, and a missing golden diamond…';
+      $('continue').hidden = !(state && state.active) || continuing();
+      $('continue').disabled = busy;
+      $('close-campaign').disabled = busy;
+      for (const id of ['mode', 'provider', 'name', 'saved', 'description']) $(id).disabled = busy;
+      $('start').disabled = busy || !state || (resume && !selectedName());
+      $('start').textContent = continuing() ? 'Continue campaign' : state && state.active ? 'Save & switch' : resume ? 'Load campaign' : 'Start campaign';
     }
-    $('start').addEventListener('click', async () => {
-      $('start').disabled = true;
-      message('Starting M5 services and model…');
-      try {
-        const mode = $('mode').value;
-        const data = await api('/api/start', 'POST', {provider: $('provider').value, mode, name: mode === 'new' ? $('name').value : $('saved').value, description: $('description').value});
-        message(`${data.message} Campaign: ${data.campaign}`);
-        $('display').src = 'http://127.0.0.1:5001/?audio=on';
-        await refresh();
-      } catch (error) { message(error.message, true); $('start').disabled = false; }
-    });
-    $('send').addEventListener('click', async () => {
-      const text = $('reply').value.trim();
-      if (!text) return;
-      $('send').disabled = true;
-      try { await api('/api/send', 'POST', {text}); $('reply').value = ''; await refresh(); }
+    function closeDialog() {
+      if (busy) return;
+      dialog.close();
+      $('open-campaign').focus();
+    }
+    function enterCampaign() {
+      $('display').src = 'http://127.0.0.1:5001/?style=illustrated-vellum&audio=on';
+      closeDialog();
+    }
+    function showDialog() {
+      if (!dialog.open) dialog.showModal();
+      refresh();
+    }
+    function updateState(data) {
+      state = {...data, meta:data.meta || {}};
+      $('codex-option').disabled = !data.codex_enabled;
+      $('codex-option').textContent = data.codex_enabled ? 'Codex' : 'Codex · unavailable';
+      const oldValue = $('saved').value;
+      const names = [...data.campaigns];
+      if (state.active && state.meta.campaign && !names.includes(state.meta.campaign)) names.unshift(state.meta.campaign);
+      const shownNames = Array.from($('saved').options, option => option.value);
+      if (shownNames.join('\0') !== names.join('\0')) $('saved').replaceChildren(...names.map(name => new Option(name, name)));
+      if (names.includes(oldValue)) $('saved').value=oldValue;
+      if (!initialized) {
+        if (state.active) {
+          $('mode').value='resume';
+          $('saved').value=state.meta.campaign;
+          if (providerNames[state.meta.provider]) $('provider').value=state.meta.provider;
+        } else if (names.length) $('mode').value='resume';
+        initialized=true;
+      }
+      $('session-label').textContent = state.active ? (state.meta.campaign || 'Adventure') + ' · ' + (providerNames[state.meta.provider] || 'DM') : 'Choose an adventure';
+      const terminal = $('terminal');
+      const output = state.active ? data.output || 'Your DM is starting…' : 'No model session is running.';
+      if (terminal.textContent !== output) terminal.textContent = output;
+      const handoff = data.handoff || {};
+      if (handoff.status === 'saving' || handoff.status === 'starting') {
+        switching=true;
+        busy=true;
+      }
+      if (switching) {
+        if (handoff.status === 'failed') {
+          switching=false;
+          busy=false;
+          message(handoff.message || 'The switch could not finish. You can try again.', true);
+        } else if (handoff.status === 'complete') {
+          switching=false;
+          busy=false;
+          message(handoff.message || 'Your campaign is ready.');
+          if (keepDisplayDuringSwitch) closeDialog();
+          else enterCampaign();
+        } else if (handoff.status === 'idle' || !handoff.status) {
+          switching=false;
+          busy=false;
+          message('The campaign controls reconnected. Check the current DM, then continue or try the switch again.', true);
+        } else message(handoff.message || 'Saving your campaign before switching…');
+      }
+      updateControls();
+    }
+    async function refresh() {
+      if (refreshing) return;
+      refreshing=true;
+      try { updateState(await api('/api/state')); }
       catch (error) { message(error.message, true); }
-      finally { $('send').disabled = !active; }
+      finally { refreshing=false; }
+    }
+    $('campaign-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      if (busy || !state) return;
+      if (continuing()) { closeDialog(); return; }
+      busy=true;
+      updateControls();
+      message(state.active ? 'Saving your campaign before switching…' : 'Getting your adventure ready…');
+      try {
+        const payload = {provider:$('provider').value, mode:$('mode').value, name:selectedName(), description:$('description').value};
+        if (state.active) {
+          keepDisplayDuringSwitch = payload.mode === 'resume' && payload.name === state.meta.campaign;
+          const data = await api('/api/switch', 'POST', payload);
+          if (data.continuing) {
+            busy=false;
+            closeDialog();
+          } else {
+            switching=true;
+            message(data.message || 'Saving your campaign before switching…');
+          }
+        } else {
+          const data = await api('/api/start', 'POST', payload);
+          busy=false;
+          message(data.message || 'Your adventure is ready.');
+          enterCampaign();
+        }
+        await refresh();
+      } catch (error) { busy=false; switching=false; message(error.message, true); updateControls(); }
     });
-    $('reply').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('send').click(); } });
+    $('continue').addEventListener('click', closeDialog);
+    $('open-campaign').addEventListener('click', showDialog);
+    $('close-campaign').addEventListener('click', closeDialog);
+    dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
+    dialog.addEventListener('close', () => $('open-campaign').focus());
+    for (const id of ['mode', 'provider', 'name', 'saved']) $(id).addEventListener('change', updateControls);
+    dialog.showModal();
     refresh();
     setInterval(refresh, 1200);
   </script>

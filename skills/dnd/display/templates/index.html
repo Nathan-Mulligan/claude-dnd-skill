@@ -7543,7 +7543,7 @@ function _renderPartyFeedback(state) {
   if (state.instance === _partyFeedbackInstance && state.revision < _partyFeedbackRevision) return;
   _partyFeedbackInstance = state.instance;
   _partyFeedbackRevision = state.revision;
-  const labels = {idle:'Ready for a new adventure', queued:'Reply queued for the DM', working:'DM is working…', responding:'DM response received', waiting:'Waiting for your reply', stopped:'DM session stopped'};
+  const labels = {idle:'Ready for a new adventure', queued:'Reply queued for the DM', working:'DM is working…', responding:'DM response received', waiting:'Waiting for your reply', stopped:'DM session stopped', saving:'Saving your campaign before changing the DM…'};
   const status = document.getElementById('dm-activity');
   status.dataset.state = state.status;
   status.textContent = labels[state.status] || labels.idle;

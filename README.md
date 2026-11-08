@@ -32,6 +32,24 @@ scripts/play-local.sh qwen --campaign my-campaign
 
 The launcher is a Bash script verified on macOS and Linux; native Windows launch is not verified.
 
+### Play in one browser window
+
+Run `bash scripts/start-campaign-portal.sh`, then open `http://127.0.0.1:5002/`.
+The Desktop app opens this same page. Its startup lightbox offers a new campaign,
+a saved campaign, and a DM model. The story fills the window after selection.
+Use **Campaign & model** to reopen the choices. **Continue campaign** keeps the
+current view, music and unfinished reply.
+
+Changing an active campaign's DM first requests a save. A local helper checks
+fresh state and session-log files and records hashes of the saved campaign.
+The portal checks those files again before stopping the original DM. Pending
+replies block the switch, and new replies wait until saving finishes. A failed
+save leaves the original DM running; a failed replacement can reopen the saved
+campaign. Switching models within the same campaign keeps its display in place.
+
+When resuming a stopped campaign, queued replies remain available to its new DM.
+A crash immediately after delivery can cause a reply to be delivered again.
+
 You run `/dm:dnd load my-campaign` in Claude Code. Claude becomes your DM — rolling dice, voicing NPCs, tracking HP and XP, and running combat. If you have a TV or tablet nearby, the **cinematic display companion** puts the narration on screen in real time — typewriter effect, atmospheric backgrounds that shift with the scene, a dynamic sky canvas, and a live party stat sidebar. Open it on any device on your network and everyone at the table can follow along. Players submit their actions from their phones; Claude picks them up automatically and runs the next turn.
 
 There are two ways to play, and they serve different needs:
