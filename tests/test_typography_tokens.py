@@ -9,7 +9,7 @@ TEMPLATES = Path(__file__).resolve().parents[1] / 'skills/dnd/display/templates'
 
 def test_component_typography_uses_shared_styles():
     violations = []
-    for name in ('index.html', 'campaign_portal.html', 'typography.html'):
+    for name in ('index.html', 'campaign_portal.html', 'typography.html', 'custom_select.html'):
         source = (TEMPLATES / name).read_text(encoding='utf-8')
         source = re.sub(r'/\*.*?\*/|<!--.*?-->', '', source, flags=re.S)
         for declaration in re.finditer(r'\b(font-size|font-family|font)\s*:\s*([^;}\n"<>]+)', source):

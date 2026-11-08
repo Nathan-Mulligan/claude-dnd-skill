@@ -189,6 +189,7 @@
       for (const id of ['mode', 'provider', 'name', 'saved', 'description']) $(id).disabled = busy;
       $('start').disabled = busy || !state || (resume && !selectedName());
       $('start').textContent = continuing() ? 'Continue campaign' : state && state.active ? (resume ? 'Save & switch' : 'Save & start new campaign') : resume ? 'Load campaign' : 'Create campaign & begin';
+      window.DndSelect?.refresh();
     }
     function closeDialog() {
       if (busy) return;
@@ -306,5 +307,6 @@
     refresh();
     setInterval(refresh, 1200);
   </script>
+{% include "custom_select.html" %}
 </body>
 </html>

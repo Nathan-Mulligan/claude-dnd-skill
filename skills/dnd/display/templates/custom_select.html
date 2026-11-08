@@ -1,0 +1,256 @@
+<style>
+  .dnd-select { display:inline-block; position:relative; min-width:0; max-width:100%; width:100%; font-size:var(--type-body); }
+  .dnd-select > select[hidden] { display:none !important; }
+  button.dnd-select-trigger {
+    display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; min-width:0;
+    padding:11px 12px; border:1px solid rgba(180,140,60,.35); border-radius:3px;
+    background:rgba(8,6,4,.94); background-image:none; color:#d4c4a0;
+    font-family:var(--font-heading); font-size:inherit; font-weight:400; line-height:1.4; letter-spacing:.04em;
+    text-align:left; cursor:pointer; box-shadow:none;
+  }
+  .dnd-select-trigger > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dnd-select-trigger::after { content:''; width:7px; height:7px; flex-shrink:0; margin:0 3px 4px 0; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg); }
+  .dnd-select-trigger[aria-expanded="true"] { border-color:#b49a60; background:rgba(180,140,60,.12); }
+  .dnd-select-trigger[aria-expanded="true"]::after { transform:rotate(225deg); margin-bottom:-3px; }
+  .dnd-select-trigger:disabled { opacity:.45; cursor:default; }
+  .dnd-select-trigger:focus-visible { outline:2px solid #edcf87; outline-offset:3px; }
+  #audio-controls .dnd-select, #phone-settings .dnd-select { font-size:var(--type-label); }
+  #audio-controls button.dnd-select-trigger { padding:6px 10px; }
+  #phone-settings .dnd-select { width:156px; }
+  #phone-settings button.dnd-select-trigger { padding:6px 10px; }
+  .dnd-select-menu {
+    position:fixed; inset:auto; box-sizing:border-box; margin:0; padding:5px; overflow-y:auto; overscroll-behavior:contain;
+    border:1px solid #8d723e; border-radius:3px; background:#0c0906; color:#d4c4a0;
+    font-family:var(--font-heading); font-size:inherit; font-weight:400; line-height:1.4; letter-spacing:.04em;
+    box-shadow:0 14px 38px rgba(0,0,0,.6), inset 0 0 0 1px rgba(180,140,60,.08); z-index:2147483647;
+    scrollbar-width:thin; scrollbar-color:#685333 transparent;
+  }
+  .dnd-select-menu:not(:popover-open) { display:none; }
+  .dnd-select-option { position:relative; padding:9px 32px 9px 11px; min-height:38px; border-left:2px solid transparent; border-radius:1px; overflow-wrap:anywhere; cursor:pointer; }
+  .dnd-select-option[aria-selected="true"] { color:#f1d58b; border-left-color:#b49a60; }
+  .dnd-select-option[aria-selected="true"]::after { content:''; position:absolute; right:12px; top:14px; width:5px; height:9px; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg); }
+  .dnd-select-option.is-active { background:rgba(180,140,60,.16); }
+  .dnd-select-option[aria-disabled="true"] { opacity:.4; cursor:default; }
+  :root[data-theme="light"] .dnd-select-menu { background:#f3ecdc; color:#493b25; border-color:#9d7e43; box-shadow:0 14px 38px rgba(35,25,10,.25); }
+  :root[data-theme="light"] .dnd-select-trigger { background:#f3ecdc; color:#493b25; }
+  :root[data-theme="light"] .dnd-select-option[aria-selected="true"] { color:#6b4b16; }
+  @media (prefers-color-scheme:light) {
+    :root:not([data-theme]) .dnd-select-menu, :root:not([data-theme]) .dnd-select-trigger { background:#f3ecdc; color:#493b25; }
+    :root:not([data-theme]) .dnd-select-option[aria-selected="true"] { color:#6b4b16; }
+  }
+  @media (forced-colors:active) {
+    .dnd-select-trigger, .dnd-select-menu { background:Canvas; color:CanvasText; border-color:ButtonText; }
+    .dnd-select-option.is-active { outline:1px solid Highlight; }
+    .dnd-select-option[aria-selected="true"] { color:Highlight; border-left-color:Highlight; }
+  }
+</style>
+<script>
+(() => {
+  if (typeof HTMLElement.prototype.showPopover !== 'function') return;
+  const controls = new Map();
+  let opened = null;
+  let serial = 0;
+
+  function close(restoreFocus = false) {
+    if (!opened) return;
+    const control = opened;
+    opened = null;
+    if (control.menu.matches(':popover-open')) control.menu.hidePopover();
+    control.button.setAttribute('aria-expanded', 'false');
+    control.button.removeAttribute('aria-activedescendant');
+    if (restoreFocus) control.button.focus();
+  }
+
+  function position(control) {
+    const rect = control.button.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const width = viewport?.width || innerWidth;
+    const height = viewport?.height || innerHeight;
+    const left = viewport?.offsetLeft || 0;
+    const top = viewport?.offsetTop || 0;
+    const below = top + height - rect.bottom - 14;
+    const above = rect.top - top - 14;
+    const upwards = below < 180 && above > below;
+    const room = Math.max(40, upwards ? above : below);
+    control.menu.style.width = Math.min(Math.max(rect.width, 170), width - 16) + 'px';
+    control.menu.style.maxHeight = Math.min(320, room) + 'px';
+    control.menu.style.left = Math.max(left + 8, Math.min(rect.left, left + width - control.menu.offsetWidth - 8)) + 'px';
+    control.menu.style.top = (upwards ? rect.top - control.menu.offsetHeight - 6 : rect.bottom + 6) + 'px';
+  }
+
+  function activate(control, index) {
+    const option = control.select.options[index];
+    if (!option || option.disabled || option.hidden) return;
+    control.active = index;
+    [...control.menu.children].forEach(item => item.classList.toggle('is-active', Number(item.dataset.index) === index));
+    const item = control.menu.querySelector(`[data-index="${index}"]`);
+    control.button.setAttribute('aria-activedescendant', item.id);
+    const top = item.offsetTop;
+    if (top < control.menu.scrollTop) control.menu.scrollTop = top;
+    else if (top + item.offsetHeight > control.menu.scrollTop + control.menu.clientHeight) control.menu.scrollTop = top + item.offsetHeight - control.menu.clientHeight;
+  }
+
+  function refresh(control) {
+    const {select, button, menu} = control;
+    button.disabled = select.matches(':disabled');
+    button.firstElementChild.textContent = select.selectedOptions[0]?.textContent || 'Choose…';
+    const signature = JSON.stringify([...select.options].map(option => [option.value, option.label, option.selected, option.disabled, option.hidden]));
+    if (control.signature !== signature) {
+      control.signature = signature;
+      menu.replaceChildren();
+      [...select.options].forEach((option, index) => {
+        if (option.hidden) return;
+        const item = document.createElement('div');
+        item.className = 'dnd-select-option';
+        item.id = menu.id + '-' + index;
+        item.dataset.index = index;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', String(option.selected));
+        item.setAttribute('aria-disabled', String(option.disabled));
+        item.textContent = option.textContent;
+        menu.appendChild(item);
+      });
+    }
+    if (opened === control) {
+      if (button.disabled || !button.getClientRects().length || button.closest('[inert]')) close();
+      else {
+        position(control);
+        const active = select.options[control.active];
+        if (!active || active.disabled || active.hidden) {
+          control.active = [...select.options].findIndex(option => !option.disabled && !option.hidden);
+          button.removeAttribute('aria-activedescendant');
+        }
+        activate(control, control.active);
+      }
+    }
+  }
+
+  function open(control) {
+    if (control.button.disabled) return;
+    close();
+    refresh(control);
+    opened = control;
+    control.button.setAttribute('aria-expanded', 'true');
+    control.menu.showPopover();
+    position(control);
+    const first = [...control.select.options].findIndex(option => !option.disabled && !option.hidden);
+    activate(control, control.select.selectedOptions[0]?.disabled ? first : control.select.selectedIndex);
+    if (control.active < 0) activate(control, first);
+  }
+
+  function choose(control, index) {
+    const option = control.select.options[index];
+    if (!option || option.disabled || option.hidden) return;
+    const changed = control.select.selectedIndex !== index;
+    control.select.selectedIndex = index;
+    close(true);
+    refresh(control);
+    if (changed) {
+      control.select.dispatchEvent(new Event('input', {bubbles:true}));
+      control.select.dispatchEvent(new Event('change', {bubbles:true}));
+    }
+  }
+
+  function enhance(select) {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'dnd-select';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dnd-select-trigger';
+    button.id = (select.id || 'dnd-select-' + ++serial) + '-trigger';
+    button.setAttribute('role', 'combobox');
+    button.setAttribute('aria-haspopup', 'listbox');
+    button.setAttribute('aria-expanded', 'false');
+    const labels = [...select.labels];
+    const label = labels.map(node => {
+      const copy = node.cloneNode(true);
+      copy.querySelectorAll('select').forEach(element => element.remove());
+      return copy.textContent.trim();
+    }).join(' ');
+    const name = select.getAttribute('aria-label') || label || select.name || 'Choose an option';
+    button.setAttribute('aria-label', name);
+    button.appendChild(document.createElement('span'));
+    const menu = document.createElement('div');
+    menu.className = 'dnd-select-menu';
+    menu.id = button.id + '-list';
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('aria-label', name);
+    menu.setAttribute('popover', 'manual');
+    button.setAttribute('aria-controls', menu.id);
+    const control = {select, button, menu, active:-1, query:'', typedAt:0};
+    controls.set(select, control);
+    select.before(wrapper);
+    wrapper.append(select, button, menu);
+    select.hidden = true;
+    labels.forEach(node => { node.htmlFor = button.id; });
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (opened === control) close(); else open(control);
+    });
+    button.addEventListener('keydown', event => {
+      if (event.key === 'Tab') { close(); return; }
+      if (event.key === 'Escape') { if (opened === control) { event.preventDefault(); event.stopPropagation(); close(); } return; }
+      if (['Enter', ' '].includes(event.key)) {
+        event.preventDefault();
+        if (opened === control) choose(control, control.active); else open(control);
+        return;
+      }
+      const enabled = [...select.options].map((option, index) => !option.disabled && !option.hidden ? index : -1).filter(index => index >= 0);
+      if (['ArrowDown','ArrowUp','Home','End'].includes(event.key)) {
+        event.preventDefault();
+        if (opened !== control) {
+          open(control);
+          if (event.key === 'Home') activate(control, enabled[0]);
+          else if (event.key === 'End') activate(control, enabled[enabled.length - 1]);
+          return;
+        }
+        const current = enabled.indexOf(control.active);
+        const index = event.key === 'Home' ? 0 : event.key === 'End' ? enabled.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length;
+        activate(control, enabled[index]);
+      } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        const now = Date.now();
+        control.query = (now - control.typedAt < 600 ? control.query : '') + event.key.toLocaleLowerCase();
+        control.typedAt = now;
+        const repeated = [...control.query].every(char => char === control.query[0]);
+        const query = repeated ? control.query[0] : control.query;
+        const start = repeated ? enabled.indexOf(opened === control ? control.active : select.selectedIndex) + 1 : 0;
+        const ordered = [...enabled.slice(start), ...enabled.slice(0, start)];
+        const index = ordered.find(index => select.options[index].textContent.trim().toLocaleLowerCase().startsWith(query));
+        if (index !== undefined) { if (opened === control) activate(control, index); else choose(control, index); }
+      }
+    });
+    menu.addEventListener('pointerdown', event => event.preventDefault());
+    menu.addEventListener('pointermove', event => {
+      const item = event.target.closest('[data-index]');
+      if (item) activate(control, Number(item.dataset.index));
+    });
+    menu.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = event.target.closest('[data-index]');
+      if (item) choose(control, Number(item.dataset.index));
+    });
+    select.addEventListener('change', () => refresh(control));
+    new MutationObserver(() => refresh(control)).observe(select, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['disabled','selected','hidden','label']});
+    refresh(control);
+  }
+
+  document.querySelectorAll('select:not([multiple])').forEach(enhance);
+  window.DndSelect = {refresh() { controls.forEach(refresh); }};
+  document.addEventListener('pointerdown', event => {
+    if (opened && !opened.button.contains(event.target) && !opened.menu.contains(event.target)) close();
+  }, true);
+  document.addEventListener('focusin', event => {
+    if (opened && event.target !== opened.button) close();
+  });
+  document.addEventListener('scroll', event => {
+    if (opened && event.target !== opened.menu) close();
+  }, true);
+  document.addEventListener('close', () => close(), true);
+  window.addEventListener('resize', () => close());
+  window.addEventListener('blur', () => close());
+  window.visualViewport?.addEventListener('resize', () => close());
+})();
+</script>

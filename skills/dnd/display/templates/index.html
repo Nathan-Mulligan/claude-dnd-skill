@@ -7491,6 +7491,7 @@ function _effectiveTheme(theme) {
     label.value = current;
     if (phoneSelect) phoneSelect.value = current;
     label.classList.toggle('on', current !== 'dark');
+    window.DndSelect?.refresh();
     // Surface the effective theme for "auto" via the tooltip
     if (current === 'auto') {
       row.title = `Display theme — Auto (system: ${_effectiveTheme(current)})`;
@@ -7558,6 +7559,7 @@ function _effectiveTheme(theme) {
       // while changing on phone, or vice versa.
       if (desktop && desktop !== e.target) desktop.value = skin;
       if (phone   && phone   !== e.target) phone.value   = skin;
+      window.DndSelect?.refresh();
     }
 
     if (desktop) desktop.addEventListener('change', _onChange);
@@ -9301,5 +9303,6 @@ function _initDicePad() {
   window._onDiceRequestCancelled = _onDiceRequestCancelled;
 }
 </script>
+{% include "custom_select.html" %}
 </body>
 </html>
