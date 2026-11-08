@@ -520,7 +520,19 @@ Open the browser tab and Chromecast it *before* running `/dm:dnd load` so the br
 
 **Scene detection:** server scans narration for keywords and shifts background gradient + particle type (17 scenes: tavern, dungeon, forest, crypt, arcane, ocean, etc.). Crossfades over ~2.5 s.
 
-**Audio (Python-side):** `audio.py` auto-imported by `dnd-display-app.py`. Two toggles: Ambient (looping soundscape) and Effects (one-shot SFX). Both default off. Scene changes crossfade the ambient loop. All synthesis via numpy — no audio files needed.
+**Generated scene music:** ordinary DM narration starts the scene intro and loop automatically when music is idle. Established scene changes start new music; repeated narration in the same scene does not. Setup questions, character speech and dice results do not start scene music, and combat keeps its current scene.
+
+For a deliberate scene choice, bundle an explicit cue with narration:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --music-event scene --music-setting forest --music-mood curious << 'DNDEND'
+You reach the ancient woodland.
+DNDEND
+```
+
+An explicit valid cue takes precedence over automatic detection. Use `--music-event combat-start` and `--music-event combat-end` with the corresponding narration to change combat music. When configured, the local illustration queues after the scene's intro and loop finish.
+
+**Sound effects:** `audio.py` scans narration for optional one-shot effects. Character names are excluded from trigger matching. These effects are separate from the generated intro and music loop. The display has separate Sound Effects and Music toggles.
 
 ---
 
