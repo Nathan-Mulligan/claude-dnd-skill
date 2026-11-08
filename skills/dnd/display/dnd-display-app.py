@@ -75,6 +75,7 @@ except Exception:
     _audio = None   # type: ignore
 
 import music as _music_module
+import backgrounds as _background_module
 
 # TTS module — degrades silently if Gemini API key not configured
 try:
@@ -1218,8 +1219,25 @@ def _broadcast(payload: dict) -> None:
 
 
 _music_cli, _music_hf = _music_module.runtime_config(Path(rt("music-config.json")))
-_music = _music_module.MusicDirector(Path(rt("music")), _music_cli, _music_hf)
-_music.set_broadcast(_broadcast)
+_render_lock = threading.Lock()
+_image_config = _background_module.runtime_config()
+_background = _background_module.BackgroundDirector(
+    Path(rt("backgrounds")),
+    renderer=(lambda job: _background_module.render_local(job, _image_config)) if _image_config else None,
+    render_lock=_render_lock,
+)
+_background.broadcast = _broadcast
+_music = _music_module.MusicDirector(Path(rt("music")), _music_cli, _music_hf,
+                                    render_lock=_render_lock)
+
+
+def _broadcast_music(payload: dict) -> None:
+    _broadcast(payload)
+    _background.observe_music(payload["music"])
+
+
+_music.set_broadcast(_broadcast_music)
+_background.observe_music(_music.snapshot())
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -1831,6 +1849,16 @@ def music_file(entry: str, kind: str):
     if path is None:
         return "Not found", 404
     return send_file(path, mimetype="audio/wav", conditional=True, max_age=0)
+
+
+@app.route("/backgrounds/<scene_id>")
+def background_file(scene_id: str):
+    if not _token_ok():
+        return "Forbidden", 403
+    path = _background.file_for(scene_id)
+    if path is None:
+        return "Not found", 404
+    return send_file(path, mimetype="image/png", conditional=True, max_age=0)
 
 
 @app.route("/audio-toggle", methods=["POST"])
@@ -2806,6 +2834,7 @@ def stream():
     initial_scene = SCENES[_current_scene_name] | {"name": _current_scene_name}
     q.put_nowait({"scene": initial_scene})
     q.put_nowait({"music": _music.snapshot()})
+    q.put_nowait({"background": _background.snapshot()})
     if _setup_question:
         q.put_nowait({"setup_question": _setup_question})
 

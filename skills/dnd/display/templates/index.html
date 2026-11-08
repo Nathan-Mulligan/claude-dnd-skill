@@ -28,6 +28,7 @@
   window._SKINS = [
     { id: 'vellum',    label: 'Vellum'    },
     { id: 'editorial', label: 'Editorial' },
+    { id: 'illustrated-vellum', label: 'Illustrated Vellum', base: 'vellum', variant: 'illustrated-vellum' },
   ];
 
   (function () {
@@ -3626,6 +3627,23 @@
     background:var(--e-accent, #FF7A2D); color:var(--e-dice-text, #14110C); border-color:var(--e-accent, #FF7A2D); }
   body.input-only #phone-status.ps-sending{ opacity:.8; }
   body.input-only #phone-status.ps-resolving{ color:var(--e-accent, #FF7A2D); }
+  #illustrated-background { display:none; position:fixed; inset:0; z-index:0; pointer-events:none; background:#101a20; }
+  #illustrated-background img { position:absolute; top:0; left:0; width:100%; height:auto; object-fit:contain; object-position:50% 0; opacity:0; filter:saturate(.65) contrast(.8) brightness(.72); mask-image:linear-gradient(to bottom, #000 20%, rgba(0,0,0,.8) 45%, transparent 100%); transition:opacity 10s ease-in-out; }
+  #illustrated-background::after { content:''; position:absolute; inset:0; background:linear-gradient(to bottom, rgba(5,12,18,.06) 12%, rgba(5,12,18,.38) 27%, rgba(5,12,18,.65) 45%, rgba(5,12,18,.8)); }
+  #background-row { display:none; }
+  :root[data-variant="illustrated-vellum"] #illustrated-background { display:block; }
+  :root[data-variant="illustrated-vellum"] #sky { display:none; }
+  :root[data-variant="illustrated-vellum"] #background-row { display:flex; }
+  :root[data-variant="illustrated-vellum"] body:not(.input-only) #text-scroll { top:22vh; padding-top:16px; }
+  :root[data-variant="illustrated-vellum"] #text-content { background:none; border:0; border-radius:0; padding:0; box-shadow:none; }
+  :root[data-variant="illustrated-vellum"] #text-content,
+  :root[data-variant="illustrated-vellum"] #text-content .dm-block :is(p, em, strong, table, th),
+  :root[data-variant="illustrated-vellum"] #text-content .npc-block :is(p, em, .npc-name),
+  :root[data-variant="illustrated-vellum"] #text-content .player-block :is(p, em, .player-name) { color:#eadfc6; text-shadow:0 2px 5px #071017, 0 0 14px #071017; }
+  :root[data-variant="illustrated-vellum"] body.input-only #illustrated-background { display:none; }
+  @media (prefers-reduced-motion: reduce) {
+    #illustrated-background img { transition:none; }
+  }
 </style>
 </head>
 <body>
@@ -3633,6 +3651,7 @@
 <!-- Background layers -->
 <div id="bg-a" class="bg-layer"></div>
 <div id="bg-b" class="bg-layer"></div>
+<div id="illustrated-background" aria-hidden="true"><img id="illustrated-a" alt=""><img id="illustrated-b" alt=""></div>
 
 <!-- Sky layer — sun/moon/clouds/stars, driven by world_time -->
 <canvas id="sky"></canvas>
@@ -3704,6 +3723,7 @@
       <option value="editorial">Editorial</option>
     </select>
   </div>
+  <div class="audio-row" id="background-row"><span class="audio-label">Scenery</span><span id="background-status" class="theme-label" role="status">Waiting</span></div>
   <div class="audio-row" id="onscreen-dice-row" title="Open the dice roller on this screen when the DM calls for a roll (for games without phones)">
     <span class="audio-label">Roll on screen</span>
     <div class="toggle-track" id="osd-track"><div class="toggle-thumb"></div></div>
@@ -6470,6 +6490,58 @@ _dmHelpBtn.addEventListener('click', async () => {
 const _dndTokenMeta = document.querySelector('meta[name="dnd-token"]');
 const _dndToken = _dndTokenMeta ? _dndTokenMeta.getAttribute('content') : null;
 
+let _backgroundState = null;
+let _backgroundActive = 'a';
+let _backgroundRequest = 0;
+let _backgroundShown = null;
+const _backgroundLabels = {idle:'Waiting', unavailable:'Not configured', waiting_music:'Waiting for music', queued:'Preparing', rendering:'Painting', ready:'Ready', failed:'Unavailable'};
+
+async function _onBackgroundState(state) {
+  if (!state || (_backgroundState && state.revision < _backgroundState.revision)) return;
+  _backgroundState = state;
+  const status = document.getElementById('background-status');
+  status.textContent = _backgroundLabels[state.status] || 'Waiting';
+  if (!state.scene_id) {
+    _backgroundRequest++;
+    _backgroundShown = null;
+    for (const id of ['a', 'b']) {
+      const layer = document.getElementById('illustrated-' + id);
+      layer.style.opacity = '0';
+      if (layer.dataset.objectUrl) URL.revokeObjectURL(layer.dataset.objectUrl);
+      delete layer.dataset.objectUrl;
+      layer.removeAttribute('src');
+    }
+    return;
+  }
+  if (state.status !== 'ready' || !state.image_url || _backgroundShown === state.scene_id) return;
+  const requestId = ++_backgroundRequest;
+  let objectUrl = null;
+  try {
+    const response = await fetch(state.image_url, {headers:_dndToken ? {'X-DND-Token':_dndToken} : {}});
+    if (!response.ok) throw new Error('Background unavailable');
+    objectUrl = URL.createObjectURL(await response.blob());
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    if (requestId !== _backgroundRequest || !_backgroundState || _backgroundState.scene_id !== state.scene_id) {
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+    const incoming = _backgroundActive === 'a' ? 'b' : 'a';
+    const layer = document.getElementById('illustrated-' + incoming);
+    if (layer.dataset.objectUrl) URL.revokeObjectURL(layer.dataset.objectUrl);
+    layer.dataset.objectUrl = objectUrl;
+    layer.src = objectUrl;
+    layer.style.opacity = '1';
+    document.getElementById('illustrated-' + _backgroundActive).style.opacity = '0';
+    _backgroundActive = incoming;
+    _backgroundShown = state.scene_id;
+  } catch (_) {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    if (requestId === _backgroundRequest) status.textContent = 'Unavailable';
+  }
+}
+
 // Persistent device ID — survives page refreshes, identifies this browser for DM approval
 // crypto.randomUUID() requires a secure context (HTTPS/localhost); fall back to
 // getRandomValues() which works over plain HTTP on LAN.
@@ -8165,6 +8237,9 @@ function connect() {
     }
     if (payload.music) {
       _onMusicState(payload.music);
+    }
+    if (payload.background) {
+      _onBackgroundState(payload.background);
     }
     if (payload.sfx) {
       _playSfx(payload.sfx);
