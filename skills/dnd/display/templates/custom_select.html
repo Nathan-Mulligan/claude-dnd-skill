@@ -27,7 +27,7 @@
   }
   .dnd-select-menu:not(:popover-open) { display:none; }
   .dnd-select-option { position:relative; padding:9px 32px 9px 11px; min-height:38px; border-left:2px solid transparent; border-radius:1px; overflow-wrap:anywhere; cursor:pointer; }
-  .dnd-select-option[aria-selected="true"] { color:#f1d58b; border-left-color:#b49a60; }
+  .dnd-select-option[aria-selected="true"] { color:#f1d58b; }
   .dnd-select-option[aria-selected="true"]::after { content:''; position:absolute; right:12px; top:14px; width:5px; height:9px; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg); }
   .dnd-select-option.is-active { background:rgba(180,140,60,.16); }
   .dnd-select-option[aria-disabled="true"] { opacity:.4; cursor:default; }
@@ -41,7 +41,7 @@
   @media (forced-colors:active) {
     .dnd-select-trigger, .dnd-select-menu { background:Canvas; color:CanvasText; border-color:ButtonText; }
     .dnd-select-option.is-active { outline:1px solid Highlight; }
-    .dnd-select-option[aria-selected="true"] { color:Highlight; border-left-color:Highlight; }
+    .dnd-select-option[aria-selected="true"] { color:Highlight; }
   }
 </style>
 <script>
