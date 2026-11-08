@@ -3,7 +3,6 @@
 import base64
 import sys
 import wave
-from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -45,7 +44,7 @@ def test_specific_scene_changes_both_media_and_continuation_does_not(tmp_path):
     one = images.snapshot()
     assert one["scene"] == FIRST
     jobs_before = (len(audio_jobs), len(image_jobs))
-    assert director.transition("scene", "b", "city", "tense", FIRST | {"description": "Changed words"}) == director.snapshot()
+    assert director.transition("scene", "b", "city", "curious", FIRST | {"description": "Changed words"}) == director.snapshot()
     assert not director.process_next()
     assert not images.process_next()
     assert (len(audio_jobs), len(image_jobs)) == jobs_before
@@ -98,7 +97,7 @@ def test_context_is_frozen_and_legacy_and_dark_fantasy_remain_supported(tmp_path
     assert FIRST["description"] in list(director.jobs.queue)[0].prompt
     context = music.SceneContext.parse(FIRST)
     assert backgrounds.SceneContext is music.SceneContext
-    assert asdict(context) == FIRST
+    assert context.to_dict() == FIRST
     assert "dark fantasy" not in music.prompt_for("city", "warm", "intro", context)
     assert "dark fantasy" in music.prompt_for("city", "ominous", "intro", context)
     legacy = director.transition("scene", "legacy", "city")

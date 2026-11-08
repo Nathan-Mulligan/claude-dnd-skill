@@ -197,3 +197,16 @@ def test_named_prison_scene_reconnect_uses_dungeon_visual_style(display):
     assert event["scene"]["name"] == "prison"
     assert event["scene"]["label"] == named["label"]
     assert event["scene"]["colors"] == module.SCENES["dungeon"]["colors"]
+
+
+def test_theme_mood_is_inherited_through_both_http_cue_paths(display):
+    module, client = display
+    forest = {"key": "forest", "label": "Greenwood", "description": "Soft woodland light.",
+              "theme": [{"name": "Greenwood", "mood": "warm"}]}
+    assert client.post('/music-cue', json={"event": "scene", "id": "f", "setting": "forest", "scene": forest}).status_code == 200
+    hut = {"key": "hut", "label": "The Hut", "description": "A timber cottage."}
+    assert client.post('/chunk', json={"text": "The door opens.", "music": {"event": "scene", "id": "h", "setting": "tavern", "scene": hut}}).status_code == 204
+    state = module._music.snapshot()
+    assert state['mood'] == 'warm'
+    assert state['scene']['theme'] == forest['theme']
+    assert client.get('/health').json['scene']['theme'] == forest['theme']

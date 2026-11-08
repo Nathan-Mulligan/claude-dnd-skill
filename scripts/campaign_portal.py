@@ -41,6 +41,11 @@ SCENE_PROTOCOL = (
     "--scene-key <stable-slug> --scene-label <short-name> --scene-description <specific-scenery-and-activity>. "
     "Use a new key even within the same broad setting; keep the existing key during continuation. "
     "Describe the actual view and musical atmosphere, including darkness where appropriate. "
+    "Place tone is inherited through --scene-theme JSON: an outer place with mood, then child names "
+    "with optional local mood overrides. Copy the current scene.theme path from health, append a child "
+    "to enter it, or pop it on leaving; supply a new path for a new region. Omitted theme inherits; [] clears. "
+    "Omit --music-mood to inherit. A cue mood temporarily overrides that scene; put lasting creepy-place "
+    "overrides on the child theme node. Record stable place themes in existing world notes for revisits. "
     "Do not change scenes for a suggested destination, casual mention or every paragraph. "
 )
 

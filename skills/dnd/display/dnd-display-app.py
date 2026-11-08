@@ -1541,7 +1541,7 @@ def chunk():
     if isinstance(music_cue, dict) and not any((is_action, is_player, is_npc, is_dice, is_tutor)):
         try:
             _music.transition(music_cue.get("event"), music_cue.get("id"),
-                              music_cue.get("setting"), music_cue.get("mood", "ominous"), music_cue.get("scene"))
+                              music_cue.get("setting"), music_cue.get("mood"), music_cue.get("scene"))
             explicit_music = True
         except ValueError:
             pass  # A malformed optional cue must not suppress valid narration.
@@ -1942,11 +1942,11 @@ def music_cue():
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict) or not isinstance(data.get("event"), str) or not isinstance(data.get("id"), str):
         return "Invalid music cue", 400
-    if (data.get("setting") is not None and not isinstance(data["setting"], str)) or not isinstance(data.get("mood", "ominous"), str):
+    if (data.get("setting") is not None and not isinstance(data["setting"], str)) or (data.get("mood") is not None and not isinstance(data.get("mood"), str)):
         return "Invalid music cue", 400
     try:
         state = _music.transition(data.get("event"), data.get("id"),
-                                  data.get("setting"), data.get("mood", "ominous"), data.get("scene"))
+                                  data.get("setting"), data.get("mood"), data.get("scene"))
     except ValueError:
         return "Invalid music cue", 400
     return jsonify(state)
