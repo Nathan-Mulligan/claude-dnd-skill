@@ -145,7 +145,7 @@ class MusicDirector:
 
     def __init__(self, directory: Path, cli: Path | None, hf_home: Path | None,
                  renderer: Callable[[Job], None] | None = None,
-                 autostart: bool = True):
+                 autostart: bool = True, render_lock=None):
         self.directory = directory
         self.directory.mkdir(parents=True, exist_ok=True)
         self.cli = cli
@@ -154,6 +154,7 @@ class MusicDirector:
         self.renderer = renderer or (lambda job: render_cli(job, cli, hf_home))
         self.broadcast: Callable[[dict], None] | None = None
         self.lock = threading.Lock()
+        self.render_lock = render_lock or threading.Lock()
         self.jobs: queue.Queue[Job] = queue.Queue()
         self.revision = 0
         self.mode = "idle"
@@ -163,6 +164,9 @@ class MusicDirector:
         self.ready: dict[str, Path] = {}
         self.expected: tuple[str, ...] = ()
         self.error: str | None = None
+        self.scene_id: str | None = None
+        self.scene_revision = 0
+        self.scene_ready = False
         self.seen: set[str] = set()
         self.seen_order: deque[str] = deque()
         self._load_state()
@@ -180,6 +184,9 @@ class MusicDirector:
         if not isinstance(revision, int) or revision < 0:
             return
         self.revision = revision
+        scene_revision = data.get("scene_revision", revision)
+        if isinstance(scene_revision, int) and scene_revision >= 0:
+            self.scene_revision = scene_revision
         if data.get("mode") == "idle":
             return
         entry = data.get("entry")
@@ -196,17 +203,24 @@ class MusicDirector:
         mood = data.get("mood", "ominous")
         self.mood = mood if mood in MOODS else "ominous"
         self.entry = entry
+        scene_id = data.get("scene_id", entry if setting and mode == "explore" else None)
+        self.scene_id = scene_id if isinstance(scene_id, str) and re.fullmatch(r"[0-9a-f]{32}", scene_id) else None
+        self.scene_ready = data.get("scene_ready") is True
         self.ready = {}
         expected = data.get("expected", [])
         if not isinstance(expected, list):
             expected = []
         self.expected = tuple(kind for kind in expected if kind in {"intro", "bed", "combat"})
+        if "scene_id" not in data and mode == "explore":
+            self.expected = ("intro", "bed")
         for kind in self.expected:
             path = self.directory / f"{entry}-{kind}.wav"
             if path.is_file():
                 self.ready[kind] = path
             elif self.available:
                 self.jobs.put(self._make_job(kind))
+        if set(self.ready) >= {"intro", "bed"}:
+            self.scene_ready = True
         seen = data.get("seen", [])
         self.seen_order = deque(e for e in seen[-512:] if isinstance(e, str)) if isinstance(seen, list) else deque()
         self.seen = set(self.seen_order)
@@ -216,6 +230,8 @@ class MusicDirector:
             "revision": self.revision, "mode": self.mode,
             "setting": self.setting, "mood": self.mood,
             "entry": self.entry, "expected": list(self.expected),
+            "scene_id": self.scene_id, "scene_ready": self.scene_ready,
+            "scene_revision": self.scene_revision,
             "seen": list(self.seen_order),
         }
         target = self.directory / "current.json"
@@ -245,6 +261,10 @@ class MusicDirector:
             "mode": self.mode,
             "setting": self.setting,
             "entry": entry,
+            "scene_id": self.scene_id,
+            "scene_revision": self.scene_revision,
+            "scene_ready": self.scene_ready,
+            "mood": self.mood,
             "available": self.available,
             "intro_url": f"/audio/music/{entry}/intro" if "intro" in self.ready else None,
             "bed_url": f"/audio/music/{entry}/bed" if "bed" in self.ready else None,
@@ -286,6 +306,10 @@ class MusicDirector:
                 return self._snapshot_unlocked()
             if event == "combat_end" and self.mode != "combat":
                 return self._snapshot_unlocked()
+            if event == "scene":
+                self.scene_id = uuid.uuid4().hex
+                self.scene_revision += 1
+                self.scene_ready = False
             if event == "scene" and self.mode == "combat":
                 self.setting = setting
                 self.mood = mood
@@ -297,7 +321,11 @@ class MusicDirector:
                     kinds = ("combat",)
                 elif event == "combat_end":
                     self.mode = "explore" if self.setting else "idle"
-                    kinds = ("bed",) if self.setting else ()
+                    if self.setting and self.scene_id is None:
+                        self.scene_id = uuid.uuid4().hex
+                        self.scene_revision += 1
+                        self.scene_ready = False
+                    kinds = (("bed",) if self.scene_ready else ("intro", "bed")) if self.setting else ()
                 else:
                     self.mode = "explore"
                     self.setting = setting
@@ -325,6 +353,9 @@ class MusicDirector:
             self.ready = {}
             self.expected = ()
             self.error = None
+            self.scene_id = None
+            self.scene_revision += 1
+            self.scene_ready = False
             self.seen.clear()
             self.seen_order.clear()
             self._persist_unlocked()
@@ -366,7 +397,11 @@ class MusicDirector:
         if not current:
             return
         try:
-            self.renderer(job)
+            with self.render_lock:
+                with self.lock:
+                    if job.revision != self.revision:
+                        return
+                self.renderer(job)
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired,
                 RuntimeError) as exc:
             with self.lock:
@@ -382,6 +417,8 @@ class MusicDirector:
         with self.lock:
             if job.revision == self.revision and job.path.is_file():
                 self.ready[job.kind] = job.path
+                if set(self.ready) >= {"intro", "bed"}:
+                    self.scene_ready = True
                 self._persist_unlocked()
                 state = self._snapshot_unlocked()
             else:

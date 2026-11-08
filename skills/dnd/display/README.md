@@ -19,6 +19,49 @@ Terminal (you type here — claude runs directly, no wrapper needed)
 
 ## Setup
 
+### Illustrated Vellum backgrounds
+
+Choose **Illustrated Vellum** in the Style selector for painted scenery above a
+quiet reading area. It keeps Vellum's controls and falling particles, hides the
+sky graphics, and fades each finished image in over ten seconds. Browsers that
+request reduced motion switch immediately. Plain Vellum and Editorial keep
+their existing appearance.
+
+Image generation is optional and local. Install the model and its runner
+separately, then set these environment variables before starting the display:
+
+```bash
+export DND_IMAGE_PYTHON="/absolute/path/to/model-venv/bin/python"
+export DND_IMAGE_RUNNER="/absolute/path/to/run_still.py"
+export DND_IMAGE_MODEL="/absolute/path/to/local-model-directory"
+export DND_IMAGE_GUARD="/absolute/path/to/watch_trial.py"
+```
+
+The adapter supports the existing MFLUX FLUX.2 Klein runner. It must accept
+`--model`, `--output`, `--prompt-file`, `--width`, `--height`, `--steps`, `--seed`
+and `--source`, and write `edit.png` in the fresh output directory. The bundled
+grayscale density map guides the composition without supplying a literal scene.
+White permits detail at the top and outer edges; black reserves the quiet lower
+reading area. The output is a full-colour painting. Set `DND_IMAGE_REFERENCE`
+to an absolute image path to use a different illustration as its style guide.
+
+Defaults are a shallow 1024 × 256 panorama, four steps and a 900-second timeout. Override them with
+`DND_IMAGE_WIDTH`, `DND_IMAGE_HEIGHT`, `DND_IMAGE_STEPS` and `DND_IMAGE_TIMEOUT`.
+Dimensions must be multiples of 16 between 256 and 2048. The optional guard
+uses the existing watchdog interface with 28 GiB process memory and 4 GiB swap
+growth limits. The display never downloads models or calls an image API;
+the renderer runs with Hugging Face and Transformers offline mode enabled.
+
+An explicit music `scene` cue selects the environment. The illustration queues
+only after that scene's intro and loop have both generated successfully. Audio
+and image rendering share one local rendering lease to avoid overlapping GPU
+work. Combat keeps the same visual scene. A scene entered during combat waits
+until its intro and loop render after combat. Late results from departed scenes
+are discarded. Reloads reuse the current finished PNG, and an interrupted image
+is queued once when its music is ready again. Failures leave the previous image
+on screen; the Scenery label reports progress. Generated files live in the
+display's runtime `backgrounds/` directory, with at most three finished images.
+
 ### 1. Install dependencies
 
 ```bash
