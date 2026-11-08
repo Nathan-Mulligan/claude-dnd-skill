@@ -20,7 +20,8 @@
   h3 { font-size:var(--type-h3); font-weight:600; }
   h4 { font-size:var(--type-h4); font-weight:600; }
   b, strong { font-weight:600; }
-  #sidebar-toggle, #controls-toggle, #audio-controls #controls-toggle {
+  #sidebar-toggle, #controls-toggle, #audio-controls #controls-toggle,
+  :root:not([data-skin="editorial"]) #ed-rail #ed-launch-dice {
     font-family:var(--font-heading); font-size:var(--type-label); font-weight:400;
     line-height:1.4; letter-spacing:2px; text-transform:uppercase;
     border:0; border-radius:0; background:none; box-shadow:none; text-shadow:none; filter:none;
@@ -29,9 +30,11 @@
 
     color:var(--e-accent, rgba(180,140,60,.4));
   }
-  #sidebar-toggle:hover, #controls-toggle:hover, #audio-controls #controls-toggle:hover { color:var(--e-accent, rgba(180,140,60,.8)); }
+  #sidebar-toggle:hover, #controls-toggle:hover, #audio-controls #controls-toggle:hover,
+  :root:not([data-skin="editorial"]) #ed-rail #ed-launch-dice:hover { color:var(--e-accent, rgba(180,140,60,.8)); }
 
-  #sidebar-toggle:focus-visible, #controls-toggle:focus-visible, #audio-controls #controls-toggle:focus-visible { outline:2px solid #edcf87; outline-offset:3px; }
+  #sidebar-toggle:focus-visible, #controls-toggle:focus-visible, #audio-controls #controls-toggle:focus-visible,
+  :root:not([data-skin="editorial"]) #ed-rail #ed-launch-dice:focus-visible { outline:2px solid #edcf87; outline-offset:3px; }
 
   blockquote, .npc-block p { font-style:italic; }
   #audio-controls .audio-label,

@@ -2417,14 +2417,11 @@
      click on it brings the tray back. */
   #dice-pending-badge { top: 64px; transform: translateX(-50%); pointer-events: auto; cursor: pointer; }
 
-  /* Vellum has no rail, so its dice launcher is a lone button bottom right. */
-  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice{
-    display:flex; align-items:center; gap:6px; position:fixed; right:28px; bottom:28px; z-index:31;
-    padding:9px 12px; border-radius:3px; cursor:pointer;
-    background:rgba(8,6,4,.8); color:#d4c4a0; border:1px solid rgba(180,140,60,.35);
-    font:400 var(--type-label)/1.4 var(--font-heading); letter-spacing:1px; text-transform:uppercase; }
-  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice .ed-ic{ font-size:var(--type-h4); }
-  :root:not([data-skin="editorial"]) body:not(.input-only).ed-drawer-open #ed-launch-dice{ display:none; }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice {
+    display:flex; position:fixed; top:28px; right:28px; bottom:auto; z-index:36;
+    min-width:6em; cursor:pointer;
+  }
+  :root:not([data-skin="editorial"]) #ed-launch-dice .ed-ic { display:none; }
   #dice-drawer .dd-close{
     position:absolute; top:10px; right:12px; width:32px; height:32px; border-radius:3px;
     background:transparent; color:inherit; border:1px solid currentColor; opacity:.6;
@@ -3686,7 +3683,7 @@
     #audio-controls .audio-row { grid-template-columns:98px minmax(0, 1fr); gap:8px; }
   }
   :root:not([data-skin="editorial"]) body:not(.input-only) #controls-toggle-row {
-    position:fixed; top:28px; right:28px; width:auto; min-height:0; padding:0; z-index:8;
+    position:fixed; top:auto; bottom:28px; right:28px; width:auto; min-height:0; padding:0; z-index:36;
   }
   :root:not([data-skin="editorial"]) body:not(.input-only) #audio-controls {
     top:84px; max-height:calc(100dvh - 112px);
@@ -3709,8 +3706,19 @@
   body:not(.input-only):has(#dice-drawer.ed-open) #text-scroll {
     padding-right:calc(var(--ed-drawer-w, min(400px, 92vw)) + 56px);
   }
-  :root:not([data-skin="editorial"]) body:not(.input-only):has(#dice-drawer.ed-open) #controls-toggle-row {
-    right:calc(var(--ed-drawer-w, min(400px, 92vw)) + 28px);
+  :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer {
+    top:84px; bottom:84px; right:28px; height:auto;
+    border:0; box-shadow:none;
+    background:linear-gradient(to left, rgba(8,6,4,.2) 70%, transparent);
+    opacity:0; pointer-events:none; transform:translateX(calc(100% + 28px));
+    transition:opacity .7s ease, transform .4s ease;
+  }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer.ed-open { opacity:1; pointer-events:auto; transform:translateX(0); }
+  :root:not([data-skin="editorial"]) #dice-drawer::before,
+  :root:not([data-skin="editorial"]) #dice-drawer .dd-close { display:none; }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer #dice-pad { padding:0; }
+  @media (prefers-reduced-motion:reduce) {
+    :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer { transition:none; }
   }
 
 </style>
@@ -3836,7 +3844,7 @@
   <button class="ed-launch" id="ed-launch-input" type="button" data-drawer="input-panel" title="Party input">
     <span class="ed-ic">✎</span><span>Party</span>
   </button>
-  <button class="ed-launch display-action" id="ed-launch-dice" type="button" data-drawer="dice-drawer" title="Dice roller">
+  <button class="ed-launch display-action" id="ed-launch-dice" type="button" data-drawer="dice-drawer" title="Show dice" aria-controls="dice-drawer" aria-expanded="false">
     <span class="ed-ic">⚄</span><span>Dice</span>
   </button>
   <button class="ed-launch" id="ed-launch-settings" type="button" data-drawer="audio-controls" title="Display settings">
@@ -8303,6 +8311,7 @@ function _setControlsVisible(visible) {
   _controlsVisible = visible;
   if (_controlsBtn) _controlsBtn.setAttribute('aria-expanded', String(visible));
   document.getElementById('settings-content').inert = !visible;
+  window.DndSelect?.refresh();
   if (visible) {
     _audioControls.classList.remove('collapsed');
     _textScroll.classList.remove('controls-hidden');
@@ -8620,6 +8629,15 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
   if (rail && scrim) {
     const launchers = Array.from(rail.querySelectorAll('.ed-launch'));
     const drawerIds = ['input-panel', 'audio-controls', 'dice-drawer'];
+    function syncDiceToggle(visible) {
+      const button = document.getElementById('ed-launch-dice');
+      button.querySelector('span:last-child').textContent = visible ? 'Hide' : 'Dice';
+      button.setAttribute('aria-expanded', String(visible));
+      button.title = visible ? 'Hide dice' : 'Show dice';
+      document.getElementById('dice-drawer').inert = !visible;
+    }
+    syncDiceToggle(false);
+
 
     function closeAll() {
       drawerIds.forEach(id => {
@@ -8629,6 +8647,7 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
       launchers.forEach(b => b.classList.remove('active'));
       document.body.classList.remove('ed-drawer-open');
       scrim.classList.remove('on');
+      syncDiceToggle(false);
     }
     function toggle(id) {
       const el = document.getElementById(id);
@@ -8636,6 +8655,10 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
       const willOpen = !el.classList.contains('ed-open');
       closeAll();
       if (willOpen) {
+        if (id === 'dice-drawer') {
+          if (document.documentElement.dataset.skin !== 'editorial') _setControlsVisible(false);
+          syncDiceToggle(true);
+        }
         if (id === 'input-panel') el.classList.remove('collapsed');
         el.classList.add('ed-open');
         const b = rail.querySelector('.ed-launch[data-drawer="' + id + '"]');
