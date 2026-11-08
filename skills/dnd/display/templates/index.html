@@ -188,6 +188,10 @@
     /* Hide scrollbar but keep scroll */
     scrollbar-width: none;
   }
+  #text-scroll.scrolled {
+    -webkit-mask-image:linear-gradient(to bottom, transparent, #000 64px);
+    mask-image:linear-gradient(to bottom, transparent, #000 64px);
+  }
   #text-scroll::-webkit-scrollbar { display: none; }
   #text-scroll.sidebar-hidden { padding-left: 60px; }
   /* When the settings column is collapsed, the prose reclaims the right space
@@ -4704,6 +4708,7 @@ const _newPill = document.getElementById('new-content-pill');
 function _showNewPill() { if (_newPill) _newPill.classList.add('visible'); }
 function _hideNewPill() { if (_newPill) _newPill.classList.remove('visible'); }
 textScroll.addEventListener('scroll', () => {
+  textScroll.classList.toggle('scrolled', textScroll.scrollTop > 1);
   const distFromBottom = textScroll.scrollHeight - textScroll.scrollTop - textScroll.clientHeight;
   userScrolledUp = distFromBottom > 80;
   // Back near the bottom — the reader has caught up, so retire the pill.
