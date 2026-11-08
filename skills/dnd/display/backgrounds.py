@@ -10,11 +10,11 @@ import struct
 import subprocess
 import tempfile
 import threading
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from music import MOODS, SETTINGS, SceneContext
+from music import MOODS, SETTINGS, SceneContext, MOOD_PROFILES
 
 ENVIRONMENTS = {
     "arcane": "an ancient magical observatory, floating stone arches and luminous runes",
@@ -111,14 +111,18 @@ def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bo
                    "dark reading area in the lower centre. Follow that composition, but create a full-colour "
                    "painting of the requested environment, not a grayscale image or a visible map. ")
     environment = scene.description if scene else ENVIRONMENTS[setting]
+    profile = MOOD_PROFILES[mood]
+    tone = (scene.place_guidance() + profile["atmosphere"] + " " + profile["visual"] + " "
+            if scene else "")
+    palette = ("Subdued saturation and gentle scenic contrast, with no glaring highlights. " if tone else
+               "Subtle muted ink blue, teal, stone grey and restrained amber, low saturation and very low tonal contrast, dim light, no bright highlights. ")
     return (
-        opening + f"Paint a very wide shallow illustrated fantasy panorama of {environment}. "
+        opening + f"Paint a very wide shallow illustrated fantasy panorama of {environment}. " + tone +
         f"{mood.capitalize()} atmosphere. Recognisable distant scenery, soft painterly forms and shaded depth. "
         "Place the horizon and major landmarks in the upper quarter, with restrained framing at the outer edges. "
-        "The lower three quarters and central reading area are quiet, low-contrast shadow with subtle visible "
+        "The lower three quarters and central reading area are a dark reading area, quiet low-contrast shadow with subtle visible "
         "surface detail. Blend the scenery gradually into that reading area, with no abrupt black band or "
-        "solid rectangle. Subtle muted ink blue, teal, stone grey and restrained amber, low saturation and "
-        "very low tonal contrast, dim light, no bright highlights. Landmarks are distant and small, not large "
+        "solid rectangle. " + palette + "Landmarks are distant and small, not large "
         "focal subjects. Matte storybook painting that supports narration rather than dominating it. "
         "No people, creatures, text, lettering, interface, borders, sun, stars or decorative clouds."
     )
@@ -227,7 +231,7 @@ class BackgroundDirector:
 
     def _snapshot_unlocked(self) -> dict:
         return {"revision": self.revision, "scene_id": self.scene_id, "setting": self.setting,
-                "scene": asdict(self.scene) if self.scene else None,
+                "scene": self.scene.to_dict() if self.scene else None, "mood": self.mood,
                 "status": self.status, "available": self.renderer is not None,
                 "image_url": f"/backgrounds/{self.scene_id}" if self.status == "ready" else None,
                 "error": self.error}
@@ -237,7 +241,7 @@ class BackgroundDirector:
             return self._snapshot_unlocked()
 
     def _persist_unlocked(self) -> None:
-        data = self._snapshot_unlocked() | {"mood": self.mood}
+        data = self._snapshot_unlocked()
         temporary = self.directory / "current.json.tmp"
         try:
             temporary.write_text(json.dumps(data), encoding="utf-8")

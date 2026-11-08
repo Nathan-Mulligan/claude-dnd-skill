@@ -87,3 +87,28 @@ def test_invalid_scene_cli_flags_fail_before_campaign_operations(monkeypatch, ar
         with pytest.raises(SystemExit):
             send.main()
         ensure.assert_not_called()
+
+
+def test_cli_theme_preserves_omitted_mood_for_inheritance(monkeypatch):
+    import io
+    theme = [{'name': 'Greenwood', 'mood': 'warm'}, {'name': 'Hut'}]
+    monkeypatch.setattr(sys, 'argv', [str(SOURCE), '--music-event', 'scene', '--music-setting', 'tavern',
+        '--scene-key', 'hut', '--scene-label', 'The Hut', '--scene-description', 'A timber cottage.', '--scene-theme', json.dumps(theme)])
+    monkeypatch.setattr(sys, 'stdin', io.StringIO('The door opens.'))
+    monkeypatch.setattr(send, '_ensure_active_campaign', lambda: None)
+    monkeypatch.setattr(send, '_read_token', lambda: '')
+    payloads = []
+    monkeypatch.setattr(send, '_post', lambda url, data, token: payloads.append(json.loads(data)) or True)
+    send.main()
+    assert 'mood' not in payloads[0]['music']
+    assert payloads[0]['music']['scene']['theme'] == theme
+
+
+@pytest.mark.parametrize('value', ['null', '{"name":"Forest"}', '[{}]', '[{"name":"Forest","mood":"wrong"}]'])
+def test_invalid_cli_theme_fails_before_campaign_operations(monkeypatch, value):
+    monkeypatch.setattr(sys, 'argv', [str(SOURCE), '--music-event', 'scene', '--music-setting', 'forest',
+        '--scene-key', 'f', '--scene-label', 'Forest', '--scene-description', 'Trees.', '--scene-theme', value])
+    with mock.patch.object(send, '_ensure_active_campaign') as ensure:
+        with pytest.raises(SystemExit):
+            send.main()
+        ensure.assert_not_called()

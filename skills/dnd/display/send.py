@@ -67,7 +67,6 @@ import ssl
 import time
 import uuid
 import urllib.request
-from dataclasses import asdict
 
 # Windows CJK fix: Python decodes stdin via the system codepage (GBK), but
 # heredocs/pipes deliver UTF-8 bytes — force UTF-8 to keep Chinese narration intact.
@@ -444,6 +443,7 @@ def main() -> None:
     parser.add_argument("--scene-key", help="Stable scene identity, reused while this place or activity continues")
     parser.add_argument("--scene-label", help="Short player-facing name for this scene")
     parser.add_argument("--scene-description", help="Specific scenery, activity and atmosphere for image and music generation")
+    parser.add_argument("--scene-theme", help="JSON ancestry array of place names and optional moods; [] clears inheritance")
     parser.add_argument(
         "--action", metavar="NAME",
         help="Send as a player action intent — subdued label echoing what the player declared",
@@ -542,12 +542,16 @@ def main() -> None:
     elif args.music_setting or args.music_mood:
         parser.error("--music-setting/--music-mood require --music-event")
     scene = None
+    if args.scene_theme is not None and not all((args.scene_key, args.scene_label, args.scene_description)):
+        parser.error("--scene-theme requires --scene-key, --scene-label and --scene-description")
     if any(value is not None for value in (args.scene_key, args.scene_label, args.scene_description)):
         if args.music_event != "scene":
             parser.error("--scene-key/--scene-label/--scene-description require --music-event scene")
         try:
-            scene = SceneContext.parse({"key": args.scene_key, "label": args.scene_label,
-                                        "description": args.scene_description})
+            value = {"key": args.scene_key, "label": args.scene_label, "description": args.scene_description}
+            if args.scene_theme is not None:
+                value["theme"] = json.loads(args.scene_theme)
+            scene = SceneContext.parse(value)
         except ValueError as error:
             parser.error(str(error))
     music_id = uuid.uuid4().hex if args.music_event else None
@@ -728,10 +732,11 @@ def main() -> None:
             payload: dict = {"text": chunk}
             if music_id and chunks_sent == 0:
                 payload["music"] = {"event": args.music_event.replace("-", "_"),
-                                    "id": music_id, "setting": args.music_setting,
-                                    "mood": args.music_mood or "ominous"}
+                                    "id": music_id, "setting": args.music_setting}
+                if args.music_mood is not None:
+                    payload["music"]["mood"] = args.music_mood
                 if scene:
-                    payload["music"]["scene"] = asdict(scene)
+                    payload["music"]["scene"] = scene.to_dict()
             if args.action:
                 payload["action"] = args.action
             elif args.player:

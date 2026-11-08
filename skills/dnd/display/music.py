@@ -16,7 +16,7 @@ import subprocess
 import threading
 import uuid
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
@@ -28,11 +28,46 @@ SETTINGS = frozenset({
 MOODS = frozenset({"calm", "curious", "ominous", "tense", "warm"})
 
 
+MOOD_PROFILES = {
+    "warm": {"atmosphere": "Welcoming, happy and gently playful fantasy atmosphere.",
+             "visual": "Muted leaf greens, warm amber and soft golden light in the scenery.",
+             "music": "Consonant acoustic folk phrasing, gentle lilting melody and warm harmonies."},
+    "ominous": {"atmosphere": "Shadowed, uncanny dark fantasy atmosphere.",
+                "visual": "Cool slate blues, deep violet shadows and sparse restrained amber light.",
+                "music": "Restrained minor or suspended harmonies, low strings and distant hollow bells."},
+    "curious": {"atmosphere": "Curious fantasy wonder with a light sense of mystery.",
+                "visual": "Balanced muted teal and brass, soft pools of light and inviting shaded detail.",
+                "music": "Light plucked phrases, airy woodwind answers and gently exploring motifs."},
+    "calm": {"atmosphere": "Peaceful, tranquil and unhurried fantasy atmosphere.",
+             "visual": "Soft sage, muted blue and lavender, diffused light and gentle edges.",
+             "music": "Long gentle melodic sustains, sparse harp and settled quiet harmonies."},
+    "tense": {"atmosphere": "Tense fantasy anticipation with restrained urgency.",
+              "visual": "Desaturated umber, cool shadows and small restrained red accents.",
+              "music": "Held string figures and a restrained uneven pulse without harsh stingers."},
+}
+
+
+@dataclass(frozen=True)
+class PlaceTheme:
+    name: str
+    mood: str | None = None
+
+    def __post_init__(self):
+        if not isinstance(self.name, str) or not self.name.strip() or len(self.name) > 100 or "\0" in self.name:
+            raise ValueError("invalid place theme name")
+        if self.mood is not None and (not isinstance(self.mood, str) or self.mood not in MOODS):
+            raise ValueError("invalid place theme mood")
+
+    def to_dict(self) -> dict:
+        return {"name": self.name} | ({"mood": self.mood} if self.mood is not None else {})
+
+
 @dataclass(frozen=True)
 class SceneContext:
     key: str
     label: str
     description: str
+    theme: tuple[PlaceTheme, ...] | None = None
 
     @classmethod
     def parse(cls, value: dict | SceneContext | None) -> SceneContext | None:
@@ -40,11 +75,25 @@ class SceneContext:
             return None
         if isinstance(value, cls):
             return value
-        if not isinstance(value, dict) or set(value) != {"key", "label", "description"}:
+        required = {"key", "label", "description"}
+        if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"theme"}:
             raise ValueError("scene requires key, label and description")
-        if not all(isinstance(text, str) for text in value.values()):
+        if not all(isinstance(value[key], str) for key in required):
             raise ValueError("scene fields must be text")
-        return cls(**{key: text.strip() for key, text in value.items()})
+        theme = None
+        if "theme" in value:
+            levels = value["theme"]
+            if not isinstance(levels, list) or len(levels) > 8:
+                raise ValueError("scene theme must contain at most eight places")
+            parsed = []
+            for level in levels:
+                if not isinstance(level, dict) or "name" not in level or set(level) - {"name", "mood"}:
+                    raise ValueError("place theme requires a name and optional mood")
+                if not isinstance(level["name"], str):
+                    raise ValueError("place theme name must be text")
+                parsed.append(PlaceTheme(level["name"].strip(), level.get("mood")))
+            theme = tuple(parsed)
+        return cls(**{key: value[key].strip() for key in required}, theme=theme)
 
     def __post_init__(self):
         if not isinstance(self.key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", self.key):
@@ -52,6 +101,20 @@ class SceneContext:
         for text, limit in ((self.label, 120), (self.description, 800)):
             if not isinstance(text, str) or not text.strip() or len(text) > limit or "\0" in text:
                 raise ValueError("invalid scene label or description")
+        if self.theme is not None and (not isinstance(self.theme, tuple) or len(self.theme) > 8 or
+                                       not all(isinstance(level, PlaceTheme) for level in self.theme)):
+            raise ValueError("invalid scene theme")
+
+    def to_dict(self) -> dict:
+        value = {"key": self.key, "label": self.label, "description": self.description}
+        if self.theme is not None:
+            value["theme"] = [level.to_dict() for level in self.theme]
+        return value
+
+    def place_guidance(self) -> str:
+        if not self.theme:
+            return ""
+        return "Place ancestry: " + " > ".join(level.name for level in self.theme) + ". The resolved atmosphere below takes precedence over ancestor tones. "
 
 INSTRUMENTS = {
     "arcane": "bowed strings, hand bells and hollow wooden flute",
@@ -99,17 +162,19 @@ def prompt_for(setting: str, mood: str, kind: str, scene: SceneContext | None = 
     instruments = INSTRUMENTS[setting]
     if scene is not None:
         genre = "dark fantasy" if mood in {"ominous", "tense"} else "fantasy"
-        context = f"The current scene is {scene.label}: {scene.description}"
+        context = f"The current scene is {scene.label}: {scene.description}. " + scene.place_guidance()
+        profile = MOOD_PROFILES[mood]
+        guidance = profile["atmosphere"] + " " + profile["music"]
         if kind == "intro":
             return (
-                f"A ten-second instrumental {genre} scene introduction. {context} "
+                f"A ten-second instrumental {genre} scene introduction. {context} {guidance} "
                 f"Express the scene's activity, pace and mood through {instruments}. {mood.capitalize()} atmosphere. "
                 "A distinctive melodic phrase with a beginning, development and resolved ending. "
                 "No vocals, speech or sound effects."
             )
         if kind == "bed":
             return (
-                f"Two minutes of sparse instrumental {genre} background music. {context} "
+                f"Two minutes of sparse instrumental {genre} background music. {context} {guidance} "
                 f"Quiet {instruments}, shaped by this scene's activity and atmosphere. {mood.capitalize()} mood. "
                 "A scene-specific musical texture, unobtrusive beneath narration, with gentle variation, "
                 "long quiet stretches and smooth edges for repeating. No vocals, speech or sound effects."
@@ -278,7 +343,7 @@ class MusicDirector:
         data = {
             "revision": self.revision, "mode": self.mode,
             "setting": self.setting, "mood": self.mood,
-            "scene": asdict(self.scene) if self.scene else None,
+            "scene": self.scene.to_dict() if self.scene else None,
             "entry": self.entry, "expected": list(self.expected),
             "scene_id": self.scene_id, "scene_ready": self.scene_ready,
             "scene_revision": self.scene_revision,
@@ -310,7 +375,7 @@ class MusicDirector:
             "revision": self.revision,
             "mode": self.mode,
             "setting": self.setting,
-            "scene": asdict(self.scene) if self.scene else None,
+            "scene": self.scene.to_dict() if self.scene else None,
             "entry": entry,
             "scene_id": self.scene_id,
             "scene_revision": self.scene_revision,
@@ -341,12 +406,12 @@ class MusicDirector:
         return True
 
     def transition(self, event: str, event_id: str, setting: str | None = None,
-                   mood: str = "ominous", scene: dict | SceneContext | None = None) -> dict:
+                   mood: str | None = None, scene: dict | SceneContext | None = None) -> dict:
         if event not in {"scene", "combat_start", "combat_end"}:
             raise ValueError("invalid music event")
         if event == "scene" and setting not in SETTINGS:
             raise ValueError("invalid music setting")
-        if mood not in MOODS:
+        if mood is not None and (not isinstance(mood, str) or mood not in MOODS):
             raise ValueError("invalid music mood")
         if not isinstance(event_id, str) or len(event_id) > 64 or not event_id:
             raise ValueError("invalid music event id")
@@ -354,10 +419,22 @@ class MusicDirector:
         if event != "scene" and context is not None:
             raise ValueError("scene context requires a scene event")
         with self.lock:
+            if event == "scene":
+                if context is not None and context.theme is None and self.scene is not None:
+                    context = replace(context, theme=self.scene.theme)
+                inherited = next((level.mood for level in reversed(context.theme or ()) if level.mood is not None), None) if context else None
+                same_place = (context is not None and self.scene is not None and
+                              context.key == self.scene.key and setting == self.setting and
+                              context.theme == self.scene.theme)
+                resolved_mood = (self.mood if mood is None and same_place else
+                                 mood or inherited or "ominous")
+            else:
+                resolved_mood = mood or self.mood
             if not self._remember(event_id):
                 return self._snapshot_unlocked()
             if (event == "scene" and context is not None and self.scene is not None and
-                    context.key == self.scene.key and setting == self.setting):
+                    context.key == self.scene.key and setting == self.setting and
+                    context.theme == self.scene.theme and resolved_mood == self.mood):
                 return self._snapshot_unlocked()
             if event == "combat_start" and self.mode == "combat":
                 return self._snapshot_unlocked()
@@ -370,7 +447,7 @@ class MusicDirector:
                 self.scene_ready = False
             if event == "scene" and self.mode == "combat":
                 self.setting = setting
-                self.mood = mood
+                self.mood = resolved_mood
                 self._persist_unlocked()
                 state = self._snapshot_unlocked()
             else:
@@ -387,7 +464,7 @@ class MusicDirector:
                 else:
                     self.mode = "explore"
                     self.setting = setting
-                    self.mood = mood
+                    self.mood = resolved_mood
                     kinds = ("intro", "bed")
                 self.revision += 1
                 self.entry = uuid.uuid4().hex
