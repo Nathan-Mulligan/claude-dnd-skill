@@ -20,12 +20,18 @@
   h3 { font-size:var(--type-h3); font-weight:600; }
   h4 { font-size:var(--type-h4); font-weight:600; }
   b, strong { font-weight:600; }
-  #sidebar-toggle, #audio-controls #controls-toggle {
+  #sidebar-toggle, #controls-toggle, #audio-controls #controls-toggle {
     font-family:var(--font-heading); font-size:var(--type-label); font-weight:400;
     line-height:1.4; letter-spacing:2px; text-transform:uppercase;
+    border:0; border-radius:0; background:none; box-shadow:none; text-shadow:none; filter:none;
+    padding:8px 6px; text-align:left; justify-content:flex-start; opacity:1;
+    transition:color .3s ease;
+
     color:var(--e-accent, rgba(180,140,60,.4));
   }
-  #sidebar-toggle:hover, #audio-controls #controls-toggle:hover { color:var(--e-accent, rgba(180,140,60,.8)); }
+  #sidebar-toggle:hover, #controls-toggle:hover, #audio-controls #controls-toggle:hover { color:var(--e-accent, rgba(180,140,60,.8)); }
+
+  #sidebar-toggle:focus-visible, #controls-toggle:focus-visible, #audio-controls #controls-toggle:focus-visible { outline:2px solid #edcf87; outline-offset:3px; }
 
   blockquote, .npc-block p { font-style:italic; }
   #audio-controls .audio-label,
@@ -38,7 +44,7 @@
   }
   #audio-controls .audio-row { flex-shrink:0; grid-template-columns:minmax(100px, .9fr) minmax(0, 1.7fr); }
   #audio-controls .audio-row:has(.display-action),
-  #audio-controls #controls-toggle-row { grid-template-columns:minmax(0, 1fr); }
+  #controls-toggle-row { grid-template-columns:minmax(0, 1fr); }
   #audio-controls .settings-control-group { grid-template-columns:28px minmax(0, 1fr); }
   #audio-controls .ts-stepper { grid-template-columns:40px calc(56px * var(--text-scale)) 40px; }
   #audio-controls #ts-val { width:100%; }
@@ -60,7 +66,7 @@
   :root[data-large-text] #audio-controls .audio-row { grid-template-columns:minmax(0, 1fr); gap:6px; }
   :root[data-large-text] #audio-controls :is(.settings-control-group, .ts-stepper) { width:100%; }
   :root[data-large-text] #audio-controls .ts-stepper { grid-template-columns:1fr; }
-  :root[data-large-text] #audio-controls #controls-toggle { max-width:calc(100vw - 56px); }
+  :root[data-large-text] #controls-toggle { max-width:calc(100vw - 56px); }
   :root[data-large-text] #dice-pad #dp-die-row { grid-template-columns:minmax(0, 1fr); }
   :root[data-large-text] #dice-pad #dp-adv-row { grid-template-columns:minmax(0, 1fr); }
 </style>

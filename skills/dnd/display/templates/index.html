@@ -3697,11 +3697,15 @@
   #dice-pad #dp-mod-row { justify-content:center; width:100%; }
   #dice-pad #dp-mod-row > span:first-of-type { margin-left:8px; }
   #sidebar-toggle { min-width:6em; text-align:left; }
-  #audio-controls #controls-toggle {
+  #controls-toggle {
     border:0; background:none; box-shadow:none; padding:8px 6px;
   }
-  #audio-controls #controls-toggle:hover { background:none; }
+  #controls-toggle:hover { background:none; }
   #controls-toggle-row { transition:right .32s cubic-bezier(.4,0,.1,1); }
+  #controls-toggle-row, #controls-toggle-row:hover,
+  #audio-controls .audio-row:has(.display-action):hover { background:none; box-shadow:none; }
+  body.input-only #controls-toggle-row { display:none; }
+
   body:not(.input-only):has(#dice-drawer.ed-open) #text-scroll {
     padding-right:calc(var(--ed-drawer-w, min(400px, 92vw)) + 56px);
   }
@@ -7545,6 +7549,7 @@ function _effectiveTheme(theme) {
       else root.setAttribute('data-skin', base);
       if (s.variant) root.setAttribute('data-variant', s.variant);
       else root.removeAttribute('data-variant');
+      _placeControlsToggle();
       try { localStorage.setItem('dnd-skin', s.id); } catch (_) {}
     }
 
@@ -8287,6 +8292,13 @@ _sidebarBtn.addEventListener('click', () => _setSidebarVisible(!_sidebarVisible)
 const _audioControls = document.getElementById('audio-controls');
 const _controlsBtn   = document.getElementById('controls-toggle');
 let _controlsVisible = true;
+function _placeControlsToggle() {
+  const row = document.getElementById('controls-toggle-row');
+  const panel = document.getElementById('audio-controls');
+  if (document.documentElement.dataset.skin === 'editorial') panel.prepend(row);
+  else panel.before(row);
+}
+
 function _setControlsVisible(visible) {
   _controlsVisible = visible;
   if (_controlsBtn) _controlsBtn.setAttribute('aria-expanded', String(visible));
