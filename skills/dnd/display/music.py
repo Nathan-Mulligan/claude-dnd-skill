@@ -68,6 +68,7 @@ class SceneContext:
     label: str
     description: str
     theme: tuple[PlaceTheme, ...] | None = None
+    era: str | None = None
 
     @classmethod
     def parse(cls, value: dict | SceneContext | None) -> SceneContext | None:
@@ -76,7 +77,7 @@ class SceneContext:
         if isinstance(value, cls):
             return value
         required = {"key", "label", "description"}
-        if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"theme"}:
+        if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"theme", "era"}:
             raise ValueError("scene requires key, label and description")
         if not all(isinstance(value[key], str) for key in required):
             raise ValueError("scene fields must be text")
@@ -93,7 +94,13 @@ class SceneContext:
                     raise ValueError("place theme name must be text")
                 parsed.append(PlaceTheme(level["name"].strip(), level.get("mood")))
             theme = tuple(parsed)
-        return cls(**{key: value[key].strip() for key in required}, theme=theme)
+        era = None
+        if "era" in value:
+            era = value["era"]
+            if not isinstance(era, str) or not era.isprintable():
+                raise ValueError("invalid scene era")
+            era = era.strip()
+        return cls(**{key: value[key].strip() for key in required}, theme=theme, era=era)
 
     def __post_init__(self):
         if not isinstance(self.key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", self.key):
@@ -104,11 +111,16 @@ class SceneContext:
         if self.theme is not None and (not isinstance(self.theme, tuple) or len(self.theme) > 8 or
                                        not all(isinstance(level, PlaceTheme) for level in self.theme)):
             raise ValueError("invalid scene theme")
+        if self.era is not None and (not isinstance(self.era, str) or not self.era.strip() or
+                                     len(self.era) > 100 or not self.era.isprintable()):
+            raise ValueError("invalid scene era")
 
     def to_dict(self) -> dict:
         value = {"key": self.key, "label": self.label, "description": self.description}
         if self.theme is not None:
             value["theme"] = [level.to_dict() for level in self.theme]
+        if self.era is not None:
+            value["era"] = self.era
         return value
 
     def place_guidance(self) -> str:
@@ -422,6 +434,8 @@ class MusicDirector:
             if event == "scene":
                 if context is not None and context.theme is None and self.scene is not None:
                     context = replace(context, theme=self.scene.theme)
+                if context is not None and context.era is None and self.scene is not None:
+                    context = replace(context, era=self.scene.era)
                 inherited = next((level.mood for level in reversed(context.theme or ()) if level.mood is not None), None) if context else None
                 same_place = (context is not None and self.scene is not None and
                               context.key == self.scene.key and setting == self.setting and
@@ -434,7 +448,8 @@ class MusicDirector:
                 return self._snapshot_unlocked()
             if (event == "scene" and context is not None and self.scene is not None and
                     context.key == self.scene.key and setting == self.setting and
-                    context.theme == self.scene.theme and resolved_mood == self.mood):
+                    context.theme == self.scene.theme and context.era == self.scene.era and
+                    resolved_mood == self.mood):
                 return self._snapshot_unlocked()
             if event == "combat_start" and self.mode == "combat":
                 return self._snapshot_unlocked()
