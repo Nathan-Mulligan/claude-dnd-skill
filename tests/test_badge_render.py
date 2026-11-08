@@ -19,11 +19,13 @@ Opt-in because it needs a browser and a running display:
 from __future__ import annotations
 
 import os
+import json
 import pathlib
 import subprocess
 import sys
 import time
 import unittest
+import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PORT = os.environ.get("DISPLAY_PORT", "5001")
@@ -56,6 +58,11 @@ class BadgeRenderTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=3) as response:
+            health = json.load(response)
+        expected = pathlib.Path(os.environ["DND_CAMPAIGN_ROOT"]).resolve()
+        if pathlib.Path(health.get("data_root", "")).resolve() != expected or PORT != "5001":
+            raise unittest.SkipTest("Badge rendering requires an isolated display using this test campaign root on port 5001")
         cls.send_py = cls.SEND or _discover_send()
         subprocess.run(["curl", "-s", "-X", "POST",
                         f"http://127.0.0.1:{PORT}/clear",

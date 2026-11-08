@@ -1272,15 +1272,31 @@ _background = _background_module.BackgroundDirector(
 _background.broadcast = _broadcast
 _music = _music_module.MusicDirector(Path(rt("music")), _music_cli, _music_hf,
                                     render_lock=_render_lock)
+_music_scene_lock = threading.Lock()
+_music_scene_version = (-1, -1)
 
 
 def _broadcast_music(payload: dict) -> None:
-    _broadcast(payload)
+    global _current_scene_name, _scene_buffer, _music_scene_version
+    state = payload["music"]
+    revision = state.get("revision", -1)
+    version = (state.get("scene_revision", revision), revision)
+    with _music_scene_lock:
+        if version < _music_scene_version:
+            return
+        _music_scene_version = version
+        setting = state.get("setting")
+        if state.get("mode") != "idle" and setting in SCENES:
+            if setting != _current_scene_name:
+                _scene_buffer = []
+            _current_scene_name = setting
+            payload = payload | {"scene": SCENES[setting] | {"name": setting}}
+        _broadcast(payload)
     _background.observe_music(payload["music"])
 
 
 _music.set_broadcast(_broadcast_music)
-_background.observe_music(_music.snapshot())
+_broadcast_music({"music": _music.snapshot()})
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -1533,8 +1549,11 @@ def chunk():
             payload["opener"] = True
         # Scene detection only on DM narration
         music_state = _music.snapshot()
-        scene = (_detect_scene(cleaned) if music_state["mode"] != "combat" or
-                 (explicit_music and music_cue.get("event") == "scene") else None)
+        scene = None
+        if explicit_music and music_cue.get("event") == "scene":
+            scene = SCENES[_current_scene_name] | {"name": _current_scene_name}
+        elif not explicit_music and music_state["mode"] != "combat":
+            scene = _detect_scene(cleaned)
         if scene:
             payload["scene"] = scene
             if _audio:

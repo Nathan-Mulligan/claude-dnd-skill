@@ -26,6 +26,7 @@ def display(tmp_path, monkeypatch):
     spec.loader.exec_module(module)
     module._music = module._music_module.MusicDirector(tmp_path / "music-test", None, None,
                                                       renderer=lambda job: None, autostart=False)
+    module._music.set_broadcast(module._broadcast_music)
     module._audio = None
     module._broadcast = lambda payload: None
     return module, module.app.test_client()
@@ -58,6 +59,7 @@ def test_explicit_cue_is_authoritative_without_duplicate_fallback(display, monke
     client.post("/chunk", json={"text": "Trees line the distant shore.",
                                "music": {"event": "scene", "id": "coast", "setting": "ocean", "mood": "calm"}})
     assert module._music.snapshot()["setting"] == "ocean"
+    assert module._current_scene_name == "ocean"
     assert module._music.jobs.qsize() == 2
 
 
@@ -106,8 +108,34 @@ def test_music_can_be_started_without_adding_story_text(display):
     response = client.post("/music-cue", json={"event": "scene", "id": "manual", "setting": "city", "mood": "warm"})
     assert response.status_code == 200
     assert response.json["setting"] == "city"
+    assert module._current_scene_name == "city"
     assert module._music.jobs.qsize() == 2
     assert list(module._text_log) == before
+
+
+def test_restart_restores_scene_heading_from_saved_music(display, tmp_path, monkeypatch):
+    module, _ = display
+    saved = module._music_module.MusicDirector(tmp_path / ".runtime/music", None, None,
+                                              renderer=lambda job: None, autostart=False)
+    saved.transition("scene", "saved-mountain", "mountain", "warm")
+    spec = importlib.util.spec_from_file_location("_restored_scene_heading_test", DISPLAY / "dnd-display-app.py")
+    restarted = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, restarted)
+    spec.loader.exec_module(restarted)
+    assert restarted._current_scene_name == "mountain"
+    assert restarted._music.snapshot()["setting"] == "mountain"
+
+
+def test_delayed_music_updates_cannot_restore_an_old_scene(display):
+    module, _ = display
+    old = module._music.transition("scene", "old-cave", "cave")
+    new = module._music.transition("scene", "new-mountain", "mountain")
+    module._broadcast_music({"music": old})
+    assert module._current_scene_name == new["setting"] == "mountain"
+    module._music.reset()
+    module._current_scene_name = "tavern"
+    module._broadcast_music({"music": new})
+    assert module._current_scene_name == "tavern"
 
 
 @pytest.mark.parametrize("payload", [["scene"], {"event": [], "id": "bad"}, {"event": "scene", "id": "bad", "setting": []}])
