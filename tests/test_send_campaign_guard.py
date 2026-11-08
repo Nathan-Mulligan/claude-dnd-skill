@@ -112,3 +112,32 @@ def test_invalid_cli_theme_fails_before_campaign_operations(monkeypatch, value):
         with pytest.raises(SystemExit):
             send.main()
         ensure.assert_not_called()
+
+
+def test_cli_carries_explicit_scene_era(monkeypatch):
+    import io
+    monkeypatch.setattr(sys, 'argv', [str(SOURCE), '--music-event', 'scene', '--music-setting', 'city',
+        '--scene-key', 'station', '--scene-label', 'The Station', '--scene-description', 'A glass transit hall.',
+        '--scene-era', 'futuristic'])
+    monkeypatch.setattr(sys, 'stdin', io.StringIO('The doors open.'))
+    monkeypatch.setattr(send, '_ensure_active_campaign', lambda: None)
+    monkeypatch.setattr(send, '_read_token', lambda: '')
+    payloads = []
+    monkeypatch.setattr(send, '_post', lambda url, data, token: payloads.append(json.loads(data)) or True)
+    send.main()
+    assert payloads[0]['music']['scene']['era'] == 'futuristic'
+
+
+@pytest.mark.parametrize('args', [
+    ['--scene-era', 'modern'],
+    ['--music-event', 'scene', '--music-setting', 'city', '--scene-era', 'modern'],
+    ['--music-event', 'combat-start', '--scene-era', 'modern'],
+    ['--music-event', 'scene', '--music-setting', 'city', '--scene-key', 's', '--scene-label', 'Station',
+     '--scene-description', 'Glass hall.', '--scene-era', 'x' * 101],
+])
+def test_invalid_cli_era_fails_before_campaign_operations(monkeypatch, args):
+    monkeypatch.setattr(sys, 'argv', [str(SOURCE), *args])
+    with mock.patch.object(send, '_ensure_active_campaign') as ensure:
+        with pytest.raises(SystemExit):
+            send.main()
+        ensure.assert_not_called()
