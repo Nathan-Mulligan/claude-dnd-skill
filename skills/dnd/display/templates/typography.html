@@ -3,15 +3,15 @@
     --font-app:'IM Fell English', Georgia, serif;
     --font-heading:'Cinzel', Georgia, serif;
     --text-scale:1;
-    --type-body:calc(16px * var(--text-scale));
-    --type-display:calc(32px * var(--text-scale));
-    --type-h1:calc(24px * var(--text-scale));
-    --type-h2:calc(20px * var(--text-scale));
-    --type-h3:calc(18px * var(--text-scale));
-    --type-h4:calc(16px * var(--text-scale));
-    --type-label:calc(14px * var(--text-scale));
+    --type-body:calc(14.4px * var(--text-scale));
+    --type-display:calc(28.8px * var(--text-scale));
+    --type-h1:calc(21.6px * var(--text-scale));
+    --type-h2:calc(18px * var(--text-scale));
+    --type-h3:calc(16.2px * var(--text-scale));
+    --type-h4:calc(14.4px * var(--text-scale));
+    --type-label:calc(12.6px * var(--text-scale));
     --type-narration:calc(24px * var(--text-scale));
-    --type-support:calc(16px * var(--text-scale));
+    --type-support:calc(14.4px * var(--text-scale));
   }
   html, body { font-family:var(--font-app); font-size:var(--type-body); font-weight:400; }
   h1, h2, h3, h4, button, select, label { font-family:var(--font-heading); }
@@ -35,7 +35,7 @@
   #audio-controls .settings-control-group { grid-template-columns:28px minmax(0, 1fr); }
   #audio-controls .ts-stepper { grid-template-columns:40px calc(56px * var(--text-scale)) 40px; }
   #audio-controls #ts-val { width:100%; }
-  #audio-controls #skin-select { text-overflow:ellipsis; }
+  #audio-controls select.theme-select { text-overflow:ellipsis; }
   #audio-controls :is(#music-volume, #intro-volume, #sfx-volume, #narration-volume, #vb-slider) {
     grid-column:2; width:100%; max-width:none; min-width:0; margin:0;
   }

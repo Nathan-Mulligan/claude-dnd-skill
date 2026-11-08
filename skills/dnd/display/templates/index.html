@@ -181,7 +181,7 @@
     position: fixed; inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 72px max(340px, 18vw) 80px 230px;  /* left: sidebar+gap; right: clears the settings column */
+    padding: 72px max(456px, 18vw) 80px 230px;  /* left: sidebar+gap; right: clears the settings column */
     z-index: 4;
     scroll-behavior: smooth;
     transition: padding 0.4s ease;
@@ -277,6 +277,7 @@
   .tutor-block:hover .block-badge { opacity: 0.55; }
 
   .dm-block, .npc-block, .dice-block, .tutor-block { position: relative; }
+  :is(.dm-block, .npc-block, .tutor-block):has(> .block-badge) { padding-right:38px; }
 
   @media (prefers-reduced-motion: reduce) {
     .block-badge { transition: none; }
@@ -538,16 +539,17 @@
 
   /* Session divider */
   .divider {
+    display:flex; justify-content:center; align-items:center; gap:12px;
     text-align: center;
     color: rgba(180, 140, 60, 0.4);
     font-family:var(--font-heading);
     font-size:var(--type-label);
-    letter-spacing: 4px;
+    letter-spacing: 0;
     margin: 2em 0;
     user-select: none;
   }
   .divider::before, .divider::after {
-    content: '— ';
+    content: '—';
   }
 
   /* Cursor blink */
@@ -630,7 +632,7 @@
 
   /* ── Player card ── */
   .sb-player {
-    margin-bottom: 14px;
+    margin-bottom: 0;
     padding-bottom: 14px;
     border-bottom: 1px solid rgba(180,140,60,0.1);
   }
@@ -3659,7 +3661,7 @@
     font-weight:400; box-shadow:none;
   }
   #audio-controls :is(.theme-label, .speed-label, .narrate-label) { justify-self:start; padding:6px 10px; }
-  #audio-controls #skin-select {
+  #audio-controls select.theme-select {
     max-width:100%; width:100%; min-width:0; padding-right:28px; text-align:left;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23d4c4a0' stroke-width='1.5'/%3E%3C/svg%3E");
     background-position:right 12px center; background-size:10px 6px; background-repeat:no-repeat;
@@ -3781,13 +3783,13 @@
       <input id="vb-slider" class="settings-slider" type="range" min="250" max="2500" step="250" value="500" aria-label="Narration length target in words">
     </span>
   </div>
-  <div class="audio-row" id="speed-row" title="Typing speed — click to cycle">
+  <div class="audio-row" id="speed-row" title="Typing speed">
     <span class="audio-label">Type Speed</span>
-    <span id="speed-label" class="speed-label">Normal</span>
+    <select id="speed-label" class="speed-label theme-select" aria-label="Type speed"><option value="36">Normal</option><option value="18">Fast</option><option value="0">Instant</option></select>
   </div>
   <div class="audio-row" id="theme-row" title="Display theme — Dark / Light / Auto (system)">
     <span class="audio-label">Theme</span>
-    <span id="theme-label" class="theme-label">Dark</span>
+    <select id="theme-label" class="theme-label theme-select" aria-label="Theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select>
   </div>
   <div class="audio-row" id="skin-row" title="Display style">
     <span class="audio-label">Style</span>
@@ -3850,7 +3852,7 @@
 <div id="phone-settings">
   <button id="ph-set-toggle" type="button" title="Display settings" aria-label="Display settings">⚙</button>
   <div id="ph-set-menu" role="menu">
-    <button class="ph-set-opt" id="ph-theme-opt" type="button"><span>Theme</span><strong id="ph-theme-val">Dark</strong></button>
+    <label class="ph-set-opt ph-set-row" id="ph-theme-opt"><span>Theme</span><select id="ph-theme-select" class="ph-set-select" aria-label="Phone theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select></label>
     <label class="ph-set-opt ph-set-row" id="ph-skin-opt"><span>Style</span><select id="ph-skin-select" class="ph-set-select" aria-label="Display style"><option value="vellum">Vellum</option><option value="editorial">Editorial</option></select></label>
     <button class="ph-set-opt" id="ph-roll-opt" type="button" hidden><span>Rolls</span><strong id="ph-roll-val">Players</strong></button>
   </div>
@@ -6904,18 +6906,9 @@ document.getElementById('sfx-row').addEventListener('click', () => {
 });
 
 // ── Typing speed toggle ──────────────────────────────────────────────
-const _speedSteps = [
-  { label: 'Normal',  ms: 36 },
-  { label: 'Fast',    ms: 18 },
-  { label: 'Instant', ms: 0  },
-];
-let _speedIdx = 0;
-const _speedLabel = document.getElementById('speed-label');
-document.getElementById('speed-row').addEventListener('click', () => {
-  _speedIdx = (_speedIdx + 1) % _speedSteps.length;
-  const step = _speedSteps[_speedIdx];
-  charDelay = step.ms;
-  _speedLabel.textContent = step.label;
+const _speedSelect = document.getElementById('speed-label');
+_speedSelect.addEventListener('change', () => {
+  charDelay = Number(_speedSelect.value);
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -7453,7 +7446,6 @@ if (_TTS_AVAILABLE) {
 // flash on load; this module handles runtime toggling.
 // ═══════════════════════════════════════════════════════════════════
 
-const _THEME_CYCLE = ['dark', 'light', 'auto'];
 const _THEME_LABEL = { dark: 'Dark', light: 'Light', auto: 'Auto' };
 
 function _readStoredTheme() {
@@ -7489,30 +7481,33 @@ function _effectiveTheme(theme) {
 (function _initThemePicker() {
   const row = document.getElementById('theme-row');
   const label = document.getElementById('theme-label');
+  const phoneSelect = document.getElementById('ph-theme-select');
   if (!row || !label) return;
 
   let current = _readStoredTheme();
   _applyTheme(current);
 
   function refresh() {
-    label.textContent = _THEME_LABEL[current] || 'Dark';
+    label.value = current;
+    if (phoneSelect) phoneSelect.value = current;
     label.classList.toggle('on', current !== 'dark');
     // Surface the effective theme for "auto" via the tooltip
     if (current === 'auto') {
       row.title = `Display theme — Auto (system: ${_effectiveTheme(current)})`;
     } else {
-      row.title = `Display theme — ${_THEME_LABEL[current]}. Click to cycle.`;
+      row.title = `Display theme — ${_THEME_LABEL[current]}`;
     }
   }
   refresh();
 
-  row.addEventListener('click', () => {
-    const idx = _THEME_CYCLE.indexOf(current);
-    current = _THEME_CYCLE[(idx + 1) % _THEME_CYCLE.length];
+  function chooseTheme(event) {
+    current = event.target.value;
     try { localStorage.setItem('dnd-theme', current); } catch (_) {}
     _applyTheme(current);
     refresh();
-  });
+  }
+  label.addEventListener('change', chooseTheme);
+  if (phoneSelect) phoneSelect.addEventListener('change', chooseTheme);
 
   // ── Skin picker — native <select> on both desktop and phone surfaces ──
   // window._SKINS is defined in the anti-FOUC <script> at the top of <head> so
@@ -8642,25 +8637,14 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
     }
   }
 
-  // Phone-only display settings — reuse the hidden Theme / Style pickers so each
-  // phone chooses its own look (their click handlers fire even while display:none).
   (function _initPhoneSettings() {
     const wrap = document.getElementById('phone-settings');
     if (!wrap || !document.body.classList.contains('input-only')) return;
     const tog    = document.getElementById('ph-set-toggle');
     const menu   = document.getElementById('ph-set-menu');
-    // Theme stays click-to-cycle (3 values: dark/light/auto — cycle's fine at 3).
-    // Style is its own <select id="ph-skin-select"> wired in _initSkinPicker.
-    const tVal   = document.getElementById('ph-theme-val');
-    const tRow   = document.getElementById('theme-row');
-    const tLabel = document.getElementById('theme-label');
-    function refreshTheme() {
-      if (tLabel && tVal) tVal.textContent = tLabel.textContent;
-    }
-    refreshTheme();
     if (tog) tog.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('open'); });
-    const tOpt = document.getElementById('ph-theme-opt');
-    if (tOpt) tOpt.addEventListener('click', e => { e.stopPropagation(); if (tRow) tRow.click(); refreshTheme(); });
+    const themeOption = document.getElementById('ph-theme-opt');
+    if (themeOption) themeOption.addEventListener('click', e => e.stopPropagation());
     // Phone Style select lives inside the menu — stop click bubbling so opening
     // the native picker doesn't close the menu via the document-click listener.
     const sOpt = document.getElementById('ph-skin-opt');
