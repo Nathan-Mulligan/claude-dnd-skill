@@ -8209,7 +8209,6 @@ function _setSidebarVisible(visible) {
 
 _sidebarBtn.addEventListener('click', () => _setSidebarVisible(!_sidebarVisible));
 
-// Settings-column (right) hide toggle — mirrors the left sidebar toggle.
 (function initCampaignSettings() {
   if (window.parent === window || !document.referrer) return;
   const portalOrigin = new URL(document.referrer).origin;
@@ -8228,6 +8227,7 @@ _sidebarBtn.addEventListener('click', () => _setSidebarVisible(!_sidebarVisible)
   });
 })();
 
+// Settings-column (right) hide toggle — mirrors the left sidebar toggle.
 const _audioControls = document.getElementById('audio-controls');
 const _controlsBtn   = document.getElementById('controls-toggle');
 let _controlsVisible = true;

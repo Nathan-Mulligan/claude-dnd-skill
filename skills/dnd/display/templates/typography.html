@@ -27,7 +27,7 @@
     z-index:10;
     max-height:calc(100dvh - 168px - var(--type-label) * 1.4);
   }
-  #audio-controls .audio-row { grid-template-columns:minmax(100px, .9fr) minmax(0, 1.7fr); }
+  #audio-controls .audio-row { flex-shrink:0; grid-template-columns:minmax(100px, .9fr) minmax(0, 1.7fr); }
   #audio-controls .audio-row:has(.display-action),
   #audio-controls #controls-toggle-row { grid-template-columns:minmax(0, 1fr); }
   #audio-controls .settings-control-group { grid-template-columns:28px minmax(0, 1fr); }
