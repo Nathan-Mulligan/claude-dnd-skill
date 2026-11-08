@@ -351,6 +351,17 @@ _queue_status_lock = threading.Lock()
 _setup_question = ""
 _party_feedback_lock = threading.Lock()
 _party_feedback = {"instance": secrets.token_hex(16), "revision": 0, "status": "idle", "responses": []}
+_input_handoff: Optional[dict] = None
+
+
+def _handoff_active_unlocked() -> bool:
+    global _input_handoff
+    if _input_handoff and _input_handoff["until"] <= _time.monotonic():
+        previous = _input_handoff["previous_status"]
+        _input_handoff = None
+        if _party_feedback_snapshot()["status"] == "saving":
+            _update_party_feedback(previous)
+    return _input_handoff is not None
 
 
 def _party_feedback_snapshot() -> dict:
@@ -1401,6 +1412,10 @@ def chunk():
     if not raw:
         return "", 204
     if not data.get("player") and not data.get("action") and not data.get("dice"):
+        global _setup_question
+        if _setup_question:
+            _setup_question = ""
+            _broadcast({"setup_question": ""})
         _update_party_feedback("responding")
 
     is_action      = bool(data.get("action"))
@@ -2382,9 +2397,12 @@ def player_input():
         "timestamp": time.time(),
     }
 
-    with _input_lock:
-        _input_queue.append(entry)
-        current = list(_input_queue)
+    with _staged_lock:
+        if _handoff_active_unlocked():
+            return "Saving your campaign. Please wait before sending another reply.", 409
+        with _input_lock:
+            _input_queue.append(entry)
+            current = list(_input_queue)
 
     _persist_input_queue()
     _broadcast({"pending_input": current})
@@ -2718,6 +2736,8 @@ def stage_input():
     solo = (_expected_count == 1)
 
     with _staged_lock:
+        if _handoff_active_unlocked():
+            return "Saving your campaign. Please wait before sending another reply.", 409
         _staged[character] = {
             "text":      text,
             "ready":     solo,
@@ -2757,6 +2777,8 @@ def ready_input():
     ready     = bool(data.get("ready", True))
 
     with _staged_lock:
+        if _handoff_active_unlocked():
+            return "Saving your campaign. Please wait before sending another reply.", 409
         if character not in _staged:
             return "Not Found", 404
         _staged[character]["ready"] = ready
@@ -2819,6 +2841,8 @@ def skip_input():
         return "Forbidden", 403
 
     with _staged_lock:
+        if _handoff_active_unlocked():
+            return "Saving your campaign. Please wait before sending another reply.", 409
         _staged[character] = {
             "text":      "skips their turn",
             "ready":     True,
@@ -2828,6 +2852,51 @@ def skip_input():
 
     _broadcast({"staged_inputs": snap})
     _check_auto_trigger()
+    return "", 204
+
+
+@app.route("/campaign-handoff", methods=["POST"])
+def campaign_handoff():
+    global _input_handoff
+    if not _token_ok():
+        return "Forbidden", 403
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or not isinstance(data.get("token"), str) or not re.fullmatch(r"[0-9a-f]{32}", data["token"]):
+        return "Invalid handoff token", 400
+    if not isinstance(data.get("active"), bool) or not isinstance(data.get("campaign"), str):
+        return "Invalid handoff", 400
+    with _staged_lock:
+        active = _handoff_active_unlocked()
+        if not data["active"]:
+            if not active:
+                return "", 204
+            if any(data[key] != _input_handoff[key] for key in ("token", "campaign")):
+                return "Another model switch is active", 409
+            previous = _input_handoff["previous_status"]
+            _input_handoff = None
+            if _party_feedback_snapshot()["status"] == "saving":
+                _update_party_feedback(previous)
+            return "", 204
+        if data["campaign"] != _active_campaign_name():
+            return "Campaign changed", 409
+        if active:
+            if any(data[key] != _input_handoff[key] for key in ("token", "campaign")):
+                return "Another model switch is active", 409
+            _input_handoff["until"] = _time.monotonic() + 300
+            return "", 204
+        with _input_lock:
+            pending = bool(_input_queue)
+        for path in (QUEUE_FILE, TRIGGER_FILE, rt(".portal-input-claim")):
+            try:
+                pending = pending or os.path.getsize(path) > 0
+            except FileNotFoundError:
+                pass
+        if _staged or pending:
+            return "Send or remove pending replies before changing the DM.", 409
+        _input_handoff = {"token": data["token"], "campaign": data["campaign"],
+                          "until": _time.monotonic() + 300,
+                          "previous_status": _party_feedback_snapshot()["status"]}
+        _update_party_feedback("saving")
     return "", 204
 
 

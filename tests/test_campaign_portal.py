@@ -21,7 +21,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
     monkeypatch.setattr(portal, "RUNTIME", tmp_path / ".runtime")
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime" / "portal-session.json")
-    monkeypatch.setattr(portal, "prepare_display", lambda name: None)
+    monkeypatch.setattr(portal, "prepare_display", lambda name, **kwargs: None)
     monkeypatch.setattr(portal, "notify_party_consumed", lambda *args: None)
     app = portal.create_app()
     app.testing = True
@@ -91,7 +91,7 @@ def test_start_refuses_second_model(client, monkeypatch):
 def test_new_campaign_selects_clean_display_before_starting_model(client, monkeypatch):
     events = []
     monkeypatch.setattr(portal, "running", lambda: False)
-    monkeypatch.setattr(portal, "prepare_display", lambda name: events.append(("display", name)))
+    monkeypatch.setattr(portal, "prepare_display", lambda name, **kwargs: events.append(("display", name)))
 
     def fake_run(*args, timeout=15):
         events.append(args)
@@ -112,7 +112,7 @@ def test_display_failure_prevents_model_start(client, monkeypatch):
     monkeypatch.setattr(portal, "running", lambda: False)
     calls = []
 
-    def failed_display(name):
+    def failed_display(name, **kwargs):
         raise OSError("display unavailable")
 
     monkeypatch.setattr(portal, "prepare_display", failed_display)
@@ -250,3 +250,70 @@ def test_party_input_waits_for_matching_campaign(client, monkeypatch):
 
     assert portal.deliver_party_input() is False
     assert queue.read_text(encoding="utf-8") == "[Everybody]: Old answer"
+
+
+def test_resuming_same_campaign_does_not_clear_its_display(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
+    calls = []
+    expected = str(tmp_path / "campaigns/fresh/session_tail.json")
+
+    def current_display(request, **kwargs):
+        calls.append(request)
+        return io.BytesIO(json.dumps({"data_root":str(tmp_path), "campaign":"fresh", "tail_path":expected}).encode("utf-8"))
+
+    monkeypatch.setattr(portal.urllib.request, "urlopen", current_display)
+    portal.prepare_display("fresh", reset=False)
+    assert calls == ["http://127.0.0.1:5001/health"]
+
+
+@pytest.mark.parametrize("filename", [".input_queue", ".portal-input-claim"])
+def test_resume_delivers_reply_owned_by_stopped_session(client, monkeypatch, filename):
+    import os
+    import time
+
+    folder = portal.DATA_ROOT / "campaigns/fresh"
+    folder.mkdir(parents=True)
+    (folder / "state.md").write_text("# Fresh\n", encoding="utf-8")
+    portal.RUNTIME.mkdir(exist_ok=True)
+    previous = time.time() - 20
+    portal.META_FILE.write_text(json.dumps({"campaign":"fresh", "provider":"qwen", "started_at":previous}), encoding="utf-8")
+    pending = portal.RUNTIME / filename
+    pending.write_text("[Everybody]: Keep this reply", encoding="utf-8")
+    os.utime(pending, (previous + 1, previous + 1))
+    calls = []
+    monkeypatch.setattr(portal, "running", lambda: False)
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs:
+                        (calls.append(args), subprocess.CompletedProcess(args, 0, "", ""))[1])
+    ok, _ = portal.start_session("qwen", "resume", "fresh", "")
+    assert ok
+    assert portal.read_meta()["started_at"] > previous + 1
+    assert portal.read_meta()["input_started_at"] == previous
+    monkeypatch.setattr(portal, "running", lambda: True)
+    assert portal.deliver_party_input()
+    assert any("Keep this reply" in str(args) for args in calls)
+    assert not pending.exists()
+
+
+def test_reply_arriving_during_same_campaign_startup_remains_deliverable(client, monkeypatch):
+    import time
+
+    folder = portal.DATA_ROOT / "campaigns/fresh"
+    folder.mkdir(parents=True)
+    (folder / "state.md").write_text("# Fresh\n", encoding="utf-8")
+    portal.RUNTIME.mkdir(exist_ok=True)
+    previous = time.time() - 20
+    portal.META_FILE.write_text(json.dumps({"campaign":"fresh", "provider":"qwen", "started_at":previous}), encoding="utf-8")
+    calls = []
+
+    def startup(*args, **kwargs):
+        calls.append(args)
+        if "--start" in args:
+            (portal.RUNTIME / ".input_queue").write_text("[Everybody]: Arrived while starting", encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(portal, "run", startup)
+    monkeypatch.setattr(portal, "running", lambda: False)
+    assert portal.start_session("qwen", "resume", "fresh", "")[0]
+    monkeypatch.setattr(portal, "running", lambda: True)
+    assert portal.deliver_party_input()
+    assert any("Arrived while starting" in str(args) for args in calls)
