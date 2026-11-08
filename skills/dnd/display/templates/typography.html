@@ -34,7 +34,7 @@
   #audio-controls .audio-row:has(.display-action),
   #audio-controls #controls-toggle-row { grid-template-columns:minmax(0, 1fr); }
   #audio-controls .settings-control-group { grid-template-columns:28px minmax(0, 1fr); }
-  #audio-controls .ts-stepper { grid-template-columns:32px calc(40px * var(--type-scale)) 32px; }
+  #audio-controls .ts-stepper { grid-template-columns:40px calc(56px * var(--text-scale)) 40px; }
   #audio-controls #ts-val { width:100%; }
   #audio-controls #skin-select { text-overflow:ellipsis; }
   #audio-controls :is(#music-volume, #intro-volume, #sfx-volume, #vb-slider) {
@@ -52,8 +52,8 @@
   #text-content :is(.npc-block p, .player-block p) { font-size:1em; }
   :root[data-large-text] #audio-controls .audio-row { grid-template-columns:minmax(0, 1fr); gap:6px; }
   :root[data-large-text] #audio-controls :is(.settings-control-group, .ts-stepper) { width:100%; }
-  :root[data-large-text] #audio-controls .ts-stepper { grid-template-columns:1fr 1fr 1fr; }
+  :root[data-large-text] #audio-controls .ts-stepper { grid-template-columns:1fr; }
   :root[data-large-text] #audio-controls #controls-toggle { max-width:calc(100vw - 56px); }
-  :root[data-large-text] #dice-pad #dp-die-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  :root[data-large-text] #dice-pad #dp-die-row { grid-template-columns:minmax(0, 1fr); }
   :root[data-large-text] #dice-pad #dp-adv-row { grid-template-columns:minmax(0, 1fr); }
 </style>
