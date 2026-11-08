@@ -58,7 +58,7 @@ def test_setup_question_sender_works_before_campaign_selection(tmp_path):
     with mock.patch.object(sys, "argv", ["send.py", "--setup-question"]), \
          mock.patch.object(sys, "stdin", io.StringIO("What is your character's name?")), \
          mock.patch.object(sender, "_post", side_effect=lambda *args: sent.append(args) or True), \
-         mock.patch.object(sender, "_ensure_active_campaign", side_effect=AssertionError("not selected")):
+         mock.patch.dict(os.environ, {"DND_ACTIVE_CAMPAIGN": ""}):
         sender.main()
     assert sent[0][0] == sender.SETUP_URL
     assert b"What is your character's name?" in sent[0][1]

@@ -1655,6 +1655,16 @@
     font-family: 'IM Fell English', serif; font-size: 15px; line-height: 1.45;
   }
   #setup-question[hidden] { display: none; }
+  #dm-activity { color:var(--e-text, #eadfc6); font-size:13px; line-height:1.5; }
+  #dm-activity::before { content:''; display:inline-block; width:7px; height:7px; margin-right:8px; border-radius:50%; background:currentColor; opacity:.6; }
+  #dm-activity[data-state="working"]::before { animation:dm-working 1.4s ease-in-out infinite; }
+  #party-response-history { max-height:140px; overflow-y:auto; overscroll-behavior:contain; border-top:1px solid rgba(180,140,60,.25); padding-top:8px; color:var(--e-text, #eadfc6); }
+  #party-response-history[hidden] { display:none; }
+  #party-response-history h3 { font-size:12px; font-weight:normal; margin:0 0 8px; }
+  .party-response { margin:0 0 10px; font-size:14px; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .party-response small { display:block; font-size:10px; opacity:.7; margin-bottom:2px; }
+  @keyframes dm-working { 50% { opacity:.2; } }
+  @media (prefers-reduced-motion:reduce) { #dm-activity::before { animation:none !important; } }
   #player-input-text:focus { border-color: rgba(180,140,60,0.45); }
   #player-input-text::placeholder { color: rgba(180,140,60,0.28); }
   #input-footer { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
@@ -3820,6 +3830,7 @@
       <button class="dp-tab"        data-tab="character" type="button">Sheet</button>
     </div>
     <div id="phone-status" data-tab-section="move"></div>
+    <div id="dm-activity" data-tab-section="move" data-state="idle" role="status" aria-live="polite">Ready for a new adventure</div>
     <div id="setup-question" data-tab-section="move" role="status" hidden></div>
     <div id="staged-queue" data-tab-section="move"></div>
     <div id="waiting-indicator" data-tab-section="move"></div>
@@ -3832,6 +3843,9 @@
       <button id="skip-turn-btn" style="display:none" title="Skip this character's turn">Skip Turn</button>
       <button id="stage-btn">Stage</button>
     </div>
+    <section id="party-response-history" data-tab-section="move" aria-label="Your submitted replies" hidden>
+      <h3>Your replies</h3><div id="party-responses"></div>
+    </section>
     <!-- Phone-only dice pad (shown by ?view=input) -->
     <div id="dice-pad" data-tab-section="roll">
       <div id="dp-bound" style="display:none"></div>
@@ -7517,6 +7531,34 @@ function _buildCharTabs(players) {
   });
 }
 
+let _partyFeedbackInstance = null;
+let _partyFeedbackRevision = -1;
+function _renderPartyFeedback(state) {
+  if (state.instance === _partyFeedbackInstance && state.revision < _partyFeedbackRevision) return;
+  _partyFeedbackInstance = state.instance;
+  _partyFeedbackRevision = state.revision;
+  const labels = {idle:'Ready for a new adventure', queued:'Reply queued for the DM', working:'DM is working…', responding:'DM response received', waiting:'Waiting for your reply', stopped:'DM session stopped'};
+  const status = document.getElementById('dm-activity');
+  status.dataset.state = state.status;
+  status.textContent = labels[state.status] || labels.idle;
+  const history = document.getElementById('party-response-history');
+  const list = document.getElementById('party-responses');
+  list.replaceChildren();
+  for (const response of state.responses || []) {
+    const row = document.createElement('div');
+    row.className = 'party-response';
+    const label = document.createElement('small');
+    const time = new Date(response.submitted_at * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    label.textContent = response.character + ' · ' + time + ' · Submitted';
+    const text = document.createElement('div');
+    text.textContent = response.text;
+    row.append(label, text);
+    list.appendChild(row);
+  }
+  history.hidden = !list.childElementCount;
+  history.scrollTop = history.scrollHeight;
+}
+
 // ── Render staged queue ───────────────────────────────────────────
 // ── Phone turn-status strip ───────────────────────────────────────
 // One plain line telling the player where the turn is: compose → sending →
@@ -8151,6 +8193,7 @@ function connect() {
       }
       _lastSetupQuestion = question;
     }
+    if (payload.party_feedback) _renderPartyFeedback(payload.party_feedback);
     if (payload.queue_status !== undefined) {
       _renderQueueStatus(payload.queue_status);
     }
@@ -8212,6 +8255,14 @@ function connect() {
       if (turnSectionEl) turnSectionEl.style.display = 'none';
       _sidebarBtn.classList.remove('visible');
       _setSidebarVisible(true);   // reset to visible for next campaign
+      _selectedChar = 'Everybody';
+      _buildCharTabs([]);
+      _modeSwitcherCachePlayers([]);
+      _skipTurnBtn.style.display = 'none';
+      _inputText.value = '';
+      localStorage.removeItem('dnd_staged_input');
+      _renderStagedQueue({});
+      _renderQueueStatus([]);
       clearDisplay();
       const setupQuestion = document.getElementById('setup-question');
       setupQuestion.textContent = '';
