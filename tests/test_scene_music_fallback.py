@@ -210,3 +210,14 @@ def test_theme_mood_is_inherited_through_both_http_cue_paths(display):
     assert state['mood'] == 'warm'
     assert state['scene']['theme'] == forest['theme']
     assert client.get('/health').json['scene']['theme'] == forest['theme']
+
+
+def test_era_api_and_health_preserve_world_choice(display):
+    module, client = display
+    context = {'key': 'station', 'label': 'The Station', 'description': 'A glass transit hall.', 'era': 'futuristic'}
+    response = client.post('/music-cue', json={'event': 'scene', 'id': 'era-one', 'setting': 'city', 'scene': context})
+    assert response.status_code == 200
+    assert client.get('/health').json['scene']['era'] == 'futuristic'
+    assert client.post('/chunk', json={'text': 'You enter the cafe.', 'music': {
+        'event': 'scene', 'id': 'era-two', 'setting': 'tavern', 'scene': context | {'key': 'cafe', 'era': 'modern'}}}).status_code == 204
+    assert module._music.snapshot()['scene']['era'] == 'modern'

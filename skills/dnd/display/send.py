@@ -443,6 +443,7 @@ def main() -> None:
     parser.add_argument("--scene-key", help="Stable scene identity, reused while this place or activity continues")
     parser.add_argument("--scene-label", help="Short player-facing name for this scene")
     parser.add_argument("--scene-description", help="Specific scenery, activity and atmosphere for image and music generation")
+    parser.add_argument("--scene-era", help="Established world era for image clothing, architecture and technology; omitted era inherits")
     parser.add_argument("--scene-theme", help="JSON ancestry array of place names and optional moods; [] clears inheritance")
     parser.add_argument(
         "--action", metavar="NAME",
@@ -544,6 +545,8 @@ def main() -> None:
     scene = None
     if args.scene_theme is not None and not all((args.scene_key, args.scene_label, args.scene_description)):
         parser.error("--scene-theme requires --scene-key, --scene-label and --scene-description")
+    if args.scene_era is not None and not all((args.scene_key, args.scene_label, args.scene_description)):
+        parser.error("--scene-era requires --scene-key, --scene-label and --scene-description")
     if any(value is not None for value in (args.scene_key, args.scene_label, args.scene_description)):
         if args.music_event != "scene":
             parser.error("--scene-key/--scene-label/--scene-description require --music-event scene")
@@ -551,6 +554,8 @@ def main() -> None:
             value = {"key": args.scene_key, "label": args.scene_label, "description": args.scene_description}
             if args.scene_theme is not None:
                 value["theme"] = json.loads(args.scene_theme)
+            if args.scene_era is not None:
+                value["era"] = args.scene_era
             scene = SceneContext.parse(value)
         except ValueError as error:
             parser.error(str(error))
