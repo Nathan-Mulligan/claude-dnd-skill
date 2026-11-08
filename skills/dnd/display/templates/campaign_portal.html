@@ -18,7 +18,7 @@
     #campaign-menu { position:fixed; z-index:2; top:14px; right:16px; display:flex; align-items:center; gap:12px; max-width:calc(100% - 32px); padding:6px 8px 6px 15px; border:1px solid #685333; border-radius:10px; background:rgba(13,15,17,.94); box-shadow:0 4px 20px #0006; }
     #session-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:#d5c9b2; }
     #open-campaign { padding:7px 11px; font-size:13px; white-space:nowrap; }
-    dialog { width:min(560px, calc(100vw - 32px)); max-height:calc(100dvh - 40px); margin:auto; padding:0; border:1px solid #80643c; border-radius:15px; background:#171a1e; color:#f2e5c8; box-shadow:0 25px 100px #000a; }
+    dialog { width:min(720px, calc(100vw - 32px)); max-height:calc(100dvh - 40px); margin:auto; padding:0; border:1px solid #80643c; border-radius:15px; background:#171a1e; color:#f2e5c8; box-shadow:0 25px 100px #000a; }
     dialog::backdrop { background:rgba(3,7,12,.78); backdrop-filter:blur(6px); }
     .dialog-body { padding:28px; }
     .heading { display:flex; gap:14px; align-items:center; padding-right:24px; }
@@ -27,9 +27,17 @@
     .intro { margin:16px 0 22px; color:#bdb7ac; font-size:14px; line-height:1.5; }
     #close-campaign { position:absolute; right:12px; top:12px; padding:4px 9px; font-size:22px; border:0; background:transparent; color:#c7bba4; }
     label { display:block; margin:16px 0 7px; color:#d2c3a9; font-size:13px; }
-    input, select, textarea { display:block; width:100%; padding:11px 12px; border:1px solid #514b40; border-radius:7px; background:#0e1217; color:#f2e5c8; }
+    input, select, textarea { font-size:16px; display:block; width:100%; padding:11px 12px; border:1px solid #514b40; border-radius:7px; background:#0e1217; color:#f2e5c8; }
     textarea { min-height:90px; resize:vertical; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    fieldset { min-width:0; margin:22px 0 0; padding:0; border:0; }
+    legend, h2 { padding:0; margin:0; font-size:17px; font-weight:600; color:#ead7ae; }
+    .hint { margin:8px 0 0; color:#aaa69d; font-size:13px; line-height:1.5; }
+    .character-card { margin:16px 0; padding:16px; border:1px solid #514b40; border-radius:9px; }
+    .character-card h3 { margin:0; font-size:15px; }
+    .character-card textarea { min-height:72px; }
+    .character-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .remove-character { padding:5px 9px; font-size:12px; }
     .actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-top:22px; }
     #continue { margin-right:auto; }
     #status { margin:16px 0 0; min-height:1.5em; color:#d6d8b2; font-size:14px; line-height:1.5; }
@@ -61,6 +69,32 @@
         <div id="resume-fields" hidden><label for="saved">Saved campaign</label><select id="saved"></select></div>
         <label for="description" id="description-label">What kind of adventure?</label>
         <textarea id="description" maxlength="3000" placeholder="Mountains, friendly dragons, and a missing golden diamond…"></textarea>
+        <fieldset id="onboarding">
+          <legend>Set up your new adventure</legend>
+          <p class="hint">Fill this in once. Leave any box blank and your DM will choose something suitable, build the characters and begin the story.</p>
+          <div class="grid">
+            <div><label for="audience">Who is playing? Ages or experience</label><input id="audience" maxlength="1500" value="All ages" placeholder="For example, children aged 3 and 5 with a parent"></div>
+            <div><label for="tone">Story tone</label><select id="tone"><option value="heroic">Heroic adventure</option><option value="cheerful">Cheerful and playful</option><option value="swashbuckling">Swashbuckling</option><option value="political">Intrigue and politics</option><option value="dark fantasy">Dark fantasy</option><option value="horror">Horror</option><option value="grimdark">Grimdark</option><option value="cosmic">Cosmic</option></select></div>
+          </div>
+          <label for="boundaries">Anything to avoid or handle gently?</label><textarea id="boundaries" maxlength="1500" placeholder="For example, no killing, scary scenes or permanent harm"></textarea>
+          <h2>Your characters</h2>
+          <p class="hint">Add one box for each hero. Describe them in everyday words; species, class and background are optional. Blank details mean the DM chooses.</p>
+          <div id="characters"></div>
+          <button id="add-character" class="secondary" type="button">+ Add character</button>
+          <details id="campaign-preferences">
+            <summary>Rules and world preferences</summary>
+            <p class="hint">These defaults are ready to use. Characters get balanced point-buy abilities and suitable equipment and spells.</p>
+            <div class="grid">
+              <div><label for="ruleset">D&amp;D rules</label><select id="ruleset"><option value="2024">2024 rules</option><option value="2014">2014 rules</option></select></div>
+              <div><label for="starting-level">Starting level</label><input id="starting-level" type="number" min="1" max="20" step="1" value="1"></div>
+              <div><label for="dice">Who rolls the heroes' dice?</label><select id="dice"><option value="players">Players roll their own</option><option value="auto">DM rolls openly</option></select></div>
+              <div><label for="danger">How much danger?</label><select id="danger"><option value="heroic">Heroic, forgiving setbacks</option><option value="gentle">Gentle, no killing or scary scenes</option><option value="standard">Standard</option><option value="gritty">Gritty</option><option value="lethal">Lethal</option></select></div>
+              <div><label for="magic">How much magic?</label><select id="magic"><option value="medium">A medium amount</option><option value="high">Lots of magic</option><option value="low">A little magic</option><option value="none">None</option></select></div>
+              <div><label for="setting">World style</label><select id="setting"><option value="medieval">Medieval fantasy</option><option value="renaissance">Renaissance</option><option value="ancient">Ancient</option><option value="nautical">Seafaring</option><option value="underground">Underground</option></select></div>
+              <div><label for="story">Story structure</label><select id="story"><option value="guided">A guided story with an arc</option><option value="sandbox">Open exploration</option></select></div>
+            </div>
+          </details>
+        </fieldset>
         <div class="actions"><button id="continue" class="secondary" type="button" hidden>Continue current campaign</button><button id="start" type="submit" disabled>Start campaign</button></div>
       </form>
       <p id="status" role="status" aria-live="polite"></p>
@@ -87,10 +121,56 @@
     const message = (text, error=false) => { $('status').textContent=text; $('status').classList.toggle('error', error); };
     const selectedName = () => $('mode').value === 'new' ? $('name').value.trim() : $('saved').value;
     const continuing = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider;
+    let nextCharacterId = 0;
+    function updateCharacterButtons() {
+      const cards = $('characters').querySelectorAll('.character-card');
+      $('add-character').disabled = cards.length >= 8;
+      cards.forEach((card, index) => {
+        card.querySelector('h3').textContent = 'Hero ' + (index + 1);
+        card.querySelector('.remove-character').disabled = cards.length <= 1;
+      });
+    }
+    function addCharacter() {
+      if ($('characters').children.length >= 8) return;
+      const id = 'hero-' + (++nextCharacterId);
+      const card = document.createElement('section');
+      card.className = 'character-card';
+      card.innerHTML = `
+        <div class="character-heading"><h3></h3><button class="secondary remove-character" type="button" aria-label="Remove this character">Remove</button></div>
+        <div class="grid">
+          <div><label for="${id}-name">Character name · optional</label><input id="${id}-name" data-field="name" maxlength="100" placeholder="DM can choose"></div>
+          <div><label for="${id}-player">Player name · optional</label><input id="${id}-player" data-field="player" maxlength="100"></div>
+        </div>
+        <label for="${id}-concept">What is this hero like?</label><textarea id="${id}-concept" data-field="concept" maxlength="1500" placeholder="A silver dragon who looks like a ninja and loves exploring snowy places"></textarea>
+        <details><summary>More character details · optional</summary>
+          <label for="${id}-details">Species, class, background or other preferences</label><textarea id="${id}-details" data-field="details" maxlength="1500" placeholder="Anything you already know about their build, equipment or spells"></textarea>
+          <label for="${id}-pillar">What matters most to them?</label><input id="${id}-pillar" data-field="pillar" maxlength="500" placeholder="A goal, someone they care about, or a belief">
+        </details>`;
+      card.querySelector('.remove-character').addEventListener('click', () => {
+        if ($('characters').children.length <= 1) return;
+        card.remove();
+        updateCharacterButtons();
+      });
+      $('characters').append(card);
+      updateCharacterButtons();
+    }
+    function questionnaire() {
+      const answers = Object.fromEntries(['ruleset', 'dice', 'tone', 'magic', 'setting', 'danger', 'story', 'audience', 'boundaries'].map(id => [id, $(id).value]));
+      answers.starting_level = Number($('starting-level').value || 1);
+      answers.abilities = 'pointbuy';
+      answers.characters = Array.from($('characters').children, card => Object.fromEntries(
+        Array.from(card.querySelectorAll('[data-field]'), input => [input.dataset.field, input.value])
+      ));
+      return answers;
+    }
+    $('add-character').addEventListener('click', addCharacter);
+    addCharacter();
     function updateControls() {
       const resume = $('mode').value === 'resume';
       $('new-fields').hidden = resume;
       $('resume-fields').hidden = !resume;
+      $('onboarding').hidden = resume;
+      $('onboarding').disabled = busy || resume;
       $('description-label').textContent = resume ? 'Anything to tell your DM? · optional' : 'What kind of adventure?';
       $('description').placeholder = resume ? 'A note for the next part of your adventure…' : 'Mountains, friendly dragons, and a missing golden diamond…';
       $('continue').hidden = !(state && state.active) || continuing();
@@ -98,7 +178,7 @@
       $('close-campaign').disabled = busy;
       for (const id of ['mode', 'provider', 'name', 'saved', 'description']) $(id).disabled = busy;
       $('start').disabled = busy || !state || (resume && !selectedName());
-      $('start').textContent = continuing() ? 'Continue campaign' : state && state.active ? 'Save & switch' : resume ? 'Load campaign' : 'Start campaign';
+      $('start').textContent = continuing() ? 'Continue campaign' : state && state.active ? (resume ? 'Save & switch' : 'Save & start new campaign') : resume ? 'Load campaign' : 'Create campaign & begin';
     }
     function closeDialog() {
       if (busy) return;
@@ -172,9 +252,10 @@
       if (continuing()) { closeDialog(); return; }
       busy=true;
       updateControls();
-      message(state.active ? 'Saving your campaign before switching…' : 'Getting your adventure ready…');
+      message(state.active ? 'Saving your campaign before switching…' : 'Creating your adventure from these answers…');
       try {
         const payload = {provider:$('provider').value, mode:$('mode').value, name:selectedName(), description:$('description').value};
+        if (payload.mode === 'new') payload.onboarding = questionnaire();
         if (state.active) {
           keepDisplayDuringSwitch = payload.mode === 'resume' && payload.name === state.meta.campaign;
           const data = await api('/api/switch', 'POST', payload);

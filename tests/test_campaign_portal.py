@@ -317,3 +317,64 @@ def test_reply_arriving_during_same_campaign_startup_remains_deliverable(client,
     monkeypatch.setattr(portal, "running", lambda: True)
     assert portal.deliver_party_input()
     assert any("Arrived while starting" in str(args) for args in calls)
+
+
+@pytest.mark.parametrize("provider", ["qwen", "codex", "claude"])
+def test_questionnaire_launch_passes_complete_answers_to_selected_dm(client, monkeypatch, provider):
+    import shlex
+    calls = []
+    monkeypatch.setattr(portal, "CODEX_ENABLED", True)
+    monkeypatch.setattr(portal, "running", lambda: False)
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: calls.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    answers = {"ruleset": "2024", "dice": "auto", "tone": "cheerful", "danger": "gentle",
+               "audience": "Children aged 3 and 5", "boundaries": "No killing", "starting_level": 2,
+               "characters": [{"name": "Silver", "concept": "A dragon monk", "pillar": "Exploring"},
+                              {"name": "Magan", "player": "Dad", "details": "A wood elf guide"}]}
+    response = api(client, "/api/start", method="post", data={
+        "provider": provider, "mode": "new", "name": "mountain-friends", "description": "A golden map", "onboarding": answers})
+    assert response.status_code == 200
+    assert "from your answers" in response.json["message"]
+    command = next(args[-1] for args in calls if args[:2] == ("tmux", "new-session"))
+    argv = shlex.split(command)
+    assert "DND_ACTIVE_CAMPAIGN=mountain-friends" in argv
+    assert provider in argv
+    prompt = argv[-1]
+    received = json.loads(prompt.split("Completed questionnaire JSON: ", 1)[1])
+    assert received == portal.read_onboarding({"onboarding": answers}, "new")
+    assert "A golden map" in prompt
+    assert "Ask each setup question" not in prompt
+    assert "Do not ask routine setup" in prompt
+
+
+@pytest.mark.parametrize("route", ["/api/start", "/api/switch"])
+@pytest.mark.parametrize("answers", [None, [], {"ruleset": 2024}, {"starting_level": True},
+    {"starting_level": 21}, {"characters": []}, {"characters": [{}] * 9},
+    {"characters": ["Hero"]}, {"characters": [{"concept": {"nested": "bad"}}]},
+    {"characters": [{"name": "Silver"}, {"name": "silver"}]},
+    {"boundaries": "x" * 1501}, {"unknown": "choice"}])
+def test_invalid_questionnaire_never_touches_model_or_display(client, monkeypatch, route, answers):
+    monkeypatch.setattr(portal, "running", lambda: pytest.fail("Must validate before model operations"))
+    monkeypatch.setattr(portal, "prepare_display", lambda *args, **kwargs: pytest.fail("Must not clear display"))
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: pytest.fail("Must not call a model"))
+    response = api(client, route, method="post", data={"provider": "qwen", "mode": "new", "name": "new-story", "onboarding": answers})
+    assert response.status_code == 400
+    assert response.json["ok"] is False
+
+
+def test_questionnaire_defaults_and_legacy_setup_remain_distinct():
+    answers = portal.read_onboarding({"onboarding": {}}, "new")
+    assert answers["starting_level"] == 1
+    assert answers["abilities"] == "pointbuy"
+    assert len(answers["characters"]) == 1
+    assert portal.read_onboarding({}, "new") is None
+    assert "Ask each setup question" in portal.initial_prompt("new", "manual", "")
+    assert portal.read_onboarding({"onboarding": {"invalid": []}}, "resume") is None
+    assert "Completed questionnaire" not in portal.initial_prompt("resume", "saved", "", answers)
+
+
+def test_large_questionnaire_is_rejected_before_model_operations(client, monkeypatch):
+    monkeypatch.setattr(portal, "running", lambda: pytest.fail("Oversize form must not reach model"))
+    response = api(client, "/api/start", method="post", data={"mode": "new", "onboarding": {
+        "characters": [{"concept": "x" * 1500, "details": "y" * 1500}] * 8}})
+    assert response.status_code == 400
+    assert "too long" in response.json["message"]
