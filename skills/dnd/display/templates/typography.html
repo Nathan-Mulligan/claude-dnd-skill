@@ -1,0 +1,56 @@
+<style>
+  :root {
+    --font-app:'IM Fell English', Georgia, serif;
+    --text-scale:1;
+    --type-scale:calc(var(--text-scale) * .8);
+    --type-label:calc(12px * var(--type-scale));
+    --type-body:calc(16px * var(--type-scale));
+    --type-h4:calc(18px * var(--type-scale));
+    --type-h3:calc(20px * var(--type-scale));
+    --type-h2:calc(24px * var(--type-scale));
+    --type-h1:calc(28px * var(--type-scale));
+    --type-display:calc(40px * var(--type-scale));
+    --type-narration:calc(20px * var(--type-scale));
+  }
+  html, body { font-family:var(--font-app); font-size:var(--type-body); font-weight:400; }
+  h1 { font-size:var(--type-h1); font-weight:600; }
+  h2 { font-size:var(--type-h2); font-weight:600; }
+  h3 { font-size:var(--type-h3); font-weight:600; }
+  h4 { font-size:var(--type-h4); font-weight:600; }
+  b, strong { font-weight:600; }
+  blockquote, .npc-block p { font-style:italic; }
+  #audio-controls .audio-label,
+  #audio-controls :is(.theme-label, .speed-label, .narrate-label, .ts-btn),
+  #audio-controls .display-action { font-size:var(--type-label); letter-spacing:.06em; }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #audio-controls {
+    width:min(400px, calc(100vw - 56px));
+    z-index:10;
+    max-height:calc(100dvh - 168px - var(--type-label) * 1.4);
+  }
+  #audio-controls .audio-row { grid-template-columns:minmax(100px, .9fr) minmax(0, 1.7fr); }
+  #audio-controls .audio-row:has(.display-action),
+  #audio-controls #controls-toggle-row { grid-template-columns:minmax(0, 1fr); }
+  #audio-controls .settings-control-group { grid-template-columns:28px minmax(0, 1fr); }
+  #audio-controls .ts-stepper { grid-template-columns:32px calc(40px * var(--type-scale)) 32px; }
+  #audio-controls #ts-val { width:100%; }
+  #audio-controls #skin-select { text-overflow:ellipsis; }
+  #audio-controls :is(#music-volume, #intro-volume, #sfx-volume, #vb-slider) {
+    grid-column:2; width:100%; max-width:none; min-width:0; margin:0;
+  }
+  #dice-pad :is(.dp-die, .dp-adv, .dp-mod, #dp-roll) { font-size:var(--type-body); letter-spacing:.02em; }
+  #dice-pad #dp-adv-row button { padding-inline:2px; }
+  #dice-pad #dp-hint { font-size:var(--type-label); }
+  #dice-pad #dp-mod-val { min-width:2em; }
+  #dice-drawer::before { font-family:var(--font-app); font-size:var(--type-h4); font-weight:600; }
+  .sm-name, .sb-name { font-size:var(--type-h3); font-weight:600; }
+  .sm-section-title, #input-panel-label { font-size:var(--type-h4); font-weight:600; }
+  #dice-pad #dp-name { font-size:var(--type-body); }
+  #text-content { font-size:var(--type-narration); }
+  #text-content :is(.npc-block p, .player-block p) { font-size:1em; }
+  :root[data-large-text] #audio-controls .audio-row { grid-template-columns:minmax(0, 1fr); gap:6px; }
+  :root[data-large-text] #audio-controls :is(.settings-control-group, .ts-stepper) { width:100%; }
+  :root[data-large-text] #audio-controls .ts-stepper { grid-template-columns:1fr 1fr 1fr; }
+  :root[data-large-text] #audio-controls #controls-toggle { max-width:calc(100vw - 56px); }
+  :root[data-large-text] #dice-pad #dp-die-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  :root[data-large-text] #dice-pad #dp-adv-row { grid-template-columns:minmax(0, 1fr); }
+</style>
