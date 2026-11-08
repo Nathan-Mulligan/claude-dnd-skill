@@ -3768,6 +3768,13 @@
       <input id="intro-volume" class="settings-slider" type="range" min="0" max="100" value="18" aria-label="Intro music volume">
     </span>
   </div>
+  <div class="audio-row" id="narrate-row" title="Automatically read new narration in this browser" hidden>
+    <span class="audio-label">Narration</span>
+    <span class="settings-control-group">
+      <button class="toggle-track" id="narrate-track" type="button" role="switch" aria-label="Auto narrate" aria-checked="false"><span class="toggle-thumb"></span></button>
+      <input id="narration-volume" class="settings-slider" type="range" min="0" max="100" value="100" aria-label="Narration volume">
+    </span>
+  </div>
   <div class="audio-row" id="verbosity-row" title="Narration length the DM targets each turn — shorter = faster turns">
     <span class="audio-label">Narration Speed</span>
     <span class="vb-wrap settings-control-group">
@@ -3777,10 +3784,6 @@
   <div class="audio-row" id="speed-row" title="Typing speed — click to cycle">
     <span class="audio-label">Type Speed</span>
     <span id="speed-label" class="speed-label">Normal</span>
-  </div>
-  <div class="audio-row" id="narrate-row" title="Auto-narrate new blocks in this browser only" hidden>
-    <span class="audio-label">Auto Narrate</span>
-    <span id="narrate-label" class="narrate-label">Off</span>
   </div>
   <div class="audio-row" id="theme-row" title="Display theme — Dark / Light / Auto (system)">
     <span class="audio-label">Theme</span>
@@ -6990,6 +6993,14 @@ function _voiceForBlock(blockEl) {
 }
 
 let _ttsCtx = null;
+let _ttsGain = null;
+let _ttsVolume = _storedVolume('dnd_narration_volume', 1);
+
+function _setNarrationVolume(volume) {
+  _ttsVolume = volume;
+  if (_ttsGain) _ttsGain.gain.setTargetAtTime(volume, _ttsCtx.currentTime, 0.05);
+  try { localStorage.setItem('dnd_narration_volume', String(volume)); } catch (_) {}
+}
 
 // Free fallback: the browser's own speech synthesis, no API key needed.
 // Used when /tts has no key configured (503) or fails. Without this, a
@@ -7064,6 +7075,9 @@ function _ttsChunkText(text) {
 function _getTtsCtx() {
   if (!_ttsCtx || _ttsCtx.state === 'closed') {
     _ttsCtx = new (window.AudioContext || window.webkitAudioContext)();
+    _ttsGain = _ttsCtx.createGain();
+    _ttsGain.gain.value = _ttsVolume;
+    _ttsGain.connect(_ttsCtx.destination);
   }
   return _ttsCtx;
 }
@@ -7166,6 +7180,7 @@ function _ttsBrowserSay(text) {
       const u = new SpeechSynthesisUtterance(chunk);
       if (voice) { u.voice = voice; u.lang = voice.lang; }
       u.rate = 0.95;
+      u.volume = _ttsVolume;
       if (i === chunks.length - 1) { u.onend = resolve; u.onerror = resolve; }
       speechSynthesis.speak(u);
     });
@@ -7196,7 +7211,7 @@ function _ttsSchedule(ctx, pcm, btn, first, last, gen) {
   for (let i = 0; i < int16.length; i++) ch[i] = int16[i] / 32768;
   const src = ctx.createBufferSource();
   src.buffer = buf;
-  src.connect(ctx.destination);
+  src.connect(_ttsGain);
   const now = ctx.currentTime;
   let at = Math.max(now + 0.03, _ttsNextAt + (first && _ttsNextAt > now ? _TTS_LINE_PAUSE : 0));
   _ttsNextAt = at + buf.duration;
@@ -7400,23 +7415,32 @@ document.addEventListener('click', () => {
 // Auto-narrate row — only shown if the server reports TTS available.
 if (_TTS_AVAILABLE) {
   const narrateRow = document.getElementById('narrate-row');
-  const narrateLabel = document.getElementById('narrate-label');
-  if (narrateRow && narrateLabel) {
+  const narrateTrack = document.getElementById('narrate-track');
+  const volumeControl = document.getElementById('narration-volume');
+  if (narrateRow && narrateTrack && volumeControl) {
     narrateRow.hidden = false;
     const refresh = () => {
-      narrateLabel.textContent = _ttsAutoNarrate ? 'On' : 'Off';
-      narrateLabel.classList.toggle('on', _ttsAutoNarrate);
+      _setTrack(narrateTrack, _ttsAutoNarrate);
+      narrateTrack.setAttribute('aria-checked', String(_ttsAutoNarrate));
     };
     refresh();
+    volumeControl.value = String(Math.round(_ttsVolume * 100));
+    volumeControl.addEventListener('click', event => event.stopPropagation());
+    volumeControl.addEventListener('input', event => {
+      event.stopPropagation();
+      _setNarrationVolume(Number(volumeControl.value) / 100);
+    });
     narrateRow.addEventListener('click', () => {
       _ttsAutoNarrate = !_ttsAutoNarrate;
-      localStorage.setItem('dnd_tts_auto', _ttsAutoNarrate ? '1' : '0');
+      try { localStorage.setItem('dnd_tts_auto', _ttsAutoNarrate ? '1' : '0'); } catch (_) {}
       refresh();
       if (_ttsAutoNarrate) {
         // Prime the AudioContext from this click so auto-narrate works on the next
         // block without needing a per-block gesture (iOS Safari).
         const ctx = _getTtsCtx();
         if (ctx.state !== 'running') ctx.resume().catch(() => {});
+      } else {
+        _ttsStopAll();
       }
     });
   }
