@@ -13,6 +13,9 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 ---
 
 ## `/dm:dnd new <campaign-name> [theme]`
+
+**Completed startup questionnaire:** when the launch supplies a completed questionnaire, use its campaign, rules, dice, world and party answers as already confirmed. Do not repeat setup questions or request character-build confirmation. Blank choices authorise legal, concept-fitting defaults, including names, point-buy abilities, equipment and spells. Generate the selected guided arc or sandbox, create every listed character, save the canonical files and push full party stats before narrating the opening scene. Apply the audience and content boundaries throughout. This shortcut replaces only setup questions; normal gameplay choices and rolls still apply. Without a completed questionnaire, follow the interactive procedure below.
+
 1. **Session setup — call `AskUserQuestion`** with **two questions**:
 
    **Q1 *"Display & input mode?"***
@@ -530,6 +533,8 @@ Read `~/.claude/dnd/campaigns/*/state.md`, print summary table: campaign name | 
 ---
 
 ## `/dm:dnd character new [campaign-name]`
+
+**From a completed startup questionnaire:** use each character's name, player, concept, details and pillar as confirmed input. Derive omitted legal build choices with balanced point buy and complete the shared validation, calculation, sheet-writing and roster steps without another build-path, ability-method, equipment, spell or confirmation question. Briefly explain any necessary substitution and continue into play. The interactive flow below still applies when no completed questionnaire was supplied.
 
 **Read the campaign's ruleset first** — `python3 ${CLAUDE_SKILL_DIR}/scripts/paths.py` is not a CLI; instead inline-read with:
 

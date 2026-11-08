@@ -171,7 +171,86 @@ def party_input_loop() -> None:
         time.sleep(0.5)
 
 
-def initial_prompt(mode: str, name: str, description: str) -> str:
+ONBOARDING_CHOICES = {
+    "ruleset": ("2024", "2014"),
+    "dice": ("players", "auto"),
+    "tone": ("heroic", "cheerful", "grimdark", "dark fantasy", "horror", "political", "swashbuckling", "cosmic"),
+    "magic": ("medium", "none", "low", "high"),
+    "setting": ("medieval", "renaissance", "ancient", "nautical", "underground"),
+    "danger": ("heroic", "gentle", "standard", "gritty", "lethal"),
+    "story": ("guided", "sandbox"),
+    "abilities": ("pointbuy",),
+}
+CHARACTER_LIMITS = {"name": 100, "player": 100, "concept": 1500, "details": 1500, "pillar": 500}
+
+
+def read_onboarding(data: dict, mode: str) -> dict | None:
+    if mode != "new" or "onboarding" not in data:
+        return None
+    value = data["onboarding"]
+    allowed = set(ONBOARDING_CHOICES) | {"starting_level", "audience", "boundaries", "characters"}
+    if not isinstance(value, dict) or set(value) - allowed:
+        raise ValueError("Choose the new campaign questionnaire answers.")
+    if len(json.dumps(value, ensure_ascii=False)) > 16000:
+        raise ValueError("Questionnaire answers are too long. Shorten the character descriptions.")
+    result = {}
+    for key, choices in ONBOARDING_CHOICES.items():
+        chosen = value.get(key, choices[0])
+        if not isinstance(chosen, str) or chosen not in choices:
+            raise ValueError(f"Choose a valid {key.replace('_', ' ')}.")
+        result[key] = chosen
+    level = value.get("starting_level", 1)
+    if type(level) is not int or not 1 <= level <= 20:
+        raise ValueError("Starting level must be a whole number from 1 to 20.")
+    result["starting_level"] = level
+    for key in ("audience", "boundaries"):
+        text = value.get(key, "")
+        if not isinstance(text, str) or len(text) > 1500:
+            raise ValueError(f"Keep {key} to 1,500 characters.")
+        result[key] = text.strip()
+    characters = value.get("characters", [{}])
+    if not isinstance(characters, list) or not 1 <= len(characters) <= 8:
+        raise ValueError("Add between one and eight characters.")
+    result["characters"] = []
+    names = set()
+    for character in characters:
+        if not isinstance(character, dict) or set(character) - set(CHARACTER_LIMITS):
+            raise ValueError("Each character needs its own questionnaire boxes.")
+        entry = {}
+        for key, limit in CHARACTER_LIMITS.items():
+            text = character.get(key, "")
+            if not isinstance(text, str) or len(text) > limit:
+                raise ValueError(f"Character {key} must be text of at most {limit} characters.")
+            entry[key] = text.strip()
+        if entry["name"]:
+            name = entry["name"].casefold()
+            if name in names:
+                raise ValueError("Give each character a different name, or leave the name blank for the DM.")
+            names.add(name)
+        result["characters"].append(entry)
+    return result
+
+
+def initial_prompt(mode: str, name: str, description: str, onboarding: dict | None = None) -> str:
+    if mode == "new" and onboarding is not None:
+        return (
+            f"Read this repository's D&D skill and complete /dm:dnd new for campaign {name}. "
+            "The completed questionnaire below is the authoritative campaign and character setup. "
+            "Submitting it authorises you to create all listed characters with legal, concept-fitting defaults "
+            "for blank choices, balanced point-buy abilities, equipment and spells. Do not ask routine setup "
+            "questions, repeat answered questions, or require character-build confirmation. Choose distinct "
+            "names for unnamed characters. Respect the audience and content boundaries throughout. "
+            "Guided story means generate a dynamic campaign arc; sandbox means no committed arc. "
+            "Gentle danger means no killing, frightening scenes or permanent harm. "
+            "Create and save canonical campaign files and complete character sheets, push the full party "
+            "stats with --replace-players, clear any setup question, then begin the opening scene. "
+            "Briefly explain necessary mechanical substitutions without delaying play. Normal player "
+            "choices and dice prompts during actual play still apply. Do the model work yourself. "
+            "The cinematic display is already running at http://127.0.0.1:5001; reuse it without "
+            "restarting it or opening another tab. Send narration through its existing scripts. "
+            f"Adventure idea: {description or 'Choose an adventure suited to these answers.'} "
+            "Completed questionnaire JSON: " + json.dumps(onboarding, ensure_ascii=False)
+        )
     if mode == "new":
         return (
             f"Read this repository's D&D skill and begin the /dm:dnd new procedure for campaign {name}. "
@@ -195,11 +274,11 @@ def initial_prompt(mode: str, name: str, description: str) -> str:
     )
 
 
-def model_args(provider: str, mode: str, name: str, description: str) -> list[str]:
+def model_args(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None) -> list[str]:
     args = ["bash", str(REPO / "scripts/play-local.sh"), provider]
     if mode == "resume":
         args += ["--campaign", name]
-    prompt = initial_prompt(mode, name, description)
+    prompt = initial_prompt(mode, name, description, onboarding)
     if provider == "codex":
         args += ["-m", "gpt-6.1-terra", "-c", 'model_reasoning_effort="medium"',
                  "-c", "sandbox_workspace_write.network_access=true",
@@ -269,7 +348,7 @@ def provider_error(provider: str) -> str | None:
     return None
 
 
-def start_session(provider: str, mode: str, name: str, description: str) -> tuple[bool, str]:
+def start_session(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None) -> tuple[bool, str]:
     error = selection_error(provider, mode, name, description)
     if error:
         return False, error
@@ -299,7 +378,7 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
         command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}",
                                f"DND_ACTIVE_CAMPAIGN={name}",
-                               *model_args(provider, mode, name, description)])
+                               *model_args(provider, mode, name, description, onboarding)])
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
         if result.returncode:
             return False, "Could not start the model session."
@@ -311,6 +390,8 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
         metadata["input_started_at"] = input_started_at
     META_FILE.write_text(json.dumps(metadata), encoding="utf-8")
     notify_party_consumed()
+    if mode == "new" and onboarding is not None:
+        return True, "Your DM is creating the campaign and characters from your answers. The story will appear here."
     return True, "Model session started. Answer its setup questions below."
 
 
@@ -441,7 +522,7 @@ def queued_party_input() -> bool:
 
 
 def perform_handoff(provider: str, mode: str, name: str, description: str,
-                    previous: dict, identity: str, token: str) -> None:
+                    previous: dict, identity: str, token: str, onboarding: dict | None = None) -> None:
     stopped = False
     leased = False
     request_path = ack_path = None
@@ -505,7 +586,7 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             stopped = True
             if running():
                 raise ValueError("Another DM session is active; the replacement was not started")
-            ok, message = start_session(provider, mode, name, description)
+            ok, message = start_session(provider, mode, name, description, onboarding)
             if not ok:
                 raise ValueError(message)
         set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider)
@@ -531,9 +612,14 @@ def create_app() -> Flask:
     if not 1024 <= PORT <= 65535:
         raise ValueError("Invalid DND_PORTAL_PORT")
     app = Flask(__name__, template_folder=str(REPO / "skills/dnd/display/templates"))
+    app.config["MAX_CONTENT_LENGTH"] = 65536
     token = secrets.token_urlsafe(32)
     lock = SESSION_LOCK
     last_browser_poll: float | None = None
+
+    @app.errorhandler(413)
+    def too_large(error):
+        return jsonify(ok=False, message="Campaign answers are too long. Shorten the descriptions."), 413
 
     @app.before_request
     def protect():
@@ -569,16 +655,22 @@ def create_app() -> Flask:
     @app.post("/api/start")
     def start():
         data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify(ok=False, message="Choose a campaign and model."), 400
         provider = str(data.get("provider", ""))
         mode = str(data.get("mode", ""))
         name = str(data.get("name", "")).strip()
         description = str(data.get("description", "")).strip()
+        try:
+            onboarding = read_onboarding(data, mode)
+        except ValueError as error:
+            return jsonify(ok=False, message=str(error)), 400
         if mode == "new" and not name:
             name = datetime.now().strftime("adventure-%Y%m%d-%H%M%S")
         with lock:
             if handoff_busy():
                 return jsonify(ok=False, message="The current campaign is being saved. Wait for the model change to finish."), 409
-            ok, message = start_session(provider, mode, name, description)
+            ok, message = start_session(provider, mode, name, description, onboarding)
         return jsonify(ok=ok, message=message, campaign=name if ok else None), 200 if ok else 409
 
     @app.post("/api/switch")
@@ -590,6 +682,10 @@ def create_app() -> Flask:
         mode = str(data.get("mode", ""))
         name = str(data.get("name", "")).strip()
         description = str(data.get("description", "")).strip()
+        try:
+            onboarding = read_onboarding(data, mode)
+        except ValueError as error:
+            return jsonify(ok=False, message=str(error)), 400
         if mode == "new" and not name:
             name = datetime.now().strftime("adventure-%Y%m%d-%H%M%S")
         with lock:
@@ -599,7 +695,7 @@ def create_app() -> Flask:
             if error:
                 return jsonify(ok=False, message=error), 409
             if not running():
-                ok, message = start_session(provider, mode, name, description)
+                ok, message = start_session(provider, mode, name, description, onboarding)
                 if ok:
                     set_handoff("complete", message, campaign=name, provider=provider)
                 return jsonify(ok=ok, message=message, campaign=name if ok else None), 200 if ok else 409
@@ -628,7 +724,7 @@ def create_app() -> Flask:
             token = secrets.token_hex(16)
             set_handoff("saving", "Saving the current campaign before changing DMs…", campaign=name, provider=provider)
             worker = threading.Thread(target=perform_handoff,
-                                      args=(provider, mode, name, description, previous, identity, token),
+                                      args=(provider, mode, name, description, previous, identity, token, onboarding),
                                       daemon=True, name="dnd-model-handoff")
             worker.start()
         return jsonify(ok=True, message="Saving the current campaign before changing DMs…", campaign=name), 202

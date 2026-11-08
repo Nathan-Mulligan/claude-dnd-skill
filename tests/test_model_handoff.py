@@ -120,7 +120,7 @@ def test_verified_checkpoint_precedes_exact_session_stop_and_restart(setup, monk
         actions.append("save")
         save_and_acknowledge(old, token)
 
-    def start(provider, mode, name, description):
+    def start(provider, mode, name, description, onboarding=None):
         assert not alive["value"]
         assert (provider, mode, name) == ("codex", "resume", "old")
         actions.append("start")
@@ -399,3 +399,41 @@ def test_tmux_identity_with_a_real_isolated_session(monkeypatch):
         assert re.fullmatch(r"\$[0-9]+", identity)
     finally:
         isolated_run("tmux", "kill-session", "-t", "=" + session)
+
+
+def test_new_campaign_questionnaire_survives_saved_handoff(setup, monkeypatch):
+    old, previous, alive, calls, api = setup
+    answers = {"ruleset": "2024", "dice": "auto", "characters": [{"name": "Silver", "concept": "A friendly dragon"}]}
+    expected = portal.read_onboarding({"onboarding": answers}, "new")
+    actions = []
+
+    def checkpoint(prompt):
+        actions.append("save")
+        token = next((portal.RUNTIME / "handoffs").glob("*.request.json")).name.split(".")[0]
+        save_and_acknowledge(old, token)
+
+    def start(provider, mode, name, description, onboarding=None):
+        assert alive["value"] is False
+        assert (provider, mode, name) == ("codex", "new", "dragon-road")
+        assert onboarding == expected
+        assert description == "A golden map"
+        actions.append("start")
+        alive["value"] = True
+        return True, "Ready"
+
+    class Worker:
+        def __init__(self, *, target, args, **kwargs):
+            self.target, self.args = target, args
+
+        def start(self):
+            self.target(*self.args)
+
+    monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    monkeypatch.setattr(portal, "start_session", start)
+    monkeypatch.setattr(portal.threading, "Thread", Worker)
+    response = api("/api/switch", {"provider": "codex", "mode": "new", "name": "dragon-road",
+                                  "description": "A golden map", "onboarding": answers})
+    assert response.status_code == 202
+    assert portal.handoff_state()["status"] == "complete"
+    assert actions == ["save", "start"]
+    assert ("tmux", "kill-session", "-t", "$7") in calls
