@@ -3689,6 +3689,7 @@
     top:84px; max-height:calc(100dvh - 112px);
   }
   #dice-pad #dp-die-row { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); width:100%; gap:8px; }
+  #dice-pad #dp-adv-row[hidden] { display:none; }
   #dice-pad #dp-adv-row { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); width:100%; gap:8px; }
   #dice-pad :is(#dp-die-row, #dp-adv-row) button { width:100%; min-width:0; padding:12px 4px; }
   #dice-pad #dp-mod-row { justify-content:center; width:100%; }
@@ -3955,7 +3956,6 @@
         <button class="dp-adv"        data-adv="advantage"    title="Roll two d20s, keep higher">Adv ▲</button>
         <button class="dp-adv"        data-adv="disadvantage" title="Roll two d20s, keep lower">Dis ▼</button>
       </div>
-      <div id="dp-hint">Advantage / disadvantage applies only to d20 rolls.</div>
       <div class="dp-row" id="dp-mod-row">
         <button class="dp-mod" data-delta="-1" aria-label="decrease modifier">−</button>
         <span style="opacity:.7">Mod</span>
@@ -9085,8 +9085,7 @@ function _initDicePad() {
       const n = document.querySelector('.dp-adv[data-adv="normal"]');
       if (n) n.classList.add('active');
     }
-    const hint = document.getElementById('dp-hint');
-    if (hint) hint.style.opacity = isD20 ? '1' : '0.4';
+    document.getElementById('dp-adv-row').hidden = !isD20;
   }
 
   document.querySelectorAll('#dp-die-row .dp-die').forEach(btn => {
