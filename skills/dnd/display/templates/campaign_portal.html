@@ -7,13 +7,13 @@
   <link rel="icon" type="image/png" href="/icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
   <style>
     :root { color-scheme: dark; font:var(--type-h4)/1.6 var(--font-app); background:#000; color:#d4c4a0; }
     * { box-sizing:border-box; }
     body { margin:0; height:100dvh; overflow:hidden; }
     button, input, select, textarea { font:inherit; }
-    button { border:1px solid #b28d4e; border-radius:3px; padding:11px 16px; background:#b99b58; color:#120e08; font-family:var(--font-app); font-size:var(--type-body); letter-spacing:1px; cursor:pointer; }
+    button { border:1px solid #b28d4e; border-radius:3px; padding:11px 16px; background:#b99b58; color:#120e08; font-family:var(--font-heading); font-size:var(--type-body); letter-spacing:1px; cursor:pointer; }
     button:disabled { opacity:.5; cursor:default; }
     button.secondary { background:transparent; color:#ead7ae; border-color:#685333; }
     :focus-visible { outline:3px solid #edcf87; outline-offset:3px; }
@@ -23,10 +23,10 @@
     .dialog-body { padding:30px 34px 38px; }
     .heading { display:flex; gap:14px; align-items:center; padding-right:24px; }
     .heading img { width:44px; height:44px; }
-    h1 { margin:0; font-family:var(--font-app); font-size:var(--type-h3); font-weight:400; letter-spacing:3px; text-transform:uppercase; color:rgba(200,165,80,.95); }
+    h1 { margin:0; font-family:var(--font-heading); font-size:var(--type-h3); font-weight:400; letter-spacing:3px; text-transform:uppercase; color:rgba(200,165,80,.95); }
     .intro { margin:16px 0 22px; color:#bbae94; font-size:var(--type-body); line-height:1.5; }
     #close-campaign { position:absolute; right:12px; top:12px; padding:4px 9px; font-size:var(--type-h3); line-height:1; border:0; background:transparent; color:#b49a60; }
-    label { display:block; margin:16px 0 7px; color:#bc9c57; font-family:var(--font-app); font-size:var(--type-label); letter-spacing:1px; }
+    label { display:block; margin:16px 0 7px; color:#bc9c57; font-family:var(--font-heading); font-size:var(--type-label); letter-spacing:1px; }
     input, select, textarea { font-size:var(--type-body); display:block; width:100%; padding:11px 12px; border:1px solid rgba(180,140,60,.3); border-radius:3px; background:#0c0906; color:#d4c4a0; }
     select {
       appearance:none;
@@ -41,7 +41,7 @@
     textarea { min-height:90px; resize:vertical; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
     fieldset { min-width:0; margin:22px 0 0; padding:0; border:0; }
-    legend, h2 { padding:0; margin:0; font-family:var(--font-app); font-size:var(--type-body); font-weight:400; letter-spacing:2px; color:#bc9c57; }
+    legend, h2 { padding:0; margin:0; font-family:var(--font-heading); font-size:var(--type-body); font-weight:400; letter-spacing:2px; color:#bc9c57; }
     .hint { margin:8px 0 0; color:#bbae94; font-size:var(--type-body); line-height:1.5; }
     .character-card { margin:16px 0; padding:16px; border:1px solid rgba(180,140,60,.2); border-radius:3px; }
     .character-card h3 { margin:0; font-size:var(--type-body); }

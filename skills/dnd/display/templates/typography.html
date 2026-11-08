@@ -1,6 +1,7 @@
 <style>
   :root {
     --font-app:'IM Fell English', Georgia, serif;
+    --font-heading:'Cinzel', Georgia, serif;
     --text-scale:1;
     --type-scale:calc(var(--text-scale) * .8);
     --type-label:calc(12px * var(--type-scale));
@@ -13,6 +14,7 @@
     --type-narration:calc(20px * var(--type-scale));
   }
   html, body { font-family:var(--font-app); font-size:var(--type-body); font-weight:400; }
+  h1, h2, h3, h4, button, select, label { font-family:var(--font-heading); }
   h1 { font-size:var(--type-h1); font-weight:600; }
   h2 { font-size:var(--type-h2); font-weight:600; }
   h3 { font-size:var(--type-h3); font-weight:600; }
@@ -21,7 +23,7 @@
   blockquote, .npc-block p { font-style:italic; }
   #audio-controls .audio-label,
   #audio-controls :is(.theme-label, .speed-label, .narrate-label, .ts-btn),
-  #audio-controls .display-action { font-size:var(--type-label); letter-spacing:.06em; }
+  #audio-controls .display-action { font-family:var(--font-heading); font-size:var(--type-label); letter-spacing:.06em; }
   :root:not([data-skin="editorial"]) body:not(.input-only) #audio-controls {
     width:min(400px, calc(100vw - 56px));
     z-index:10;
@@ -37,13 +39,13 @@
   #audio-controls :is(#music-volume, #intro-volume, #sfx-volume, #vb-slider) {
     grid-column:2; width:100%; max-width:none; min-width:0; margin:0;
   }
-  #dice-pad :is(.dp-die, .dp-adv, .dp-mod, #dp-roll) { font-size:var(--type-body); letter-spacing:.02em; }
+  #dice-pad :is(.dp-die, .dp-adv, .dp-mod, #dp-roll) { font-family:var(--font-heading); font-size:var(--type-body); letter-spacing:.02em; }
   #dice-pad #dp-adv-row button { padding-inline:2px; }
   #dice-pad #dp-hint { font-size:var(--type-label); }
   #dice-pad #dp-mod-val { min-width:2em; }
-  #dice-drawer::before { font-family:var(--font-app); font-size:var(--type-h4); font-weight:600; }
-  .sm-name, .sb-name { font-size:var(--type-h3); font-weight:600; }
-  .sm-section-title, #input-panel-label { font-size:var(--type-h4); font-weight:600; }
+  #dice-drawer::before { font-family:var(--font-heading); font-size:var(--type-h4); font-weight:600; }
+  .sm-name, .sb-name { font-family:var(--font-heading); font-size:var(--type-h3); font-weight:600; }
+  .sm-section-title, #input-panel-label { font-family:var(--font-heading); font-size:var(--type-h4); font-weight:600; }
   #dice-pad #dp-name { font-size:var(--type-body); }
   #text-content { font-size:var(--type-narration); }
   #text-content :is(.npc-block p, .player-block p) { font-size:1em; }
