@@ -3696,6 +3696,21 @@
   #dice-pad :is(#dp-die-row, #dp-adv-row) button { width:100%; min-width:0; padding:12px 4px; }
   #dice-pad #dp-mod-row { justify-content:center; width:100%; }
   #dice-pad #dp-mod-row > span:first-of-type { margin-left:8px; }
+  #sidebar-toggle { min-width:6em; text-align:left; }
+  #audio-controls #controls-toggle {
+    border:0; background:none; box-shadow:none; padding:8px 6px;
+    font-family:var(--font-heading); font-size:var(--type-label); font-weight:400;
+    letter-spacing:2px; color:var(--e-accent, rgba(180,140,60,.4));
+  }
+  #audio-controls #controls-toggle:hover { background:none; color:var(--e-accent, rgba(180,140,60,.8)); }
+  #controls-toggle-row { transition:right .32s cubic-bezier(.4,0,.1,1); }
+  body:not(.input-only):has(#dice-drawer.ed-open) #text-scroll {
+    padding-right:calc(var(--ed-drawer-w, min(400px, 92vw)) + 56px);
+  }
+  :root:not([data-skin="editorial"]) body:not(.input-only):has(#dice-drawer.ed-open) #controls-toggle-row {
+    right:calc(var(--ed-drawer-w, min(400px, 92vw)) + 28px);
+  }
+
 </style>
 {% include "typography.html" %}
 </head>
@@ -3739,7 +3754,7 @@
 <!-- Audio toggle controls — SFX triggered by narration text -->
 <div id="audio-controls">
   <div class="audio-row" id="controls-toggle-row" title="Hide the settings column">
-    <button class="display-action" id="controls-toggle" type="button" aria-controls="audio-controls" aria-expanded="true">Hide ▶</button>
+    <button class="display-action" id="controls-toggle" type="button" aria-controls="audio-controls" aria-expanded="true">Settings</button>
   </div>
   <div id="settings-content">
   <div class="audio-row" id="campaign-settings-row" hidden>
@@ -8281,16 +8296,21 @@ function _setControlsVisible(visible) {
   if (visible) {
     _audioControls.classList.remove('collapsed');
     _textScroll.classList.remove('controls-hidden');
-    if (_controlsBtn) _controlsBtn.textContent = 'Hide ▶';
+    if (_controlsBtn) _controlsBtn.textContent = 'Settings';
   } else {
     _audioControls.classList.add('collapsed');
     _textScroll.classList.add('controls-hidden');
-    if (_controlsBtn) _controlsBtn.textContent = '◀ Settings';
+    if (_controlsBtn) _controlsBtn.textContent = 'Settings';
   }
   try { localStorage.setItem('dnd-controls-visible', visible ? '1' : '0'); } catch (e) {}
 }
 if (_controlsBtn) {
-  _controlsBtn.addEventListener('click', () => _setControlsVisible(!_controlsVisible));
+  _controlsBtn.addEventListener('click', () => {
+    if (document.getElementById('dice-drawer').classList.contains('ed-open')) {
+      window._edCloseDrawer('dice-drawer');
+      _setControlsVisible(true);
+    } else _setControlsVisible(!_controlsVisible);
+  });
   try { if (localStorage.getItem('dnd-controls-visible') === '0') _setControlsVisible(false); } catch (e) {}
 }
 
