@@ -1,6 +1,8 @@
 """Browser portal guards and model dispatch, without starting a real CLI."""
 
 import importlib.util
+import io
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -19,6 +21,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
     monkeypatch.setattr(portal, "RUNTIME", tmp_path / ".runtime")
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime" / "portal-session.json")
+    monkeypatch.setattr(portal, "prepare_display", lambda name: None)
+    monkeypatch.setattr(portal, "notify_party_consumed", lambda *args: None)
     app = portal.create_app()
     app.testing = True
     test_client = app.test_client()
@@ -82,6 +86,88 @@ def test_start_refuses_second_model(client, monkeypatch):
     })
     assert response.status_code == 409
     assert "already running" in response.json["message"]
+
+
+def test_new_campaign_selects_clean_display_before_starting_model(client, monkeypatch):
+    events = []
+    monkeypatch.setattr(portal, "running", lambda: False)
+    monkeypatch.setattr(portal, "prepare_display", lambda name: events.append(("display", name)))
+
+    def fake_run(*args, timeout=15):
+        events.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(portal, "run", fake_run)
+    response = api(client, "/api/start", method="post", data={
+        "provider": "qwen", "mode": "new", "name": "fresh", "description": "a new story",
+    })
+    assert response.status_code == 200
+    display = events.index(("display", "fresh"))
+    launch = next(i for i, event in enumerate(events) if event[:2] == ("tmux", "new-session"))
+    assert display < launch
+    assert "DND_ACTIVE_CAMPAIGN=fresh" in events[launch][-1]
+
+
+def test_display_failure_prevents_model_start(client, monkeypatch):
+    monkeypatch.setattr(portal, "running", lambda: False)
+    calls = []
+
+    def failed_display(name):
+        raise OSError("display unavailable")
+
+    monkeypatch.setattr(portal, "prepare_display", failed_display)
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs:
+                        (calls.append(args), subprocess.CompletedProcess(args, 0, "", ""))[1])
+    response = api(client, "/api/start", method="post", data={
+        "provider": "qwen", "mode": "new", "name": "fresh", "description": "a new story",
+    })
+    assert response.status_code == 409
+    assert not any(args[:2] == ("tmux", "new-session") for args in calls)
+
+
+def test_display_preparation_checks_root_before_mutating(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
+    calls = []
+
+    def wrong_display(request, **kwargs):
+        calls.append(request)
+        return io.BytesIO(b'{"data_root":"/another/root","campaign":"old"}')
+
+    monkeypatch.setattr(portal.urllib.request, "urlopen", wrong_display)
+    with pytest.raises(ValueError, match="different campaign data root"):
+        portal.prepare_display("fresh")
+    assert calls == ["http://127.0.0.1:5001/health"]
+
+
+def test_display_preparation_requires_confirmed_campaign_selection(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(portal, "RUNTIME", tmp_path / ".runtime")
+    requests = []
+
+    def unchanged_display(request, **kwargs):
+        if isinstance(request, str):
+            return io.BytesIO(json.dumps({"data_root": str(tmp_path), "campaign": "old"}).encode("utf-8"))
+        requests.append(request)
+        return io.BytesIO(b"")
+
+    monkeypatch.setattr(portal.urllib.request, "urlopen", unchanged_display)
+    with pytest.raises(ValueError, match="did not select"):
+        portal.prepare_display("fresh")
+    assert [request.full_url for request in requests] == [
+        "http://127.0.0.1:5001/clear", "http://127.0.0.1:5001/stats",
+    ]
+
+
+def test_model_exiting_before_first_poll_reports_stopped_once(monkeypatch):
+    monkeypatch.setattr(portal, "running", lambda: False)
+    monkeypatch.setattr(portal, "read_meta", lambda: {"campaign": "fresh", "started_at": 123})
+    notifications = []
+    monkeypatch.setattr(portal, "notify_display", lambda *args: notifications.append(args) or True)
+    pauses = iter([None, None])
+    monkeypatch.setattr(portal.time, "sleep", lambda _: next(pauses))
+    with pytest.raises(StopIteration):
+        portal.party_input_loop()
+    assert notifications == [("/dm-status", {"status": "stopped"})]
 
 
 def test_resume_requires_existing_save(client, monkeypatch):

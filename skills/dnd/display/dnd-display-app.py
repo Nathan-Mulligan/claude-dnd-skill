@@ -349,6 +349,29 @@ _autorun_threshold: Optional[int] = None  # overrides _expected_count when set v
 _queue_status: list = []
 _queue_status_lock = threading.Lock()
 _setup_question = ""
+_party_feedback_lock = threading.Lock()
+_party_feedback = {"instance": secrets.token_hex(16), "revision": 0, "status": "idle", "responses": []}
+
+
+def _party_feedback_snapshot() -> dict:
+    with _party_feedback_lock:
+        return _party_feedback | {"responses": [dict(item) for item in _party_feedback["responses"]]}
+
+
+def _update_party_feedback(status: str, responses: list | None = None, reset: bool = False) -> None:
+    with _party_feedback_lock:
+        if status == "queued" and _party_feedback["status"] == "working":
+            status = "working"
+        if not reset and not responses and status == _party_feedback["status"]:
+            return
+        _party_feedback["status"] = status
+        if reset:
+            _party_feedback["responses"] = []
+        elif responses:
+            _party_feedback["responses"] = (_party_feedback["responses"] + responses)[-50:]
+        _party_feedback["revision"] += 1
+        state = _party_feedback | {"responses": [dict(item) for item in _party_feedback["responses"]]}
+    _broadcast({"party_feedback": state})
 
 # Last autorun cycle broadcast — replayed on SSE reconnect so late-joining
 # clients start the countdown from the correct elapsed position.
@@ -401,6 +424,8 @@ def _check_auto_trigger() -> None:
         if not (all_ready and enough):
             return
         char_names = list(_staged.keys())
+        responses = [{"character": c, "text": entry["text"], "submitted_at": _time.time()}
+                     for c, entry in _staged.items()]
         lines = [f'[{c}]: {e["text"]}' for c, e in _staged.items()]
         content = "\n".join(lines)
         try:
@@ -414,7 +439,7 @@ def _check_auto_trigger() -> None:
         except OSError:
             return
         _staged.clear()
-
+        _update_party_feedback("queued", responses)
     if char_names:
         with _queue_status_lock:
             _queue_status.extend(char_names)
@@ -1111,12 +1136,19 @@ def _load_log() -> None:
     try:
         with open(LOG_FILE, encoding="utf-8") as f:
             data = json.load(f)
+        try:
+            with open(CAMP_FILE, encoding="utf-8") as f:
+                campaign = f.read().strip()
+        except OSError:
+            campaign = ""
         with _text_log_lock:
             _text_log.clear()
             for item in data[:]:
                 # Migrate old plain-string entries to dict format
                 if isinstance(item, str):
                     item = {"text": item}
+                if campaign and item.get("_camp") and item["_camp"] != campaign:
+                    continue
                 _text_log.append(item)
     except Exception:
         pass
@@ -1368,6 +1400,8 @@ def chunk():
     raw = data.get("text", "")
     if not raw:
         return "", 204
+    if not data.get("player") and not data.get("action") and not data.get("dice"):
+        _update_party_feedback("responding")
 
     is_action      = bool(data.get("action"))
     is_player      = bool(data.get("player"))
@@ -2210,20 +2244,31 @@ def clear():
     """
     if not _token_ok():
         return "Forbidden", 403
-    global _scene_buffer, _current_stats, _setup_question
+    global _scene_buffer, _current_scene_name, _current_stats, _setup_question, _expected_count
     with _text_log_lock:
         _text_log.clear()
     with _stats_lock:
         _current_stats = {}
     _scene_buffer = []
+    _current_scene_name = "tavern"
     _setup_question = ""
-    for path in (LOG_FILE, STATS_FILE):
+    _expected_count = 1
+    with _staged_lock:
+        _staged.clear()
+    with _queue_status_lock:
+        _queue_status.clear()
+    with _input_lock:
+        _input_queue.clear()
+    for path in (LOG_FILE, STATS_FILE, QUEUE_FILE, TRIGGER_FILE, INPUT_FILE, rt(".portal-input-claim")):
         try:
             os.remove(path)
         except FileNotFoundError:
             pass
     _music.reset()
+    _update_party_feedback("idle", reset=True)
     _broadcast({"clear": True})
+    _broadcast({"scene": SCENES[_current_scene_name] | {"name": _current_scene_name},
+                "staged_inputs": {}, "queue_status": []})
     return "", 204
 
 
@@ -2238,6 +2283,7 @@ def setup_question():
         return "Question too long", 400
     global _setup_question
     _setup_question = _clean(text).strip()
+    _update_party_feedback("waiting")
     _broadcast({"setup_question": _setup_question})
     return "", 204
 
@@ -2768,9 +2814,30 @@ def queue_consumed():
     """
     if not _token_ok():
         return "Forbidden", 403
+    data = request.get_json(silent=True) or {}
+    if data.get("campaign") and data["campaign"] != _active_campaign_name():
+        return "Campaign changed", 409
+    reply = data.get("reply")
+    if reply is not None and (not isinstance(reply, str) or not reply.strip() or len(reply) > 3000):
+        return "Bad reply", 400
     with _queue_status_lock:
         _queue_status.clear()
+    responses = [{"character": "Everybody", "text": reply, "submitted_at": _time.time()}] if reply else None
+    _update_party_feedback("working", responses)
     _broadcast({"queue_status": [], "dm_processing": True})
+    return "", 204
+
+
+@app.route("/dm-status", methods=["POST"])
+def dm_status():
+    if not _token_ok():
+        return "Forbidden", 403
+    data = request.get_json(silent=True) or {}
+    if data.get("status") != "stopped":
+        return "Bad status", 400
+    if data.get("campaign") and data["campaign"] != _active_campaign_name():
+        return "Campaign changed", 409
+    _update_party_feedback("stopped")
     return "", 204
 
 
@@ -2835,6 +2902,7 @@ def stream():
     q.put_nowait({"scene": initial_scene})
     q.put_nowait({"music": _music.snapshot()})
     q.put_nowait({"background": _background.snapshot()})
+    q.put_nowait({"party_feedback": _party_feedback_snapshot()})
     if _setup_question:
         q.put_nowait({"setup_question": _setup_question})
 

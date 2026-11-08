@@ -236,6 +236,8 @@ def _ensure_active_campaign() -> None:
     health = _verify_health()
     if health is None:
         raise SystemExit("send.py: display unavailable for active campaign check")
+    if health.get("data_root") != str(campaign_dir(name).parent.parent):
+        raise SystemExit("send.py: display campaign root differs from DND_CAMPAIGN_ROOT")
     if health.get("campaign") != name:
         if not _post(CLEAR_URL, b"{}", _read_token()):
             raise SystemExit("send.py: failed to clear previous campaign display")
@@ -521,6 +523,7 @@ def main() -> None:
         question = args.setup_question.strip() if args.setup_question else sys.stdin.read().strip()
         if not question or len(question) > 1000:
             parser.error("--setup-question requires 1-1000 characters on stdin")
+        _ensure_active_campaign()
         token = _read_token()
         if not _post(SETUP_URL, json.dumps({"text": question}).encode("utf-8"), token):
             if not _post(FLASK_URL, json.dumps({"text": question}).encode("utf-8"), token):

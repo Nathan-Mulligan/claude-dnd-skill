@@ -60,12 +60,21 @@ def output() -> str:
     return result.stdout[-32000:] if result.returncode == 0 else ""
 
 
-def notify_party_consumed() -> None:
+def notify_display(route: str, payload: dict) -> bool:
     try:
+        payload = payload | {"campaign": read_meta().get("campaign")}
+        token_file = RUNTIME / ".token"
+        token = token_file.read_text(encoding="utf-8").strip() if token_file.is_file() else ""
         urllib.request.urlopen(urllib.request.Request(
-            "http://127.0.0.1:5001/queue/consumed", data=b"", method="POST"), timeout=2).close()
+            "http://127.0.0.1:5001" + route, data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-DND-Token": token}, method="POST"), timeout=2).close()
+        return True
     except OSError:
-        pass
+        return False
+
+
+def notify_party_consumed(reply: str | None = None) -> None:
+    notify_display("/queue/consumed", {"reply": reply} if reply else {})
 
 
 def deliver_party_input() -> bool:
@@ -113,9 +122,19 @@ def deliver_party_input() -> bool:
 
 
 def party_input_loop() -> None:
+    stopped_session = None
     while True:
         try:
-            deliver_party_input()
+            active = running()
+            if active:
+                stopped_session = None
+                deliver_party_input()
+            else:
+                meta = read_meta()
+                session = (meta.get("campaign"), meta.get("started_at"))
+                if session[0] and session != stopped_session:
+                    if notify_display("/dm-status", {"status": "stopped"}):
+                        stopped_session = session
         except Exception as error:
             print(f"Party Input bridge: {type(error).__name__}", flush=True)
         time.sleep(0.5)
@@ -160,6 +179,27 @@ def model_args(provider: str, mode: str, name: str, description: str) -> list[st
     return args
 
 
+def prepare_display(name: str) -> None:
+    base = "http://127.0.0.1:5001"
+    with urllib.request.urlopen(base + "/health", timeout=5) as response:
+        health = json.load(response)
+    if health.get("data_root") != str(DATA_ROOT):
+        raise ValueError("Display uses a different campaign data root")
+    token_file = RUNTIME / ".token"
+    token = token_file.read_text(encoding="utf-8").strip() if token_file.is_file() else ""
+    headers = {"Content-Type": "application/json", "X-DND-Token": token}
+    for route, payload in (("/clear", {}), ("/stats", {"campaign": name})):
+        request = urllib.request.Request(base + route, data=json.dumps(payload).encode("utf-8"),
+                                         headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=5):
+            pass
+    with urllib.request.urlopen(base + "/health", timeout=5) as response:
+        selected = json.load(response)
+    expected = str(DATA_ROOT / "campaigns" / name / "session_tail.json")
+    if selected.get("campaign") != name or selected.get("tail_path") != expected:
+        raise ValueError("Display did not select the requested campaign")
+
+
 def start_session(provider: str, mode: str, name: str, description: str) -> tuple[bool, str]:
     if provider not in ALLOWED_PROVIDERS or mode not in {"new", "resume"}:
         return False, "Choose a model and New or Resume."
@@ -184,8 +224,13 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
         service = run("env", "DND_PORTAL_START=1", "bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", provider, timeout=60)
         if service.returncode:
             return False, (service.stderr or service.stdout or "M5 services did not start.").strip()[-800:]
+        try:
+            prepare_display(name)
+        except (OSError, ValueError):
+            return False, "Could not prepare a clean display for this campaign. No model session was started."
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
         command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}",
+                               f"DND_ACTIVE_CAMPAIGN={name}",
                                *model_args(provider, mode, name, description)])
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
         if result.returncode:
@@ -195,6 +240,7 @@ def start_session(provider: str, mode: str, name: str, description: str) -> tupl
     RUNTIME.mkdir(parents=True, exist_ok=True)
     META_FILE.write_text(json.dumps({"provider": provider, "mode": mode, "campaign": name,
                                      "started_at": time.time()}), encoding="utf-8")
+    notify_party_consumed()
     return True, "Model session started. Answer its setup questions below."
 
 
@@ -267,6 +313,7 @@ def create_app() -> Flask:
             enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter") if literal.returncode == 0 else literal
         if enter.returncode:
             return jsonify(ok=False, message="Could not send the reply to the model."), 500
+        notify_party_consumed(text)
         return jsonify(ok=True)
 
     return app
