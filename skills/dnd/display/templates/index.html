@@ -6470,14 +6470,16 @@ const _inputOnlyAudio = _audioParams.get('view') === 'input' || _audioParams.has
 const _startWithAudio = !_inputOnlyAudio && _audioParams.get('audio') === 'on';
 if (_startWithAudio) {
   try {
-    for (const key of ['dnd_sfx_on', 'dnd_music_on', 'dnd_tts_auto']) localStorage.setItem(key, '1');
+    for (const key of ['dnd_sfx_on', 'dnd_music_on', 'dnd_tts_auto']) {
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, '1');
+    }
   } catch (_) {}
   _audioParams.delete('audio');
   const remaining = _audioParams.toString();
   try { history.replaceState(null, '', location.pathname + (remaining ? '?' + remaining : '') + location.hash); } catch (_) {}
 }
 let _sfxOn = !_inputOnlyAudio;
-try { _sfxOn = _sfxOn && (_startWithAudio || localStorage.getItem('dnd_sfx_on') !== '0'); } catch (_) {}
+try { _sfxOn = _sfxOn && (localStorage.getItem('dnd_sfx_on') !== '0'); } catch (_) {}
 
 // ── DM Help button ──────────────────────────────────────────────────
 const _dmHelpBtn = document.getElementById('dm-help-btn');
@@ -6674,7 +6676,7 @@ async function _playSfx(name) {
 // Music is local to the main display. The server owns entry IDs and rendered files.
 const _musicTrack = document.getElementById('music-track');
 let _musicOn = !_inputOnlyAudio;
-try { _musicOn = _musicOn && (_startWithAudio || localStorage.getItem('dnd_music_on') !== '0'); } catch (_) {}
+try { _musicOn = _musicOn && (localStorage.getItem('dnd_music_on') !== '0'); } catch (_) {}
 _setTrack(_musicTrack, _musicOn);
 let _musicVolume = _storedVolume('dnd_music_volume', 0.18);
 let _musicState = null;
@@ -6865,13 +6867,16 @@ for (const [id, key, value, update] of [
 function _syncSfx() {
   _setTrack(_sfxTrack, _sfxOn);
   if (_sfxGain) _sfxGain.gain.setTargetAtTime(_sfxOn ? _sfxVolume : 0, _audioCtx().currentTime, 0.05);
+}
+if (!_inputOnlyAudio) {
+  _syncSfx();
+  // The server detects cues for every display; each browser mutes its own playback.
   fetch('/audio-toggle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sfx: _sfxOn }),
+    body: JSON.stringify({ sfx: true }),
   }).catch(() => {});
 }
-if (!_inputOnlyAudio) _syncSfx();
 document.getElementById('sfx-row').addEventListener('click', () => {
   _sfxOn = !_sfxOn;
   try { localStorage.setItem('dnd_sfx_on', _sfxOn ? '1' : '0'); } catch (_) {}
@@ -6921,7 +6926,7 @@ let _ttsVoice = (_narratorVoiceMeta && _narratorVoiceMeta.getAttribute('content'
   || 'Enceladus';
 
 let _ttsAutoNarrate = _TTS_AVAILABLE && !_inputOnlyAudio;
-try { _ttsAutoNarrate = _ttsAutoNarrate && (_startWithAudio || localStorage.getItem('dnd_tts_auto') !== '0'); } catch (_) {}
+try { _ttsAutoNarrate = _ttsAutoNarrate && (localStorage.getItem('dnd_tts_auto') !== '0'); } catch (_) {}
 
 // ── local patch: per-character voices ──────────────────────────────────
 // Upstream narrates every block with one global voice. The kit keeps a
