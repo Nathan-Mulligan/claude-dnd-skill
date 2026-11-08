@@ -596,7 +596,7 @@
     letter-spacing: 2px;
     text-transform: uppercase;
     color: rgba(180,140,60,0.4);
-    padding: 2px 6px;
+    padding: 8px 6px;
     transition: color 0.3s ease;
     display: none;  /* shown only when sidebar has data */
   }
@@ -615,7 +615,7 @@
     scrollbar-width: none;
     background: linear-gradient(to right, rgba(0,0,0,0.6) 70%, transparent);
     border-right: 1px solid rgba(180,140,60,0.15);
-    padding: 114px 12px 28px 28px;
+    padding: 136px 12px 28px 28px;
     opacity: 0;
     transition: opacity 0.7s ease, transform 0.4s ease;
     transform: translateX(0);
@@ -833,9 +833,10 @@
     cursor: pointer;
     pointer-events: auto;
     transition: background 0.18s ease;
-    border-radius: 3px;
-    margin-left: -4px;
-    padding-left: 4px;
+    border-radius: 0;
+    margin-left: -28px;
+    margin-right: -12px;
+    padding: 16px 12px 16px 28px;
   }
   .sb-player:hover { background: rgba(180,140,60,0.06); }
 
@@ -1960,7 +1961,7 @@
   .sb-player { position: relative; }
   .sb-class-icon {
     position: absolute;
-    top: 0; right: 0;
+    top: 16px; right: 12px;
     width: 30px; height: 30px;
     opacity: 0.3;
     filter: drop-shadow(0 0 6px rgba(177,77,255,0.5));
@@ -2431,10 +2432,19 @@
   /* ── Mode switcher (full-view button + input-view "back to full" button) ── */
   body:not(.input-only) #audio-controls { top:96px; }
 
-  /* Settings-column hide toggle (mirrors the left sidebar's toggle). Collapsed
-     folds every row away except the toggle row itself, so the narration
-     reclaims the right side. */
-  #audio-controls.collapsed .audio-row:not(#controls-toggle-row) { display: none; }
+  #settings-content {
+    display:flex; flex-direction:column; gap:7px; min-height:0; flex-shrink:0;
+    opacity:1; transform:translateX(0);
+    transition:opacity .7s ease, transform .4s ease;
+  }
+  :root[data-skin="editorial"] #settings-content { gap:0; }
+  #audio-controls { overflow-x:hidden; }
+  #audio-controls.collapsed { pointer-events:none; overflow-y:hidden; }
+  #audio-controls.collapsed #settings-content { transform:translateX(calc(100% + 28px)); opacity:0; pointer-events:none; }
+  #controls-toggle-row { pointer-events:auto; }
+  @media (prefers-reduced-motion:reduce) {
+    #sidebar, #settings-content { transition:none; }
+  }
   #controls-toggle-row { cursor: pointer; justify-content: flex-end; }
   #controls-toggle-row .audio-label { color: rgba(180,140,60,0.5); }
   #controls-toggle-row:hover .audio-label { color: rgba(180,140,60,0.9); }
@@ -3729,6 +3739,7 @@
   <div class="audio-row" id="controls-toggle-row" title="Hide the settings column">
     <button class="display-action" id="controls-toggle" type="button" aria-controls="audio-controls" aria-expanded="true">Hide ▶</button>
   </div>
+  <div id="settings-content">
   <div class="audio-row" id="campaign-settings-row" hidden>
     <button id="campaign-settings-btn" class="display-action" type="button" aria-haspopup="dialog">Campaign &amp; model</button>
   </div>
@@ -3794,6 +3805,7 @@
       <span id="ts-val" class="theme-label">100%</span>
       <button id="ts-inc" class="ts-btn" type="button" aria-label="Bigger text">A+</button>
     </span>
+  </div>
   </div>
 </div>
 
@@ -8244,6 +8256,7 @@ let _controlsVisible = true;
 function _setControlsVisible(visible) {
   _controlsVisible = visible;
   if (_controlsBtn) _controlsBtn.setAttribute('aria-expanded', String(visible));
+  document.getElementById('settings-content').inert = !visible;
   if (visible) {
     _audioControls.classList.remove('collapsed');
     _textScroll.classList.remove('controls-hidden');
