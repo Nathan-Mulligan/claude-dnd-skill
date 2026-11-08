@@ -68,10 +68,13 @@ def on_scene_change(scene_name: str) -> None:
     pass   # ambient removed — kept for API compatibility
 
 
-def on_text(text: str) -> None:
+def on_text(text: str, ignored_names=()) -> None:
     """Scan narration text for SFX triggers; broadcast at most one per call."""
     if not _sfx_on or not _broadcast_fn:
         return
+    for name in ignored_names:
+        if name:
+            text = re.sub(r"(?<!\w)" + re.escape(name) + r"(?!\w)", "", text, flags=re.IGNORECASE)
     for pattern, sfx_name in _SFX_MAP:
         if pattern.search(text):
             _broadcast_fn({"sfx": sfx_name})

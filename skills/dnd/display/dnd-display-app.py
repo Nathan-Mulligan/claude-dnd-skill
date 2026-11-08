@@ -1252,7 +1252,7 @@ def _broadcast(payload: dict) -> None:
 
 _music_cli, _music_hf = _music_module.runtime_config(Path(rt("music-config.json")))
 _render_lock = threading.Lock()
-_image_config = _background_module.runtime_config()
+_image_config = _background_module.runtime_config(Path(rt("image-config.json")))
 _background = _background_module.BackgroundDirector(
     Path(rt("backgrounds")),
     renderer=(lambda job: _background_module.render_local(job, _image_config)) if _image_config else None,
@@ -1492,10 +1492,12 @@ def chunk():
         return "", 204
 
     music_cue = data.get("music")
+    explicit_music = False
     if isinstance(music_cue, dict) and not any((is_action, is_player, is_npc, is_dice, is_tutor)):
         try:
             _music.transition(music_cue.get("event"), music_cue.get("id"),
                               music_cue.get("setting"), music_cue.get("mood", "ominous"))
+            explicit_music = True
         except ValueError:
             pass  # A malformed optional cue must not suppress valid narration.
 
@@ -1515,14 +1517,23 @@ def chunk():
         if data.get("opener"):
             payload["opener"] = True
         # Scene detection only on DM narration
-        scene = _detect_scene(cleaned)
+        music_state = _music.snapshot()
+        scene = (_detect_scene(cleaned) if music_state["mode"] != "combat" or
+                 (explicit_music and music_cue.get("event") == "scene") else None)
         if scene:
             payload["scene"] = scene
             if _audio:
                 _audio.on_scene_change(scene["name"])
+        setting = scene["name"] if scene else _current_scene_name
+        if not explicit_music and music_state["mode"] != "combat" and (
+                music_state["mode"] == "idle" or
+                (scene and setting != music_state["setting"])):
+            _music.transition("scene", secrets.token_hex(16), setting, music_state["mood"])
         # SFX scan on all non-player text
         if _audio:
-            _audio.on_text(cleaned)
+            with _stats_lock:
+                names = [player.get("name", "") for player in _current_stats.get("players", [])]
+            _audio.on_text(cleaned, ignored_names=names)
 
     # Store full typed payload so replay preserves action/player/npc/dice/tutor context
     log_entry: dict = {"text": cleaned}
@@ -1873,6 +1884,23 @@ def effects_expire():
     _broadcast({"stats": current})
     _persist_stats()
     return "", 204
+
+
+@app.route("/music-cue", methods=["POST"])
+def music_cue():
+    if not _token_ok():
+        return "Forbidden", 403
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or not isinstance(data.get("event"), str) or not isinstance(data.get("id"), str):
+        return "Invalid music cue", 400
+    if (data.get("setting") is not None and not isinstance(data["setting"], str)) or not isinstance(data.get("mood", "ominous"), str):
+        return "Invalid music cue", 400
+    try:
+        state = _music.transition(data.get("event"), data.get("id"),
+                                  data.get("setting"), data.get("mood", "ominous"))
+    except ValueError:
+        return "Invalid music cue", 400
+    return jsonify(state)
 
 
 @app.route("/audio/music/<entry>/<kind>")

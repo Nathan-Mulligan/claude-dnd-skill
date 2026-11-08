@@ -60,26 +60,37 @@ class LocalConfig:
     density_map: bool = False
 
 
-def runtime_config() -> LocalConfig | None:
-    values = [os.environ.get(name, "").strip() for name in
+def runtime_config(config_path: Path | None = None) -> LocalConfig | None:
+    try:
+        saved = json.loads(config_path.read_text(encoding="utf-8")) if config_path else {}
+    except (OSError, ValueError):
+        saved = {}
+    if not isinstance(saved, dict):
+        saved = {}
+
+    def value(name: str, default: str = "") -> str:
+        setting = os.environ.get(name, saved.get(name, default))
+        return setting.strip() if isinstance(setting, str) else default
+
+    values = [value(name) for name in
               ("DND_IMAGE_PYTHON", "DND_IMAGE_RUNNER", "DND_IMAGE_MODEL")]
     if not all(values):
         return None
     python = Path(values[0]).expanduser().absolute()
     runner, model = [Path(value).expanduser().resolve() for value in values[1:]]
-    density_map = not os.environ.get("DND_IMAGE_REFERENCE")
-    reference = (Path(os.environ["DND_IMAGE_REFERENCE"]).expanduser().resolve() if not density_map
+    density_map = not value("DND_IMAGE_REFERENCE")
+    reference = (Path(value("DND_IMAGE_REFERENCE")).expanduser().resolve() if not density_map
                  else Path(__file__).parent / "icons" / "background-density.png")
-    guard = Path(os.environ["DND_IMAGE_GUARD"]).expanduser().resolve() if os.environ.get("DND_IMAGE_GUARD") else None
+    guard = Path(value("DND_IMAGE_GUARD")).expanduser().resolve() if value("DND_IMAGE_GUARD") else None
     if not python.is_file() or not os.access(python, os.X_OK) or not runner.is_file() or not model.is_dir():
         return None
     if reference and not reference.is_file() or guard and not guard.is_file():
         return None
     try:
-        width = int(os.environ.get("DND_IMAGE_WIDTH", "1024"))
-        height = int(os.environ.get("DND_IMAGE_HEIGHT", "256"))
-        steps = int(os.environ.get("DND_IMAGE_STEPS", "4"))
-        timeout = int(os.environ.get("DND_IMAGE_TIMEOUT", "900"))
+        width = int(value("DND_IMAGE_WIDTH", "1024"))
+        height = int(value("DND_IMAGE_HEIGHT", "256"))
+        steps = int(value("DND_IMAGE_STEPS", "4"))
+        timeout = int(value("DND_IMAGE_TIMEOUT", "900"))
     except ValueError:
         return None
     if not (256 <= width <= 2048 and 256 <= height <= 2048 and
@@ -323,3 +334,24 @@ class BackgroundDirector:
     def _run(self) -> None:
         while True:
             self._process(self.jobs.get())
+
+
+if __name__ == "__main__":
+    import argparse
+    from runtime_paths import rt
+
+    parser = argparse.ArgumentParser(description="Configure the display's local background renderer.")
+    parser.add_argument("--python", required=True)
+    parser.add_argument("--runner", required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--guard")
+    args = parser.parse_args()
+    settings = {"DND_IMAGE_" + name.upper(): setting for name, setting in vars(args).items() if setting}
+    os.environ.update(settings)
+    if runtime_config() is None:
+        parser.error("Renderer paths are not usable; no settings were saved.")
+    target = Path(rt("image-config.json"))
+    temporary = target.with_suffix(f".{os.getpid()}.tmp")
+    temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(target)
+    print("Local backgrounds configured. Restart the display to use them.")

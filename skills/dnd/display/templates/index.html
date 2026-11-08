@@ -45,6 +45,11 @@
       // data-variant to variant — mirrored in _apply() so the anti-FOUC and
       // the picker stay in lockstep.
       var skId = window.localStorage.getItem('dnd-skin');
+      var requestedStyle = new URLSearchParams(location.search).get('style');
+      if (window._SKINS.some(s => s.id === requestedStyle)) {
+        skId = requestedStyle;
+        window.localStorage.setItem('dnd-skin', skId);
+      }
       var sk = null;
       for (var i = 0; i < window._SKINS.length; i++) {
         if (window._SKINS[i].id === skId) { sk = window._SKINS[i]; break; }
@@ -4875,7 +4880,7 @@ if (document.readyState === 'loading') {
 function flushNewBlock() {
   // Finalise the current block and start a fresh one next time
   if (currentCursor && currentCursor.parentNode) {
-    currentCursor.parentNode.removeChild(currentCursor);
+    currentCursor.classList.remove('typing-cursor');
     currentCursor = null;
   }
   // Add a soft divider if there was content
@@ -5466,6 +5471,7 @@ function handleIncomingText(text, opener) {
   const flushAfter = () => {
     if (Date.now() < _openerHoldUntil) { idleTimer = setTimeout(flushAfter, _openerHoldUntil - Date.now()); return; }
     if (!isTyping && charQueue.length === 0) flushNewBlock();
+    else idleTimer = setTimeout(flushAfter, 200);
   };
   idleTimer = setTimeout(flushAfter, IDLE_GAP * 2);
 
@@ -6719,7 +6725,7 @@ function _onMusicState(state) {
   if (!state || typeof state.revision !== 'number') return;
   if (_musicState && state.revision < _musicState.revision) return;
   if (!_musicState || state.entry !== _musicState.entry || state.mode !== _musicState.mode) {
-    const joiningExistingBed = !_musicState && !!state.bed_url;
+    const joiningExistingBed = !_musicState && !!state.bed_url && !_startWithAudio;
     _stopMusic();
     _musicIntroPlayed = joiningExistingBed;
     _musicCombatPlayed = false;

@@ -28,7 +28,16 @@ request reduced motion switch immediately. Plain Vellum and Editorial keep
 their existing appearance.
 
 Image generation is optional and local. Install the model and its runner
-separately, then set these environment variables before starting the display:
+separately. Configure the installed renderer once through the display's command:
+
+```bash
+python3 backgrounds.py --python /absolute/path/to/model-venv/bin/python \
+  --runner /absolute/path/to/run_still.py --model /absolute/path/to/local-model-directory \
+  --guard /absolute/path/to/watch_trial.py
+```
+
+The command validates and saves the local paths under the display runtime directory.
+Restart the display after configuration. Environment variables override saved paths:
 
 ```bash
 export DND_IMAGE_PYTHON="/absolute/path/to/model-venv/bin/python"
@@ -52,7 +61,9 @@ uses the existing watchdog interface with 28 GiB process memory and 4 GiB swap
 growth limits. The display never downloads models or calls an image API;
 the renderer runs with Hugging Face and Transformers offline mode enabled.
 
-An explicit music `scene` cue selects the environment. The illustration queues
+The first DM narration starts scene music automatically, and established scene
+changes request new music. An explicit music `scene` cue overrides detection.
+The illustration queues
 only after that scene's intro and loop have both generated successfully. Audio
 and image rendering share one local rendering lease to avoid overlapping GPU
 work. Combat keeps the same visual scene. A scene entered during combat waits
@@ -61,6 +72,10 @@ are discarded. Reloads reuse the current finished PNG, and an interrupted image
 is queued once when its music is ready again. Failures leave the previous image
 on screen; the Scenery label reports progress. Generated files live in the
 display's runtime `backgrounds/` directory, with at most three finished images.
+
+Open `http://127.0.0.1:5001/?style=illustrated-vellum&audio=on` to select the
+illustrated style and start the current scene from its intro. Ordinary reloads
+join the background loop. Click inside the display if Safari requests an audio gesture.
 
 ### 1. Install dependencies
 
