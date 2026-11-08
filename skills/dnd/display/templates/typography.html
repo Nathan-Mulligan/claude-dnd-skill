@@ -20,6 +20,13 @@
   h3 { font-size:var(--type-h3); font-weight:600; }
   h4 { font-size:var(--type-h4); font-weight:600; }
   b, strong { font-weight:600; }
+  #sidebar-toggle, #audio-controls #controls-toggle {
+    font-family:var(--font-heading); font-size:var(--type-label); font-weight:400;
+    line-height:1.4; letter-spacing:2px; text-transform:uppercase;
+    color:var(--e-accent, rgba(180,140,60,.4));
+  }
+  #sidebar-toggle:hover, #audio-controls #controls-toggle:hover { color:var(--e-accent, rgba(180,140,60,.8)); }
+
   blockquote, .npc-block p { font-style:italic; }
   #audio-controls .audio-label,
   #audio-controls :is(.theme-label, .speed-label, .narrate-label, .ts-btn),
