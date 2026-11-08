@@ -10,11 +10,11 @@ import struct
 import subprocess
 import tempfile
 import threading
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
-from music import MOODS, SETTINGS
+from music import MOODS, SETTINGS, SceneContext
 
 ENVIRONMENTS = {
     "arcane": "an ancient magical observatory, floating stone arches and luminous runes",
@@ -44,6 +44,7 @@ class SceneJob:
     setting: str
     mood: str
     path: Path
+    scene: SceneContext | None = None
 
 
 @dataclass(frozen=True)
@@ -99,7 +100,8 @@ def runtime_config(config_path: Path | None = None) -> LocalConfig | None:
     return LocalConfig(python, runner, model, reference, guard, width, height, steps, timeout, density_map)
 
 
-def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bool = False) -> str:
+def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bool = False,
+               scene: SceneContext | None = None) -> str:
     opening = ("Use the reference only for its painterly style, composition and gradual shading. "
                "Replace its entire environment with the requested setting. Do not copy cave walls, "
                "stalactites or buildings unless they belong in the requested setting. " if reference else "")
@@ -108,8 +110,9 @@ def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bo
                    "scenery and detail are allowed in the upper area and outer edges. Black means a quiet "
                    "dark reading area in the lower centre. Follow that composition, but create a full-colour "
                    "painting of the requested environment, not a grayscale image or a visible map. ")
+    environment = scene.description if scene else ENVIRONMENTS[setting]
     return (
-        opening + f"Paint a very wide shallow illustrated fantasy panorama of {ENVIRONMENTS[setting]}. "
+        opening + f"Paint a very wide shallow illustrated fantasy panorama of {environment}. "
         f"{mood.capitalize()} atmosphere. Recognisable distant scenery, soft painterly forms and shaded depth. "
         "Place the horizon and major landmarks in the upper quarter, with restrained framing at the outer edges. "
         "The lower three quarters and central reading area are quiet, low-contrast shadow with subtle visible "
@@ -136,7 +139,8 @@ def render_local(job: SceneJob, config: LocalConfig) -> None:
     with tempfile.TemporaryDirectory(prefix="render-", dir=job.path.parent) as temporary:
         directory = Path(temporary)
         prompt = directory / "prompt.txt"
-        prompt.write_text(prompt_for(job.setting, job.mood, config.reference is not None, config.density_map), encoding="utf-8")
+        prompt.write_text(prompt_for(job.setting, job.mood, config.reference is not None, config.density_map,
+                                     job.scene), encoding="utf-8")
         command = [str(config.python), str(config.runner), "--model", str(config.model),
                    "--output", str(directory), "--prompt-file", str(prompt),
                    "--width", str(config.width), "--height", str(config.height),
@@ -192,6 +196,7 @@ class BackgroundDirector:
         self.music_scene_revision = -1
         self.scene_id: str | None = None
         self.setting: str | None = None
+        self.scene: SceneContext | None = None
         self.mood = "ominous"
         self.status = "idle" if renderer else "unavailable"
         self.error: str | None = None
@@ -212,7 +217,9 @@ class BackgroundDirector:
                 return
             if data.get("setting") not in SETTINGS or data.get("mood") not in MOODS:
                 return
+            scene = SceneContext.parse(data.get("scene"))
             self.scene_id, self.setting, self.mood = scene_id, data["setting"], data["mood"]
+            self.scene = scene
             self.status = "ready" if valid_png(self.directory / f"{scene_id}.png") else (
                 "waiting_music" if self.renderer else "unavailable")
         except (OSError, ValueError):
@@ -220,6 +227,7 @@ class BackgroundDirector:
 
     def _snapshot_unlocked(self) -> dict:
         return {"revision": self.revision, "scene_id": self.scene_id, "setting": self.setting,
+                "scene": asdict(self.scene) if self.scene else None,
                 "status": self.status, "available": self.renderer is not None,
                 "image_url": f"/backgrounds/{self.scene_id}" if self.status == "ready" else None,
                 "error": self.error}
@@ -254,6 +262,7 @@ class BackgroundDirector:
                 if self.scene_id is None:
                     return
                 self.scene_id = self.setting = None
+                self.scene = None
                 self.status = "idle" if self.renderer else "unavailable"
                 self.error = None
             elif (not isinstance(scene_id, str) or not re.fullmatch(r"[0-9a-f]{32}", scene_id)
@@ -261,6 +270,7 @@ class BackgroundDirector:
                 return
             else:
                 if scene_id != self.scene_id:
+                    self.scene = SceneContext.parse(state.get("scene"))
                     self.scene_id, self.setting = scene_id, setting
                     self.mood = state.get("mood") if state.get("mood") in MOODS else "ominous"
                     self.status = "waiting_music" if self.renderer else "unavailable"
@@ -269,7 +279,7 @@ class BackgroundDirector:
                     return
                 if self.status == "waiting_music" and state.get("scene_ready") is True:
                     self.status = "queued"
-                    job = SceneJob(scene_id, setting, self.mood, self.directory / f"{scene_id}.png")
+                    job = SceneJob(scene_id, setting, self.mood, self.directory / f"{scene_id}.png", self.scene)
                     try:
                         self.jobs.get_nowait()
                     except queue.Empty:

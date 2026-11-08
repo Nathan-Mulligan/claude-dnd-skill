@@ -348,11 +348,15 @@ DNDEND
 ```
 Skip the opener for one-line replies, out-of-character answers, and turns whose narration is only a sentence or two anyway.
 
-*Scene music.* Bundle a cue with the opener of a genuine new location or atmosphere. This is an entry event, even when the party returns to the same kind of place. Do not cue music on ordinary turns or NPC dialogue. Use one of `arcane`, `castle`, `cave`, `city`, `crypt`, `desert`, `dungeon`, `fire`, `forest`, `mine`, `mountain`, `night`, `ocean`, `prison`, `ruins`, `swamp`, `tavern`, `temple`, plus an optional mood of `calm`, `curious`, `ominous`, `tense`, or `warm`. The display builds the prompt and renders a fresh ten-second intro followed by sparse two-minute ambience. Do not request a character theme.
+*Scene music and illustration.* Before narrating, read the current `scene` from `GET http://127.0.0.1:5001/health`. Bundle a named scene cue with the opener when the actual location, activity or atmosphere changes meaningfully, even within the same broad setting. Give it a stable `--scene-key`, a short `--scene-label` and a specific `--scene-description` of the visible environment and activity. These details drive the illustration and musical texture; they are not venue keywords. Keep the current key and setting during continuation, and choose a new key for a distinct scene or deliberate new variation. Do not change scenes for ordinary turns, NPC dialogue or suggested destinations.
+
+Use a broad setting of `arcane`, `castle`, `cave`, `city`, `crypt`, `desert`, `dungeon`, `fire`, `forest`, `mine`, `mountain`, `night`, `ocean`, `prison`, `ruins`, `swamp`, `tavern` or `temple`, and a fitting mood of `calm`, `curious`, `ominous`, `tense` or `warm`. Dark fantasy fits ominous scenes; other moods need not sound gloomy. The display generates a fresh ten-second intro, sparse two-minute ambience and an illustration for a new scene. Do not request a character theme. See [the scene cue contract in SKILL-scripts.md](SKILL-scripts.md#display-companion-setup-one-time) for field bounds and JSON details.
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/display/send.py --opener \
-  --music-event scene --music-setting cave --music-mood ominous << 'DNDEND'
+  --music-event scene --music-setting cave --music-mood ominous \
+  --scene-key low-torch-chamber --scene-label 'The Low-Torch Chamber' \
+  --scene-description 'A vast vaulted cavern with low torches, carved pillars and a shadowy stone platform.' << 'DNDEND'
 The cave opens into a vast chamber where the cultists' torches burn low.
 DNDEND
 ```

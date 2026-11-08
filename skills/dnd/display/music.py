@@ -16,7 +16,7 @@ import subprocess
 import threading
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -26,6 +26,32 @@ SETTINGS = frozenset({
     "ruins", "swamp", "tavern", "temple",
 })
 MOODS = frozenset({"calm", "curious", "ominous", "tense", "warm"})
+
+
+@dataclass(frozen=True)
+class SceneContext:
+    key: str
+    label: str
+    description: str
+
+    @classmethod
+    def parse(cls, value: dict | SceneContext | None) -> SceneContext | None:
+        if value is None:
+            return None
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, dict) or set(value) != {"key", "label", "description"}:
+            raise ValueError("scene requires key, label and description")
+        if not all(isinstance(text, str) for text in value.values()):
+            raise ValueError("scene fields must be text")
+        return cls(**{key: text.strip() for key, text in value.items()})
+
+    def __post_init__(self):
+        if not isinstance(self.key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", self.key):
+            raise ValueError("invalid scene key")
+        for text, limit in ((self.label, 120), (self.description, 800)):
+            if not isinstance(text, str) or not text.strip() or len(text) > limit or "\0" in text:
+                raise ValueError("invalid scene label or description")
 
 INSTRUMENTS = {
     "arcane": "bowed strings, hand bells and hollow wooden flute",
@@ -69,8 +95,25 @@ INTRO_PROMPTS = {
 }
 
 
-def prompt_for(setting: str, mood: str, kind: str) -> str:
+def prompt_for(setting: str, mood: str, kind: str, scene: SceneContext | None = None) -> str:
     instruments = INSTRUMENTS[setting]
+    if scene is not None:
+        genre = "dark fantasy" if mood in {"ominous", "tense"} else "fantasy"
+        context = f"The current scene is {scene.label}: {scene.description}"
+        if kind == "intro":
+            return (
+                f"A ten-second instrumental {genre} scene introduction. {context} "
+                f"Express the scene's activity, pace and mood through {instruments}. {mood.capitalize()} atmosphere. "
+                "A distinctive melodic phrase with a beginning, development and resolved ending. "
+                "No vocals, speech or sound effects."
+            )
+        if kind == "bed":
+            return (
+                f"Two minutes of sparse instrumental {genre} background music. {context} "
+                f"Quiet {instruments}, shaped by this scene's activity and atmosphere. {mood.capitalize()} mood. "
+                "A scene-specific musical texture, unobtrusive beneath narration, with gentle variation, "
+                "long quiet stretches and smooth edges for repeating. No vocals, speech or sound effects."
+            )
     if kind == "intro":
         if setting in INTRO_PROMPTS:
             return INTRO_PROMPTS[setting]
@@ -159,6 +202,7 @@ class MusicDirector:
         self.revision = 0
         self.mode = "idle"
         self.setting: str | None = None
+        self.scene: SceneContext | None = None
         self.mood = "ominous"
         self.entry: str | None = None
         self.ready: dict[str, Path] = {}
@@ -198,8 +242,13 @@ class MusicDirector:
         if mode not in {"explore", "combat"} or (setting not in SETTINGS and
                 not (mode == "combat" and setting is None)):
             return
+        try:
+            scene = SceneContext.parse(data.get("scene"))
+        except ValueError:
+            return
         self.mode = mode
         self.setting = setting
+        self.scene = scene
         mood = data.get("mood", "ominous")
         self.mood = mood if mood in MOODS else "ominous"
         self.entry = entry
@@ -229,6 +278,7 @@ class MusicDirector:
         data = {
             "revision": self.revision, "mode": self.mode,
             "setting": self.setting, "mood": self.mood,
+            "scene": asdict(self.scene) if self.scene else None,
             "entry": self.entry, "expected": list(self.expected),
             "scene_id": self.scene_id, "scene_ready": self.scene_ready,
             "scene_revision": self.scene_revision,
@@ -246,7 +296,7 @@ class MusicDirector:
         assert self.entry is not None
         seconds = 120 if kind == "bed" else 10
         return Job(self.revision, self.entry, kind,
-                   prompt_for(self.setting or "cave", self.mood, kind),
+                   prompt_for(self.setting or "cave", self.mood, kind, self.scene),
                    seconds, secrets.randbelow(2**31),
                    3.0 if kind == "bed" else 1.0,
                    self.directory / f"{self.entry}-{kind}.wav")
@@ -260,6 +310,7 @@ class MusicDirector:
             "revision": self.revision,
             "mode": self.mode,
             "setting": self.setting,
+            "scene": asdict(self.scene) if self.scene else None,
             "entry": entry,
             "scene_id": self.scene_id,
             "scene_revision": self.scene_revision,
@@ -290,7 +341,7 @@ class MusicDirector:
         return True
 
     def transition(self, event: str, event_id: str, setting: str | None = None,
-                   mood: str = "ominous") -> dict:
+                   mood: str = "ominous", scene: dict | SceneContext | None = None) -> dict:
         if event not in {"scene", "combat_start", "combat_end"}:
             raise ValueError("invalid music event")
         if event == "scene" and setting not in SETTINGS:
@@ -299,14 +350,21 @@ class MusicDirector:
             raise ValueError("invalid music mood")
         if not isinstance(event_id, str) or len(event_id) > 64 or not event_id:
             raise ValueError("invalid music event id")
+        context = SceneContext.parse(scene)
+        if event != "scene" and context is not None:
+            raise ValueError("scene context requires a scene event")
         with self.lock:
             if not self._remember(event_id):
+                return self._snapshot_unlocked()
+            if (event == "scene" and context is not None and self.scene is not None and
+                    context.key == self.scene.key and setting == self.setting):
                 return self._snapshot_unlocked()
             if event == "combat_start" and self.mode == "combat":
                 return self._snapshot_unlocked()
             if event == "combat_end" and self.mode != "combat":
                 return self._snapshot_unlocked()
             if event == "scene":
+                self.scene = context
                 self.scene_id = uuid.uuid4().hex
                 self.scene_revision += 1
                 self.scene_ready = False
@@ -349,6 +407,7 @@ class MusicDirector:
             self.revision += 1
             self.mode = "idle"
             self.setting = None
+            self.scene = None
             self.entry = None
             self.ready = {}
             self.expected = ()

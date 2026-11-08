@@ -235,6 +235,7 @@ def test_party_input_is_sent_to_active_model(client, monkeypatch):
     assert not queue.exists()
     assert any("My name is Enther" in " ".join(args) for args in calls)
     assert any("setup question" in " ".join(args) for args in calls)
+    assert any(portal.SCENE_PROTOCOL in " ".join(args) for args in calls)
     assert calls[-1] == ("consumed",)
     assert portal.deliver_party_input() is False
 
@@ -378,3 +379,13 @@ def test_large_questionnaire_is_rejected_before_model_operations(client, monkeyp
         "characters": [{"concept": "x" * 1500, "details": "y" * 1500}] * 8}})
     assert response.status_code == 400
     assert "too long" in response.json["message"]
+
+
+@pytest.mark.parametrize("mode,onboarding", [("new", None), ("resume", None), ("new", {"characters": [{}]})])
+def test_scene_protocol_prefix_reaches_each_launch_mode(mode, onboarding):
+    prompt = portal.initial_prompt(mode, "adventure", "A strange new world", onboarding)
+    assert prompt.startswith(portal.SCENE_PROTOCOL)
+    assert "--scene-key" in prompt
+    assert "/health" in prompt
+    if onboarding is not None:
+        assert json.loads(prompt.split("Completed questionnaire JSON: ", 1)[1]) == onboarding

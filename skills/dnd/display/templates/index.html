@@ -3957,7 +3957,7 @@ let activeScene = { ...SCENE_DEFAULTS };
 let bgActive = 'a'; // which bg layer is currently showing
 
 function applyScene(scene) {
-  if (!scene || scene.name === activeScene.name) return;
+  if (!scene || (scene.name === activeScene.name && scene.scene_id === activeScene.scene_id)) return;
   activeScene = { ...SCENE_DEFAULTS, ...scene };
 
   // Update scene indicator with a fade

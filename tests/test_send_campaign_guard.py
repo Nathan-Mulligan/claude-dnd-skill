@@ -58,3 +58,32 @@ def test_different_campaign_in_wrong_root_is_not_cleared(tmp_path, monkeypatch):
         with pytest.raises(SystemExit, match="campaign root differs"):
             send._ensure_active_campaign()
     post.assert_not_called()
+
+
+def test_named_scene_cli_sends_context_only_with_first_narration_chunk(monkeypatch):
+    import io
+    monkeypatch.setattr(sys, "argv", [str(SOURCE), "--music-event", "scene", "--music-setting", "city",
+        "--music-mood", "curious", "--scene-key", "clockwork-room", "--scene-label", "The Clockwork Room",
+        "--scene-description", "A room of brass mechanisms."])
+    monkeypatch.setattr(sys, "stdin", io.StringIO("The door opens.\n\nYou step inside."))
+    monkeypatch.setattr(send, "_ensure_active_campaign", lambda: None)
+    monkeypatch.setattr(send, "_read_token", lambda: "")
+    monkeypatch.setattr(send, "_split_paragraphs", lambda text: text.split("\n\n"))
+    payloads = []
+    monkeypatch.setattr(send, "_post", lambda url, data, token: payloads.append(json.loads(data)) or True)
+    send.main()
+    assert payloads[0]["music"]["scene"] == {"key": "clockwork-room", "label": "The Clockwork Room", "description": "A room of brass mechanisms."}
+    assert "music" not in payloads[1]
+
+
+@pytest.mark.parametrize("args", [
+    ["--scene-key", "clockwork-room"],
+    ["--music-event", "combat-start", "--scene-key", "room"],
+    ["--music-event", "scene", "--music-setting", "city", "--scene-key", "partial"],
+])
+def test_invalid_scene_cli_flags_fail_before_campaign_operations(monkeypatch, args):
+    monkeypatch.setattr(sys, "argv", [str(SOURCE), *args])
+    with mock.patch.object(send, "_ensure_active_campaign") as ensure:
+        with pytest.raises(SystemExit):
+            send.main()
+        ensure.assert_not_called()

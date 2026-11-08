@@ -666,6 +666,8 @@ SCENES: dict[str, dict] = {
     },
 }
 
+SCENES["prison"] = SCENES["dungeon"] | {"label": "The Prison", "keywords": []}
+
 # Priority order — checked in sequence; first match wins per chunk
 SCENE_PRIORITY = [
     "mine", "crypt", "arcane", "fire", "temple", "dungeon", "cave",
@@ -1276,6 +1278,16 @@ _music_scene_lock = threading.Lock()
 _music_scene_version = (-1, -1)
 
 
+def _scene_payload(state: dict | None = None) -> dict:
+    state = _music.snapshot() if state is None else state
+    setting = state.get("setting") or _current_scene_name
+    scene = SCENES[setting] | {"name": setting, "scene_id": state.get("scene_id")}
+    if state.get("scene"):
+        scene["label"] = state["scene"]["label"]
+        scene["particles"] = "dust"
+    return scene
+
+
 def _broadcast_music(payload: dict) -> None:
     global _current_scene_name, _scene_buffer, _music_scene_version
     state = payload["music"]
@@ -1290,7 +1302,7 @@ def _broadcast_music(payload: dict) -> None:
             if setting != _current_scene_name:
                 _scene_buffer = []
             _current_scene_name = setting
-            payload = payload | {"scene": SCENES[setting] | {"name": setting}}
+            payload = payload | {"scene": _scene_payload(state)}
         _broadcast(payload)
     _background.observe_music(payload["music"])
 
@@ -1389,8 +1401,7 @@ def health():
       - campaign: the active campaign name (empty if none set)
       - clients: connected SSE clients
 
-    No auth required — this is a liveness/monitoring endpoint, no PII or game
-    content is exposed.
+    The scene descriptor lets the active DM reuse its current scene identity.
     """
     try:
         camp = open(CAMP_FILE, encoding="utf-8").read().strip()
@@ -1407,6 +1418,7 @@ def health():
         log_count = len(_text_log)
     with _clients_lock:
         client_count = len(_clients)
+    music_state = _music.snapshot()
     return {
         "alive": True,
         "data_root": str(_campaigns_dir().parent),
@@ -1416,6 +1428,8 @@ def health():
         "text_log": log_count,
         "campaign": camp,
         "clients": client_count,
+        "scene": {"setting": music_state["setting"], "mood": music_state["mood"],
+                  **(music_state["scene"] or {})},
     }, 200
 
 
@@ -1527,7 +1541,7 @@ def chunk():
     if isinstance(music_cue, dict) and not any((is_action, is_player, is_npc, is_dice, is_tutor)):
         try:
             _music.transition(music_cue.get("event"), music_cue.get("id"),
-                              music_cue.get("setting"), music_cue.get("mood", "ominous"))
+                              music_cue.get("setting"), music_cue.get("mood", "ominous"), music_cue.get("scene"))
             explicit_music = True
         except ValueError:
             pass  # A malformed optional cue must not suppress valid narration.
@@ -1551,8 +1565,8 @@ def chunk():
         music_state = _music.snapshot()
         scene = None
         if explicit_music and music_cue.get("event") == "scene":
-            scene = SCENES[_current_scene_name] | {"name": _current_scene_name}
-        elif not explicit_music and music_state["mode"] != "combat":
+            scene = _scene_payload(music_state)
+        elif not explicit_music and music_state["mode"] != "combat" and not music_state.get("scene"):
             scene = _detect_scene(cleaned)
         if scene:
             payload["scene"] = scene
@@ -1563,6 +1577,7 @@ def chunk():
                 music_state["mode"] == "idle" or
                 (scene and setting != music_state["setting"])):
             _music.transition("scene", secrets.token_hex(16), setting, music_state["mood"])
+            payload["scene"] = _scene_payload()
         # SFX scan on all non-player text
         if _audio:
             with _stats_lock:
@@ -1931,7 +1946,7 @@ def music_cue():
         return "Invalid music cue", 400
     try:
         state = _music.transition(data.get("event"), data.get("id"),
-                                  data.get("setting"), data.get("mood", "ominous"))
+                                  data.get("setting"), data.get("mood", "ominous"), data.get("scene"))
     except ValueError:
         return "Invalid music cue", 400
     return jsonify(state)
@@ -2329,7 +2344,7 @@ def clear():
     _music.reset()
     _update_party_feedback("idle", reset=True)
     _broadcast({"clear": True})
-    _broadcast({"scene": SCENES[_current_scene_name] | {"name": _current_scene_name},
+    _broadcast({"scene": _scene_payload(),
                 "staged_inputs": {}, "queue_status": []})
     return "", 204
 
@@ -3014,7 +3029,7 @@ def stream():
 
     # Send the current scene immediately on connect so the browser
     # starts with the right background even mid-session.
-    initial_scene = SCENES[_current_scene_name] | {"name": _current_scene_name}
+    initial_scene = _scene_payload()
     q.put_nowait({"scene": initial_scene})
     q.put_nowait({"music": _music.snapshot()})
     q.put_nowait({"background": _background.snapshot()})
