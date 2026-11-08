@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")
 
 
 def run_js(source):
-    result = subprocess.run([NODE, "-e", source], check=True, capture_output=True, text=True, encoding="utf-8")
+    result = subprocess.run([NODE, "-"], input=source, check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(result.stdout)
 
 
