@@ -67,6 +67,7 @@ import ssl
 import time
 import uuid
 import urllib.request
+from dataclasses import asdict
 
 # Windows CJK fix: Python decodes stdin via the system codepage (GBK), but
 # heredocs/pipes deliver UTF-8 bytes — force UTF-8 to keep Chinese narration intact.
@@ -79,6 +80,7 @@ _DISPLAY_DIR = os.path.dirname(os.path.abspath(__file__))
 if _DISPLAY_DIR not in sys.path:
     sys.path.insert(0, _DISPLAY_DIR)
 from runtime_paths import rt          # writable runtime dir (update-safe)
+from music import SceneContext
 _SCHEME_FILE = os.path.join(_DISPLAY_DIR, ".scheme")   # launch marker → code dir
 _SCHEME = open(_SCHEME_FILE, encoding="utf-8").read().strip() if os.path.exists(_SCHEME_FILE) else "http"
 BASE_URL    = f"{_SCHEME}://localhost:5001"
@@ -439,6 +441,9 @@ def main() -> None:
         help="Setting for --music-event scene, such as cave, forest or tavern")
     parser.add_argument("--music-mood", choices=["calm", "curious", "ominous", "tense", "warm"],
         default=None, help="Optional mood for a scene cue")
+    parser.add_argument("--scene-key", help="Stable scene identity, reused while this place or activity continues")
+    parser.add_argument("--scene-label", help="Short player-facing name for this scene")
+    parser.add_argument("--scene-description", help="Specific scenery, activity and atmosphere for image and music generation")
     parser.add_argument(
         "--action", metavar="NAME",
         help="Send as a player action intent — subdued label echoing what the player declared",
@@ -536,6 +541,15 @@ def main() -> None:
             parser.error("--music-setting only applies to --music-event scene")
     elif args.music_setting or args.music_mood:
         parser.error("--music-setting/--music-mood require --music-event")
+    scene = None
+    if any(value is not None for value in (args.scene_key, args.scene_label, args.scene_description)):
+        if args.music_event != "scene":
+            parser.error("--scene-key/--scene-label/--scene-description require --music-event scene")
+        try:
+            scene = SceneContext.parse({"key": args.scene_key, "label": args.scene_label,
+                                        "description": args.scene_description})
+        except ValueError as error:
+            parser.error(str(error))
     music_id = uuid.uuid4().hex if args.music_event else None
     _ensure_active_campaign()
 
@@ -716,6 +730,8 @@ def main() -> None:
                 payload["music"] = {"event": args.music_event.replace("-", "_"),
                                     "id": music_id, "setting": args.music_setting,
                                     "mood": args.music_mood or "ominous"}
+                if scene:
+                    payload["music"]["scene"] = asdict(scene)
             if args.action:
                 payload["action"] = args.action
             elif args.player:

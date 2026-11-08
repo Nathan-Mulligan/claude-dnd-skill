@@ -143,3 +143,57 @@ def test_invalid_standalone_cue_does_not_start_media(display, payload):
     module, client = display
     assert client.post("/music-cue", json=payload).status_code == 400
     assert module._music.jobs.empty()
+
+
+def test_named_scenes_vary_within_one_setting_and_hold_during_followup(display):
+    module, client = display
+    first = {"key": "clockwork-room", "label": "The Clockwork Room",
+             "description": "A vaulted room of intricate brass mechanisms and gently chiming clocks."}
+    second = {"key": "rooftop-gathering", "label": "The Rooftop Gathering",
+              "description": "An open rooftop with silk canopies, lively music and a view of distant city towers."}
+    def cue(scene, event):
+        return client.post("/chunk", json={"text": "You arrive and look around.", "music": {
+            "event": "scene", "id": event, "setting": "city", "mood": "warm", "scene": scene}})
+    assert cue(first, "first").status_code == 204
+    one = module._music.snapshot()
+    assert one.get("scene") == first
+    assert client.get("/health").json["scene"] == {"setting": "city", "mood": "warm", **first}
+    client.post("/chunk", json={"text": "Forest, forest, forest. You tell a story about the forest."})
+    assert module._music.snapshot() == one
+    assert cue(first | {"description": "A changed description that must not restart this scene."}, "followup").status_code == 204
+    assert module._music.snapshot() == one
+    assert cue(second, "second").status_code == 204
+    two = module._music.snapshot()
+    assert two["scene_id"] != one["scene_id"]
+    assert two["scene"] == second
+    assert module._current_scene_name == "city"
+    assert module._scene_payload(two)["label"] == second["label"]
+    assert module._scene_payload(two)["particles"] == "dust"
+    assert module._scene_payload(two)["scene_id"] == two["scene_id"]
+
+
+@pytest.mark.parametrize("scene", [
+    {"key": "partial"}, {"key": "bad/key", "label": "A", "description": "B"},
+    {"key": "a", "label": "A", "description": "x" * 801},
+    {"key": "a", "label": "A", "description": "B", "extra": "C"},
+])
+def test_invalid_named_scene_does_not_consume_event_or_change_media(display, scene):
+    module, client = display
+    before = module._music.snapshot()
+    response = client.post("/music-cue", json={"event": "scene", "id": "reusable", "setting": "city", "scene": scene})
+    assert response.status_code == 400
+    assert module._music.snapshot() == before
+    assert "reusable" not in module._music.seen
+
+
+def test_named_prison_scene_reconnect_uses_dungeon_visual_style(display):
+    import json
+    module, client = display
+    named = {"key": "quiet-cells", "label": "The Quiet Cells", "description": "A row of empty stone cells beneath the fortress."}
+    assert client.post("/chunk", json={"text": "You arrive.", "music": {"event": "scene", "id": "cells", "setting": "prison", "scene": named}}).status_code == 204
+    response = client.get("/stream", buffered=False)
+    event = json.loads(next(response.response).decode().split("data: ", 1)[1])
+    response.close()
+    assert event["scene"]["name"] == "prison"
+    assert event["scene"]["label"] == named["label"]
+    assert event["scene"]["colors"] == module.SCENES["dungeon"]["colors"]

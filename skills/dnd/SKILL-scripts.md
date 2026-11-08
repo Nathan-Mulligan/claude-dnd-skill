@@ -518,19 +518,27 @@ The DM skill sends each narration block, dice result, and stat update via `send.
 
 Open the browser tab and Chromecast it *before* running `/dm:dnd load` so the browser is connected when the opening narration streams in. The display buffers the last 60 chunks and replays them to reconnecting browsers.
 
-**Scene detection:** server scans narration for keywords and shifts background gradient + particle type (17 scenes: tavern, dungeon, forest, crypt, arcane, ocean, etc.). Crossfades over ~2.5 s.
+**Scene detection:** keyword scanning supplies a broad setting when no named scene is active. It cannot distinguish individual rooms, venues or activities. Use named scene cues for meaningful changes; an active named scene remains in place until the DM changes it.
 
 **Generated scene music:** ordinary DM narration starts the scene intro and loop automatically when music is idle. Established scene changes start new music; repeated narration in the same scene does not. Setup questions, character speech and dice results do not start scene music, and combat keeps its current scene.
 
-For a deliberate scene choice, bundle an explicit cue with narration:
+Before narrating, read `GET http://127.0.0.1:5001/health`. Its `scene` object contains the current broad `setting`, `mood`, and, for a named scene, `key`, `label` and `description`. Reuse the current key while the place and activity continue. On a meaningful change of location, activity or atmosphere, choose a new key even if the broad setting stays the same. Do not change scenes just because a destination is mentioned or offered as a choice.
+
+Bundle the cue with the first narration for the new scene:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --music-event scene --music-setting forest --music-mood curious << 'DNDEND'
-You reach the ancient woodland.
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --music-event scene --music-setting city --music-mood curious \
+  --scene-key clockwork-room --scene-label 'The Clockwork Room' \
+  --scene-description 'A vaulted interior of intricate brass mechanisms and gently chiming clocks.' << 'DNDEND'
+The door opens onto a room of quietly turning brass gears.
 DNDEND
 ```
 
-An explicit valid cue takes precedence over automatic detection. Use `--music-event combat-start` and `--music-event combat-end` with the corresponding narration to change combat music. When configured, the local illustration queues after the scene's intro and loop finish.
+All three scene flags are required together. The key is a stable ASCII slug of at most 64 characters; the label is at most 120 characters and the description at most 800. Describe the actual visible environment, activity and atmosphere. These details drive both the illustration and musical texture, rather than selecting from a list of venue names. Use a fitting mood: dark fantasy remains appropriate for ominous or tense scenes, while warm, curious and calm scenes need not sound gloomy.
+
+The corresponding `music` JSON cue accepts `"scene":{"key":"clockwork-room","label":"The Clockwork Room","description":"A vaulted interior of intricate brass mechanisms and gently chiming clocks."}` alongside `event`, `id`, `setting` and `mood`. Different keys generate fresh music and illustration even within the same broad setting. Repeating the current key and setting preserves the current media, even with a new event ID or revised prose; use a new key for a deliberate new variation. Returning to an earlier key after another scene produces a fresh variation.
+
+An explicit valid cue takes precedence over automatic detection. Legacy cues without scene context retain their broad-setting behaviour. Use `--music-event combat-start` and `--music-event combat-end` with the corresponding narration to change combat music; the named scene survives combat. When configured, the local illustration queues after the scene's intro and loop finish.
 
 **Sound effects:** `audio.py` scans narration for optional one-shot effects. Character names are excluded from trigger matching. These effects are separate from the generated intro and music loop. The display has separate Sound Effects and Music toggles.
 

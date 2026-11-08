@@ -34,6 +34,15 @@ SESSION_LOCK = threading.RLock()
 HANDOFF_TIMEOUT = 180
 _handoff_lock = threading.Lock()
 _handoff = {"status": "idle", "message": ""}
+SCENE_PROTOCOL = (
+    "Scene media: before narrating, read http://127.0.0.1:5001/health and its scene identity. "
+    "When the actual place, activity or atmosphere changes meaningfully, bundle a scene cue with narration: "
+    "send.py --music-event scene --music-setting <broad-setting> --music-mood <fitting-mood> "
+    "--scene-key <stable-slug> --scene-label <short-name> --scene-description <specific-scenery-and-activity>. "
+    "Use a new key even within the same broad setting; keep the existing key during continuation. "
+    "Describe the actual view and musical atmosphere, including darkness where appropriate. "
+    "Do not change scenes for a suggested destination, casual mention or every paragraph. "
+)
 
 
 def handoff_state() -> dict:
@@ -135,6 +144,7 @@ def _deliver_party_input() -> bool:
         claim.unlink(missing_ok=True)
         return False
     prompt = (
+        SCENE_PROTOCOL +
         "Party Input for the current DM turn. During campaign or character setup, treat it as "
         "the answer to your latest question; during play, treat it as the party's action. "
         "Send your next setup question to the cinematic display with send.py --setup-question before waiting. "
@@ -234,6 +244,7 @@ def read_onboarding(data: dict, mode: str) -> dict | None:
 def initial_prompt(mode: str, name: str, description: str, onboarding: dict | None = None) -> str:
     if mode == "new" and onboarding is not None:
         return (
+            SCENE_PROTOCOL +
             f"Read this repository's D&D skill and complete /dm:dnd new for campaign {name}. "
             "The completed questionnaire below is the authoritative campaign and character setup. "
             "Submitting it authorises you to create all listed characters with legal, concept-fitting defaults "
@@ -253,6 +264,7 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
         )
     if mode == "new":
         return (
+            SCENE_PROTOCOL +
             f"Read this repository's D&D skill and begin the /dm:dnd new procedure for campaign {name}. "
             "The local cinematic display is already running at http://127.0.0.1:5001; reuse it without "
             "restarting the display or opening another tab. Ask each setup question in this interactive "
@@ -263,6 +275,7 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
             f"My initial campaign idea is: {description or 'Start a new campaign with me.'}"
         )
     return (
+        SCENE_PROTOCOL +
         f"Read this repository's D&D skill and follow the /dm:dnd load procedure for campaign {name}. "
         "Reconstruct state from the saved campaign files before narrating. The local browser display "
         "is already running at http://127.0.0.1:5001; reuse it without restarting or opening a tab. "
