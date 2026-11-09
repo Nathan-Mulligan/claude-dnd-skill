@@ -1581,7 +1581,9 @@
     border: 1px solid rgba(180, 140, 60, 0.45);
     border-radius: 6px;
     padding: 4px 0;
-    min-width: 120px;
+    min-width: 230px;
+    max-height: 55vh;
+    overflow-y: auto;
     z-index: 50;
     box-shadow: 0 6px 28px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0,0,0,0.6);
   }
@@ -6993,16 +6995,18 @@ fetch('/cast', { headers: _authHeaders() })
 
 function _narratorVoice() {
   // A voice picked in the dropdown wins; otherwise cast.json's narrator.
-  return (!localStorage.getItem('dnd_tts_voice') && _CAST._narrator) || _ttsVoice;
+  return _ttsVoice;
+}
+
+function _castKey(name) {
+  const raw = String(name || '').trim().toLowerCase();
+  if (Object.hasOwn(_CAST, raw)) return raw;
+  const matches = Object.keys(_CAST).filter(k => k[0] !== '_' && k.split(' ')[0] === raw);
+  return matches.length === 1 ? matches[0] : raw;
 }
 
 function _voiceForName(name) {
-  const raw = String(name || '').trim().toLowerCase();
-  if (!raw) return _narratorVoice();
-  if (_CAST[raw]) return _CAST[raw];
-  // Loose match so 'Cultist Sentry' finds 'cultist', as dm-speak.py does.
-  const hit = Object.keys(_CAST).filter(k => k[0] !== '_').find(k => raw.includes(k));
-  return hit ? _CAST[hit] : _narratorVoice();
+  return _CAST[_castKey(name)] || _narratorVoice();
 }
 
 function _voiceForBlock(blockEl) {
@@ -7330,14 +7334,28 @@ function _ttsFillVoiceMenu(menu) {
       const opt = document.createElement('button');
       opt.className = 'tts-voice-opt';
       opt.dataset.voice = v;
-      opt.textContent = v;
+      opt.textContent = v.replace(/^[ab][mf]_/, '').replace(/^./, c => c.toUpperCase());
       if (v === current) opt.classList.add('tts-voice-active');
       opt.addEventListener('click', e => {
         e.stopPropagation();
         if (speaker) _ttsSaveCastVoice(speaker, v); else _ttsSaveVoice(v);
         menu.hidden = true;
       });
-      menu.appendChild(opt);
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.appendChild(opt);
+      menu.appendChild(row);
+      if (_ttsSampleBackend === 'local') {
+        const preview = document.createElement('button');
+        preview.className = 'tts-voice-opt';
+        preview.textContent = 'Preview';
+        preview.setAttribute('aria-label', 'Preview ' + v);
+        preview.addEventListener('click', e => {
+          e.stopPropagation();
+          _ttsPreviewVoice(v, preview);
+        });
+        row.appendChild(preview);
+      }
     });
   }
   if (current && !_TTS_VOICES_MALE.includes(current) && !_TTS_VOICES_FEMALE.includes(current)) {
@@ -7347,12 +7365,56 @@ function _ttsFillVoiceMenu(menu) {
   _addGroup('Female', _TTS_VOICES_FEMALE);
 }
 
-function _ttsSaveCastVoice(name, voice) {
-  _CAST[String(name).trim().toLowerCase()] = voice;
-  fetch('/cast', {
-    method: 'POST', headers: _authHeaders(), body: JSON.stringify({ name, voice }),
-  }).catch(() => {});
-  document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+async function _ttsSaveCastVoice(name, voice) {
+  name = _castKey(name);
+  try {
+    const response = await fetch('/cast', {
+      method: 'POST', headers: _authHeaders(), body: JSON.stringify({ name, voice }),
+    });
+    if (!response.ok) throw new Error('Could not save voice');
+    _CAST[String(name).trim().toLowerCase()] = voice;
+    document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+  } catch (_) { alert('The voice could not be saved. Please try again.'); }
+}
+
+const _ttsSamples = new Map();
+let _ttsSampleBackend = '';
+const _ttsSampleText = 'The road is long. Shall we make a deal?';
+
+function _ttsSample(voice) {
+  if (!_ttsSamples.has(voice)) {
+    const sample = fetch('/tts', {
+      method: 'POST', headers: _authHeaders(),
+      body: JSON.stringify({text:_ttsSampleText, voice, local_only:true}),
+    }).then(async response => {
+      if (!response.ok) throw new Error('Voice sample unavailable');
+      const pcm = await response.arrayBuffer();
+      if (pcm.byteLength < 2) throw new Error('Empty voice sample');
+      return pcm;
+    }).catch(error => { _ttsSamples.delete(voice); throw error; });
+    _ttsSamples.set(voice, sample);
+  }
+  return _ttsSamples.get(voice);
+}
+
+async function _ttsPreviewVoice(voice, button) {
+  _ttsStopAll();
+  const gen = _ttsGen;
+  const ctx = _getTtsCtx();
+  _ttsEnsureRunning(ctx);
+  button.textContent = 'Loading…';
+  try {
+    const pcm = await _ttsSample(voice);
+    if (gen === _ttsGen) _ttsSchedule(ctx, pcm, null, true, true, gen);
+    button.textContent = 'Preview';
+  } catch (_) { button.textContent = 'Retry preview'; }
+}
+
+async function _ttsPreloadSamples() {
+  if (_ttsSampleBackend !== 'local') return;
+  for (const voice of _TTS_VOICES_MALE.concat(_TTS_VOICES_FEMALE)) {
+    try { await _ttsSample(voice); } catch (_) { break; }
+  }
 }
 
 function _ttsBuildVoiceMenu(speaker) {
@@ -7376,6 +7438,7 @@ async function _ttsLoadVoiceCatalog() {
     if (!Array.isArray(cat.male) || !Array.isArray(cat.female)) return;
     if (!cat.male.length && !cat.female.length) return;
 
+    _ttsSampleBackend = cat.backend;
     _TTS_VOICES_MALE   = cat.male;
     _TTS_VOICES_FEMALE = cat.female;
 
@@ -7387,6 +7450,7 @@ async function _ttsLoadVoiceCatalog() {
       localStorage.setItem('dnd_tts_voice', _ttsVoice);
     }
     document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+    _ttsPreloadSamples();
   } catch (_) { /* keep the built-in fallback */ }
 }
 
@@ -7409,7 +7473,7 @@ function _addTtsBar(blockEl) {
   const voiceBtn = document.createElement('button');
   voiceBtn.className = 'tts-voice-btn';
   voiceBtn.innerHTML = '<span class="tts-voice-label">Voices</span>' + _SVG_CHEVRON;
-  voiceBtn.setAttribute('aria-label', 'Select narrator voice');
+  voiceBtn.setAttribute('aria-label', blockEl.querySelector('.npc-name') ? 'Select character voice' : 'Select narrator voice');
   bar.appendChild(voiceBtn);
 
   const npcName = blockEl.querySelector('.npc-name');
@@ -8477,6 +8541,7 @@ function connect() {
       _musicIntroPlayed = false;
       _musicCombatPlayed = false;
     }
+    if (payload.narrator_voice) _ttsVoice = payload.narrator_voice;
     if (payload.cast && typeof payload.cast === 'object') {
       _CAST = payload.cast;
       document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
