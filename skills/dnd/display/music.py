@@ -15,6 +15,7 @@ import secrets
 import subprocess
 import threading
 import uuid
+import wave
 from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -238,7 +239,10 @@ def render_cli(job: Job, cli: Path, hf_home: Path | None) -> None:
                        timeout=120)
         if not temp_path.is_file() or temp_path.stat().st_size < 44:
             raise RuntimeError("renderer did not write a WAV")
-        lowpass_wav(temp_path, filtered_path)
+        try:
+            lowpass_wav(temp_path, filtered_path)
+        except (wave.Error, EOFError, ValueError, ImportError) as exc:
+            raise RuntimeError(f"music filtering failed: {type(exc).__name__}") from exc
         filtered_path.replace(job.path)
     finally:
         temp_path.unlink(missing_ok=True)
