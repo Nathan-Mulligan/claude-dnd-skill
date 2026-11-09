@@ -30,9 +30,8 @@ jobs:
         # pyyaml: graph_extract_deterministic.py sys.exit(2)s at import without
         # it, which crashes pytest's collector with INTERNALERROR rather than a
         # readable failure. It is NOT in display/requirements.txt.
-        # pygame and numpy are in display/requirements.txt but are runtime-only
-        # (dice server, TTS) and cost real build time, so they stay out.
-        run: python -m pip install --upgrade pip pytest flask flask-cors pyyaml
+        # numpy/scipy verify generated music filtering; pygame remains runtime-only.
+        run: python -m pip install --upgrade pip pytest flask flask-cors pyyaml numpy scipy
       - name: pytest
         run: python -m pytest tests/ -q
 
@@ -59,7 +58,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest flask flask-cors pyyaml
+        run: python -m pip install --upgrade pip pytest flask flask-cors pyyaml numpy scipy
       - name: Assert the locale really is non-UTF-8
         # Without this, a future runner that coerces the locale anyway would
         # turn the job below into a green light that measures nothing.
