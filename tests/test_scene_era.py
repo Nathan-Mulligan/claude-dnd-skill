@@ -20,8 +20,8 @@ def director(path):
 def test_default_image_prompt_uses_tested_period_guidance():
     prompt = backgrounds.prompt_for("tavern", "warm", scene=music.SceneContext.parse(SCENE))
     assert "A pre-industrial medieval fantasy world" in prompt
-    assert "long-sleeved linen tunics" in prompt
-    assert "woollen cloaks" in prompt
+    assert "rough-hewn timber" in prompt
+    assert "hand-forged iron" in prompt
     assert "brass clockwork constructs" in prompt
     assert "dark reading area" in prompt
     assert music.SceneContext.parse(SCENE).to_dict() == SCENE
