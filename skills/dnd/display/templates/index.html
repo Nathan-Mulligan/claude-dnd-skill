@@ -3246,6 +3246,7 @@
   :root[data-skin="editorial"] body.input-only .dp-tab:active{ background:color-mix(in srgb, var(--e-strong), #000 14%); }
 
   /* ══ Layer 3: right-edge rail + sliding drawers (editorial, TV view only) ══ */
+  :root{ --dice-drawer-w:min(280px, calc(100vw - 56px)); }
   :root[data-skin="editorial"]{ --ed-drawer-w: min(400px, 92vw); }
 
   /* Off in vellum: rail is layout-neutral (its fixed children keep their own
@@ -3307,7 +3308,7 @@
   body:not(.input-only) #dice-drawer{
     display:flex; position:fixed; top:0; bottom:0; right:0; left:auto;
     transform:translateX(102%);
-    width:var(--ed-drawer-w, min(400px, 92vw)); height:100vh; z-index:32;
+    width:var(--dice-drawer-w); height:100vh; z-index:32;
     flex-direction:column;
     background:rgba(8,6,4,.2); color:var(--e-on-strong, #d4c4a0);
     border-left:1px solid var(--e-hair-strong, rgba(180,140,90,.45));
@@ -3324,7 +3325,7 @@
     border-top:0; background:transparent; flex:1 1 auto; overflow-y:auto; }
   :root[data-skin="editorial"] body:not(.input-only) #dice-drawer{
     display:flex; position:fixed; top:0; bottom:0; right:0; left:auto; transform:translateX(102%);
-    width:var(--ed-drawer-w); height:100vh; z-index:32; flex-direction:column;
+    width:var(--dice-drawer-w); height:100vh; z-index:32; flex-direction:column;
     background:color-mix(in srgb, var(--e-strong) 20%, transparent); color:var(--e-on-strong);
     border-left:1px solid var(--e-hair-strong); box-shadow:-2px 0 50px rgba(0,0,0,.4);
     transition:transform .32s cubic-bezier(.4,0,.1,1); }
@@ -3694,8 +3695,9 @@
   #audio-controls .audio-row:has(.display-action):hover { background:none; box-shadow:none; }
   body.input-only #controls-toggle-row { display:none; }
 
+  :root[data-skin="editorial"] body:not(.input-only):has(#dice-drawer.ed-open) #ed-rail { right:var(--dice-drawer-w); }
   body:not(.input-only):has(#dice-drawer.ed-open) #text-scroll {
-    padding-right:calc(var(--ed-drawer-w, min(400px, 92vw)) + 56px);
+    padding-right:calc(var(--dice-drawer-w) + 56px);
   }
   :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer {
     top:84px; bottom:84px; right:28px; height:auto;
