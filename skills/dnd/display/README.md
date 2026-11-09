@@ -352,3 +352,19 @@ python3 $DISPLAY/send.py --effect-start "Mira:Bless:10r:conc" << 'DNDEND'
 Mira's prayer takes hold — a faint golden shimmer surrounds the party.
 DNDEND
 ```
+
+### Generated music style
+
+Music uses a short location/mood prefix. Ambience appends “Atmospheric medieval
+instrumental background music with sparse frame drum. Spacious and understated,
+long spaces between melodies.” Intros use the same location/mood with
+“Medieval instrumental music with frame drum”; combat uses driving rhythm and
+bowed strings without horns. An explicit scene era replaces medieval, and the
+scene description and inherited place names remain available as context.
+
+All three use Medium / SAME-L, 8 steps, CFG 2 and the negative prompt
+“Vocals, distortion, guitar, lute, drone.” Intros and combat cues last 10 seconds;
+ambience lasts 120 seconds. Generated WAVs receive a fourth-order 5 kHz
+Butterworth low-pass filter before they are published. Install the display
+requirements, including SciPy, before running generation. A failed filter never
+publishes an unfiltered substitute. Previously cached tracks remain unchanged.

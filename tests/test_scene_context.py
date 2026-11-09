@@ -88,7 +88,7 @@ def test_pending_combat_scene_restores_context_then_reset_and_reentry_refresh(tm
     assert restored.transition("scene", "again", "city", "curious", FIRST)["scene_id"] != reentered["scene_id"]
 
 
-def test_context_is_frozen_and_legacy_and_dark_fantasy_remain_supported(tmp_path):
+def test_context_is_frozen_and_legacy_and_distinct_music_moods_remain_supported(tmp_path):
     value = FIRST.copy()
     director = music.MusicDirector(tmp_path, None, None, renderer=audio, autostart=False)
     first = director.transition("scene", "first", "city", "warm", value)
@@ -98,8 +98,8 @@ def test_context_is_frozen_and_legacy_and_dark_fantasy_remain_supported(tmp_path
     context = music.SceneContext.parse(FIRST)
     assert backgrounds.SceneContext is music.SceneContext
     assert context.to_dict() == FIRST
-    assert "dark fantasy" not in music.prompt_for("city", "warm", "intro", context)
-    assert "dark fantasy" in music.prompt_for("city", "ominous", "intro", context)
+    assert "Everyday activity and a steady pace" in music.prompt_for("city", "warm", "intro", context)
+    assert "Low, shadowed and restrained" in music.prompt_for("city", "ominous", "intro", context)
     legacy = director.transition("scene", "legacy", "city")
     assert legacy["scene"] is None
     assert legacy["scene_id"] != first["scene_id"]
