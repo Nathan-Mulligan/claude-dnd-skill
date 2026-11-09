@@ -3713,6 +3713,10 @@
   }
 
 
+  :root body:not(.input-only) #input-panel,
+  :root[data-skin="editorial"] body:not(.input-only) #input-panel {
+    background:none; border:0; box-shadow:none; backdrop-filter:none;
+  }
   body:not(.input-only) #input-panel #input-panel-header {
     box-sizing:border-box; max-width:1100px; margin:auto; padding:9px 20px;
     min-height:40px; cursor:pointer; border-bottom:0;
@@ -3735,7 +3739,7 @@
   body:not(.input-only) #input-panel #stage-btn,
   body:not(.input-only) #input-panel #skip-turn-btn { font-size:var(--type-body); padding:9px 16px; }
   body:not(.input-only) #input-panel .char-tab { font-size:var(--type-label); padding:4px 9px; }
-  body:not(.input-only) #input-panel #dm-activity { font-size:var(--type-label); line-height:1.3; }
+  body:not(.input-only) #input-panel #dm-activity { font-size:var(--type-label); line-height:1.3; opacity:.55; }
   #input-panel-header:focus-visible { outline:2px solid currentColor; outline-offset:-3px; }
   @media (max-width:540px) {
     body:not(.input-only) #input-panel #input-body { padding-left:12px; padding-right:12px; }
@@ -3937,7 +3941,6 @@
       <button class="dp-tab"        data-tab="character" type="button">Sheet</button>
     </div>
     <div id="phone-status" data-tab-section="move"></div>
-    <div id="dm-activity" data-tab-section="move" data-state="idle" role="status" aria-live="polite">Ready for a new adventure</div>
     <div id="setup-question" data-tab-section="move" role="status" hidden></div>
     <div id="staged-queue" data-tab-section="move"></div>
     <div id="waiting-indicator" data-tab-section="move"></div>
@@ -3953,6 +3956,7 @@
     <details id="party-response-history" data-tab-section="move" aria-label="Your submitted replies" hidden>
       <summary id="party-response-summary">Your replies</summary><div id="party-responses"></div>
     </details>
+    <div id="dm-activity" data-tab-section="move" data-state="idle" role="status" aria-live="polite">Ready for a new adventure</div>
     <!-- Phone-only dice pad (shown by ?view=input) -->
     <div id="dice-pad" data-tab-section="roll">
       <div id="dp-bound" style="display:none"></div>
@@ -8144,21 +8148,21 @@ _inputText.addEventListener('keydown', e => {
 
 // ── Keep the reading column clear of the fixed PARTY INPUT panel ──────
 // #input-panel is position:fixed at the bottom; when it expands (or the
-// editorial drawer slides open, or the mobile keyboard raises the viewport)
-// it overlaps the last lines of narration. Reserve #text-scroll bottom padding
-// equal to the panel's live on-screen footprint so the text always clears it.
+// mobile keyboard raises the viewport) it reduces the reading area. End the
+// reading viewport above the transparent tray so prose cannot show behind it.
 function _reserveInputSpace() {
   const panel  = document.getElementById('input-panel');
   const scroll = document.getElementById('text-scroll');
   if (!panel || !scroll) return;
   // Phone input-only mode: #text-scroll isn't the reading surface there.
-  if (document.body.classList.contains('input-only')) { scroll.style.paddingBottom = ''; return; }
+  if (document.body.classList.contains('input-only')) { scroll.style.paddingBottom = ''; scroll.style.bottom = ''; return; }
   // Panel hidden (display:none → 0 rect) or fully below the fold (closed drawer) → CSS baseline stands.
   // NB: don't use offsetParent for visibility here — it is always null for position:fixed elements.
   const rect = panel.getBoundingClientRect();
-  if (rect.height === 0 || rect.top >= window.innerHeight) { scroll.style.paddingBottom = ''; return; }
+  if (rect.height === 0 || rect.top >= window.innerHeight) { scroll.style.paddingBottom = ''; scroll.style.bottom = ''; return; }
   const reserve = Math.round(window.innerHeight - rect.top) + 16;
-  scroll.style.paddingBottom = Math.max(40, reserve) + 'px';
+  scroll.style.bottom = reserve + 'px';
+  scroll.style.paddingBottom = '24px';
 }
 
 (function _initReserveInputSpace() {
