@@ -101,9 +101,9 @@ def runtime_config(config_path: Path | None = None) -> LocalConfig | None:
 
 
 ERA_GUIDANCE = {
-    "medieval": "A pre-industrial medieval fantasy world, historically inspired rather than contemporary. Period material culture throughout: rough-hewn timber, limewashed stone, hand-forged iron, pottery, wooden furnishings, beeswax candles and hearth light. Only if a person is essential to the described scene, use a tiny distant silhouette dressed in long-sleeved linen tunics, woollen cloaks, long skirts, leather belts and plain leather boots, with hand-sewn garments. ",
-    "renaissance": "A Renaissance-inspired fantasy world with carved stone and timber architecture, period furnishings, oil lamps and candles. Only if a person is essential to the described scene, use a tiny distant silhouette in era-appropriate doublets, long gowns, cloaks, hose and leather shoes. ",
-    "ancient": "An ancient-world fantasy setting with era-appropriate stone, plaster and timber architecture, pottery and oil lamps. Only if a person is essential to the described scene, use a tiny distant silhouette in draped linen or wool robes, tunics and sandals appropriate to the established culture. ",
+    "medieval": "A pre-industrial medieval fantasy world, historically inspired rather than contemporary. Period material culture throughout: rough-hewn timber, limewashed stone, hand-forged iron, pottery, wooden furnishings, beeswax candles and hearth light. Only if the scene explicitly says the party is currently interacting with a person, use a tiny distant silhouette dressed in long-sleeved linen tunics, woollen cloaks, long skirts, leather belts and plain leather boots, with hand-sewn garments. ",
+    "renaissance": "A Renaissance-inspired fantasy world with carved stone and timber architecture, period furnishings, oil lamps and candles. Only if the scene explicitly says the party is currently interacting with a person, use a tiny distant silhouette in era-appropriate doublets, long gowns, cloaks, hose and leather shoes. ",
+    "ancient": "An ancient-world fantasy setting with era-appropriate stone, plaster and timber architecture, pottery and oil lamps. Only if the scene explicitly says the party is currently interacting with a person, use a tiny distant silhouette in draped linen or wool robes, tunics and sandals appropriate to the established culture. ",
     "modern": "An explicitly modern world with contemporary architecture, furnishings, technology and everyday clothing appropriate to the described scene. ",
     "futuristic": "An explicitly futuristic world with advanced architecture, technology, materials and future-era clothing appropriate to the described scene. ",
 }
@@ -133,10 +133,12 @@ def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bo
     genre = "fantasy " if fantasy_era else ""
     return (
         guidance + "Preserve any fantastical machines, constructs or other exceptional elements explicitly described in this world. " +
-        opening + "An unoccupied environment establishing shot, focused on scenery, landscape and architecture. "
-        "Keep the foreground, paths and central reading area empty of people. "
-        "Do not add bystanders or populate the setting. Only if people are essential to the described scene, "
-        "include at most two tiny distant silhouettes, subordinate to the environment. " +
+        opening + "A scenery-first environment establishing shot, focused on landscape and architecture. "
+        "By default, depict no people, characters, creatures or monsters. The only exception is a specific "
+        "character, NPC, creature or monster that the scene explicitly says the party is currently interacting with. "
+        "If no such active interaction is described, show scenery only. A mere mention of a person or animal "
+        "in the setting is not an interaction. Include only the subject of that explicit interaction, "
+        "subordinate to the scenery and clear of the central reading area. " +
         f"Paint a very wide shallow illustrated {genre}panorama of {environment}. " + tone +
         f"{mood.capitalize()} atmosphere. Recognisable distant scenery, soft painterly forms and shaded depth. "
         "Place the horizon and major landmarks in the upper quarter, with restrained framing at the outer edges. "
@@ -144,7 +146,7 @@ def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bo
         "surface detail. Blend the scenery gradually into that reading area, with no abrupt black band or "
         "solid rectangle. " + palette + "Landmarks are distant and small, not large "
         "focal subjects. Matte storybook painting that supports narration rather than dominating it. "
-        "No crowds, groups, portraits, close-up figures, creatures, text, lettering, interface, borders, sun, stars or decorative clouds."
+        "No bystanders, background people, crowds, unrelated wildlife or extra monsters. No portraits, close-up figures, text, lettering, interface, borders, sun, stars or decorative clouds."
     )
 
 
