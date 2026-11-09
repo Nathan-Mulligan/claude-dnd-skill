@@ -1616,14 +1616,15 @@
   /* ── Player input panel ── */
   #input-panel {
     position: fixed;
-    bottom: 22px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 6;
-    width: min(540px, 80vw);
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 28;
+    width: 100%;
+    box-sizing: border-box;
     background: rgba(10, 7, 3, 0.92);
     border: 1px solid rgba(180,140,60,0.28);
-    border-radius: 6px;
+    border-radius: 0;
     backdrop-filter: blur(10px);
     transition: border-color 0.2s ease;
   }
@@ -1684,11 +1685,12 @@
   #dm-activity { color:var(--e-text, #eadfc6); font-size:var(--type-body); line-height:1.5; }
   #dm-activity::before { content:''; display:inline-block; width:7px; height:7px; margin-right:8px; border-radius:50%; background:currentColor; opacity:.6; }
   #dm-activity[data-state="working"]::before { animation:dm-working 1.4s ease-in-out infinite; }
-  #party-response-history { max-height:140px; overflow-y:auto; overscroll-behavior:contain; border-top:1px solid rgba(180,140,60,.25); padding-top:8px; color:var(--e-text, #eadfc6); }
+  #party-response-history { border-top:1px solid rgba(180,140,60,.25); padding-top:6px; color:var(--e-text, #eadfc6); }
+  #party-response-history summary { cursor:pointer; font-size:var(--type-body); padding:4px 0; }
+  #party-responses { max-height:120px; overflow-y:auto; overscroll-behavior:contain; padding-top:6px; }
   #party-response-history[hidden] { display:none; }
-  #party-response-history h3 { font-size:var(--type-label); font-weight:normal; margin:0 0 8px; }
-  .party-response { margin:0 0 10px; font-size:var(--type-body); line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }
-  .party-response small { display:block; font-size:var(--type-support); opacity:.7; margin-bottom:2px; }
+  .party-response { margin:0 0 8px; font-size:var(--type-body); line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .party-response small { display:block; font-size:var(--type-label); opacity:.7; margin-bottom:2px; }
   @keyframes dm-working { 50% { opacity:.2; } }
   @media (prefers-reduced-motion:reduce) { #dm-activity::before { animation:none !important; } }
   #player-input-text:focus { border-color: rgba(180,140,60,0.45); }
@@ -3184,8 +3186,6 @@
     font-family:var(--font-heading); font-weight:600; font-size:var(--type-body); letter-spacing:.14em;
     color:var(--e-dice-text); background:var(--e-accent);
     border:1px solid var(--e-accent); border-radius:3px; padding:13px 32px; }
-  /* in the TV drawer give Stage real presence */
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #stage-btn{ font-size:var(--type-body); padding:16px 40px; }
   :root[data-skin="editorial"] #stage-btn:hover{ background:var(--e-accent-ink); border-color:var(--e-accent-ink); color:var(--e-dice-text); }
   :root[data-skin="editorial"] #skip-turn-btn{
     font-family:var(--font-heading); font-weight:600; font-size:var(--type-label); letter-spacing:.12em;
@@ -3280,21 +3280,13 @@
   :root[data-skin="editorial"] body:not(.input-only) #ed-scrim{ position:fixed; inset:0; z-index:29; background:rgba(0,0,0,.2); display:none; }
   :root[data-skin="editorial"] body:not(.input-only) #ed-scrim.on{ display:block; }
 
-  /* PARTY INPUT drawer — override layer-2 bottom-center placement on the TV */
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel{
-    top:0; bottom:0; left:auto; right:0; transform:translateX(102%);
-    width:var(--ed-drawer-w); height:100vh; max-height:100vh;
-    border:0; border-left:1px solid var(--e-hair-strong); border-radius:0;
-    display:flex; flex-direction:column; z-index:32; backdrop-filter:none;
-    box-shadow:-2px 0 50px rgba(0,0,0,.4);
-    transition:transform .32s cubic-bezier(.4,0,.1,1); }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel.ed-open{ transform:translateX(0); }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-body{
-    display:flex !important; flex:1 1 auto; overflow-y:auto; padding:14px 18px 20px; }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-panel-header{
-    padding:18px 18px 13px; border-bottom:1px solid var(--e-hair-strong); cursor:default; }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-panel-label{ font-size:var(--type-support); letter-spacing:.28em; }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-toggle-arrow{ display:none; }
+  :root[data-skin="editorial"] body:not(.input-only) #input-panel {
+    top:auto; bottom:0; left:0; right:0; transform:none;
+    width:100%; height:auto; max-height:55dvh;
+    border:0; border-top:1px solid var(--e-hair-strong); border-radius:0;
+    z-index:28; backdrop-filter:none;
+    box-shadow:0 -8px 30px rgba(0,0,0,.2);
+  }
 
   /* SETTINGS drawer (audio-controls) */
   :root[data-skin="editorial"] body:not(.input-only) #audio-controls{
@@ -3451,10 +3443,6 @@
   /* portrait icon: drop the purple drop-shadow on the editorial paper (broken
      icons are removed via onerror in JS, so no clumsy placeholder box) */
   :root[data-skin="editorial"] #sheet-panel .sm-header-icon{ filter:none; opacity:.85; }
-
-  /* F — Party Input drawer composer fills the abundant vertical space */
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #player-input-text{
-    min-height:240px; padding:18px; font-size:var(--type-body); line-height:1.5; }
 
   /* SRD lookup modal themed (mirrors the sheet modal) */
   :root[data-skin="editorial"] #srd-modal{ background:rgba(0,0,0,.55); }
@@ -3724,6 +3712,37 @@
     :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer { transition:none; }
   }
 
+
+  body:not(.input-only) #input-panel #input-panel-header {
+    box-sizing:border-box; max-width:1100px; margin:auto; padding:9px 20px;
+    min-height:40px; cursor:pointer; border-bottom:0;
+  }
+  body:not(.input-only) #input-panel #input-panel-label { font-size:var(--type-body); letter-spacing:.12em; }
+  body:not(.input-only) #input-panel #input-toggle-arrow { display:inline; font-size:var(--type-body); }
+  body:not(.input-only) #input-panel #input-body {
+    box-sizing:border-box; width:100%; max-width:1100px; margin:auto;
+    display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px;
+    padding:0 20px calc(12px + env(safe-area-inset-bottom));
+    max-height:calc(55dvh - 40px); overflow-y:auto;
+  }
+  body:not(.input-only) #input-panel.collapsed #input-body { display:none; }
+  body:not(.input-only) #input-panel #input-body > * { grid-column:1 / -1; }
+  body:not(.input-only) #input-panel #player-input-text {
+    grid-column:1; min-height:64px; max-height:120px; padding:8px 10px;
+    font-size:var(--type-body); line-height:1.4;
+  }
+  body:not(.input-only) #input-panel #input-footer { grid-column:2; align-self:end; }
+  body:not(.input-only) #input-panel #stage-btn,
+  body:not(.input-only) #input-panel #skip-turn-btn { font-size:var(--type-body); padding:9px 16px; }
+  body:not(.input-only) #input-panel .char-tab { font-size:var(--type-label); padding:4px 9px; }
+  body:not(.input-only) #input-panel #dm-activity { font-size:var(--type-label); line-height:1.3; }
+  #input-panel-header:focus-visible { outline:2px solid currentColor; outline-offset:-3px; }
+  @media (max-width:540px) {
+    body:not(.input-only) #input-panel #input-body { padding-left:12px; padding-right:12px; }
+    body:not(.input-only) #input-panel #input-panel-header { padding-left:12px; padding-right:12px; }
+    body:not(.input-only) #input-panel #player-input-text { grid-column:1 / -1; }
+    body:not(.input-only) #input-panel #input-footer { grid-column:1 / -1; }
+  }
 </style>
 {% include "typography.html" %}
 </head>
@@ -3894,7 +3913,7 @@
 
 <!-- Player input panel — submit actions from the display companion -->
 <div id="input-panel" class="collapsed">
-  <div id="input-panel-header">
+  <div id="input-panel-header" role="button" tabindex="0" aria-controls="input-body" aria-expanded="false">
     <span id="input-panel-label">Party Input</span>
     <span id="input-badge"></span>
     <div id="autorun-indicator">
@@ -3931,9 +3950,9 @@
       <button id="skip-turn-btn" style="display:none" title="Skip this character's turn">Skip Turn</button>
       <button id="stage-btn">Stage</button>
     </div>
-    <section id="party-response-history" data-tab-section="move" aria-label="Your submitted replies" hidden>
-      <h3>Your replies</h3><div id="party-responses"></div>
-    </section>
+    <details id="party-response-history" data-tab-section="move" aria-label="Your submitted replies" hidden>
+      <summary id="party-response-summary">Your replies</summary><div id="party-responses"></div>
+    </details>
     <!-- Phone-only dice pad (shown by ?view=input) -->
     <div id="dice-pad" data-tab-section="roll">
       <div id="dp-bound" style="display:none"></div>
@@ -7740,10 +7759,24 @@ let _lastSetupQuestion = '';
 let _autorunThreshold = null; // null = use player count; int = explicit threshold
 
 // ── Toggle open/closed ────────────────────────────────────────────
-_inputPanelHdr.addEventListener('click', () => {
-  _inputPanel.classList.toggle('collapsed');
-  _inputArrow.textContent = _inputPanel.classList.contains('collapsed') ? '▲' : '▼';
+function _setInputExpanded(expanded) {
+  _inputPanel.classList.toggle('collapsed', !expanded);
+  _inputPanelHdr.setAttribute('aria-expanded', String(expanded));
+  _inputArrow.textContent = expanded ? '▼' : '▲';
+  try { localStorage.setItem('dnd_input_expanded', expanded ? '1' : '0'); } catch (_) {}
+  _reserveInputSpace();
+}
+function _toggleInputTray() {
+  _setInputExpanded(_inputPanel.classList.contains('collapsed'));
+}
+_inputPanelHdr.addEventListener('click', _toggleInputTray);
+_inputPanelHdr.addEventListener('keydown', event => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    _toggleInputTray();
+  }
 });
+try { _setInputExpanded(localStorage.getItem('dnd_input_expanded') !== '0'); } catch (_) {}
 
 // ── Build character tabs from stats players array ─────────────────
 function _buildCharTabs(players) {
@@ -7791,7 +7824,7 @@ function _renderPartyFeedback(state) {
     list.appendChild(row);
   }
   history.hidden = !list.childElementCount;
-  history.scrollTop = history.scrollHeight;
+  document.getElementById('party-response-summary').textContent = 'Your replies (' + list.childElementCount + ')';
 }
 
 // ── Render staged queue ───────────────────────────────────────────
@@ -8693,7 +8726,7 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
   const scrim = document.getElementById('ed-scrim');
   if (rail && scrim) {
     const launchers = Array.from(rail.querySelectorAll('.ed-launch'));
-    const drawerIds = ['input-panel', 'audio-controls', 'dice-drawer'];
+    const drawerIds = ['audio-controls', 'dice-drawer'];
     function syncDiceToggle(visible) {
       const button = document.getElementById('ed-launch-dice');
       button.querySelector('span:last-child').textContent = visible ? 'Hide' : 'Dice';
@@ -8715,6 +8748,7 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
       syncDiceToggle(false);
     }
     function toggle(id) {
+      if (id === 'input-panel') { _toggleInputTray(); return; }
       const el = document.getElementById(id);
       if (!el) return;
       const willOpen = !el.classList.contains('ed-open');
@@ -8740,10 +8774,12 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
     // Let other code (e.g. an incoming DM dice-request) slide a drawer open.
     window._edOpenDrawer = (id) => {
+      if (id === 'input-panel') { _setInputExpanded(true); return; }
       const el = document.getElementById(id);
       if (el && !el.classList.contains('ed-open')) toggle(id);
     };
     window._edCloseDrawer = (id) => {
+      if (id === 'input-panel') { _setInputExpanded(false); return; }
       const el = document.getElementById(id);
       if (el && el.classList.contains('ed-open')) closeAll();
     };
