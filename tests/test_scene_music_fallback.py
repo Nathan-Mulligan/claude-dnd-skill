@@ -221,3 +221,38 @@ def test_era_api_and_health_preserve_world_choice(display):
     assert client.post('/chunk', json={'text': 'You enter the cafe.', 'music': {
         'event': 'scene', 'id': 'era-two', 'setting': 'tavern', 'scene': context | {'key': 'cafe', 'era': 'modern'}}}).status_code == 204
     assert module._music.snapshot()['scene']['era'] == 'modern'
+
+
+def test_wizard_tower_cue_generates_both_media_instead_of_retaining_previous_place(display, tmp_path, monkeypatch):
+    import base64
+    import wave
+    module, client = display
+    def render_audio(job):
+        with wave.open(str(job.path), 'wb') as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(8000)
+            output.writeframes(b'\0\0' * 80)
+    def render_image(job):
+        job.path.write_bytes(base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+c8f8AAAAASUVORK5CYII='))
+    images = module._background_module.BackgroundDirector(tmp_path / 'tower-images', renderer=render_image, autostart=False)
+    monkeypatch.setattr(module, '_background', images)
+    module._music.renderer = render_audio
+    previous = module._music.transition('scene', 'previous-cavern', 'cave')
+    tower = {'key': 'wizard-tower-entrance', 'label': 'The Wizard Tower',
+             'description': 'A crooked ivy-covered stone wizard tower with a purple upstairs window.'}
+    response = client.post('/chunk', json={'text': 'You reach the wizard tower.',
+        'music': {'event': 'scene', 'id': 'tower-arrival', 'setting': 'tower', 'mood': 'curious', 'scene': tower}})
+    assert response.status_code == 204
+    state = module._music.snapshot()
+    assert state['setting'] == 'arcane'
+    assert state['scene'] == tower
+    assert state['scene_id'] != previous['scene_id']
+    while module._music.process_next():
+        pass
+    ready = module._music.snapshot()
+    assert ready['intro_url'] and ready['bed_url'] and ready['scene_ready']
+    assert images.process_next()
+    assert images.snapshot()['status'] == 'ready'
+    assert images.snapshot()['scene_id'] == ready['scene_id']

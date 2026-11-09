@@ -25,6 +25,7 @@ SETTINGS = frozenset({
     "fire", "forest", "mine", "mountain", "night", "ocean", "prison",
     "ruins", "swamp", "tavern", "temple",
 })
+SETTING_ALIASES = {"tower": "arcane"}
 MOODS = frozenset({"calm", "curious", "ominous", "tense", "warm"})
 
 
@@ -419,6 +420,8 @@ class MusicDirector:
 
     def transition(self, event: str, event_id: str, setting: str | None = None,
                    mood: str | None = None, scene: dict | SceneContext | None = None) -> dict:
+        if event == "scene":
+            setting = SETTING_ALIASES.get(setting, setting)
         if event not in {"scene", "combat_start", "combat_end"}:
             raise ValueError("invalid music event")
         if event == "scene" and setting not in SETTINGS:
