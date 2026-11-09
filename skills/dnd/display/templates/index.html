@@ -1686,8 +1686,8 @@
   #dm-activity::before { content:''; display:inline-block; width:7px; height:7px; margin-right:8px; border-radius:50%; background:currentColor; opacity:.6; }
   #dm-activity[data-state="working"]::before { animation:dm-working 1.4s ease-in-out infinite; }
   #party-response-history { border-top:1px solid rgba(180,140,60,.25); padding-top:6px; color:var(--e-text, #eadfc6); }
-  #party-response-history summary { cursor:pointer; font-size:var(--type-body); padding:4px 0; }
-  #party-responses { max-height:120px; overflow-y:auto; overscroll-behavior:contain; padding-top:6px; }
+  #party-response-history summary { cursor:pointer; font-size:var(--type-body); padding:4px 0; color:var(--e-accent, rgb(220,185,100)); }
+  #party-responses { color:#f3efe4; max-height:120px; overflow-y:auto; overscroll-behavior:contain; padding-top:6px; }
   #party-response-history[hidden] { display:none; }
   .party-response { margin:0 0 8px; font-size:var(--type-body); line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; }
   .party-response small { display:block; font-size:var(--type-label); opacity:.7; margin-bottom:2px; }
@@ -3725,17 +3725,17 @@
   body:not(.input-only) #input-panel #input-toggle-arrow { display:inline; font-size:var(--type-body); }
   body:not(.input-only) #input-panel #input-body {
     box-sizing:border-box; width:100%; max-width:1100px; margin:auto;
-    display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px;
+    display:grid; grid-template-columns:minmax(0,1fr); gap:8px 12px;
     padding:0 20px calc(12px + env(safe-area-inset-bottom));
     max-height:calc(55dvh - 40px); overflow-y:auto;
   }
   body:not(.input-only) #input-panel.collapsed #input-body { display:none; }
   body:not(.input-only) #input-panel #input-body > * { grid-column:1 / -1; }
   body:not(.input-only) #input-panel #player-input-text {
-    grid-column:1; min-height:64px; max-height:120px; padding:8px 10px;
+    grid-column:1 / -1; min-height:64px; max-height:120px; padding:8px 10px;
     font-size:var(--type-body); line-height:1.4;
   }
-  body:not(.input-only) #input-panel #input-footer { grid-column:2; align-self:end; }
+  body:not(.input-only) #input-panel #input-footer { grid-column:1 / -1; align-self:end; }
   body:not(.input-only) #input-panel #stage-btn,
   body:not(.input-only) #input-panel #skip-turn-btn { font-size:var(--type-body); padding:9px 16px; }
   body:not(.input-only) #input-panel .char-tab { font-size:var(--type-label); padding:4px 9px; }
@@ -3956,7 +3956,7 @@
     <details id="party-response-history" data-tab-section="move" aria-label="Your submitted replies" hidden>
       <summary id="party-response-summary">Your replies</summary><div id="party-responses"></div>
     </details>
-    <div id="dm-activity" data-tab-section="move" data-state="idle" role="status" aria-live="polite">Ready for a new adventure</div>
+    <div id="dm-activity" data-tab-section="move" data-state="idle" role="status" aria-live="polite" hidden>Ready for a new adventure</div>
     <!-- Phone-only dice pad (shown by ?view=input) -->
     <div id="dice-pad" data-tab-section="roll">
       <div id="dp-bound" style="display:none"></div>
