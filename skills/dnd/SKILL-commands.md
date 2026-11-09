@@ -72,6 +72,17 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 14. Write state.md with session count 0, starting location.
 15. **Physical dice server check (only if installed).** Skip this step unless the optional dice server is set up: probe with `test -d ~/.dnd-dice || test "$DND_DICE_PHYSICAL" = "1"` and short-circuit out if the test fails. When it passes, run `curl -sf http://localhost:7777/health` (timeout 1s). If it returns OK, fetch the LAN IP with `python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()"` and announce: *"Dice server is up. Once each player has made a character via `/dm:dnd character new`, they should open `http://<ip>:7777/?player=<pc-name>` on their phone (lowercase, hyphens for spaces) and tap **consecrate** before play starts. NPC/DM rolls auto-resolve on the host."* If unreachable, skip silently.
 16. Confirm creation, offer `/dm:dnd character new`.
+17. **Opening scene, once the party is ready.** Apply SKILL.md's "Campaign openings" guidance after canonical files and full party stats are saved. The completed-questionnaire path also ends here. Establish the world, the party's confirmed shared purpose and ordinary journey, then approach the first encounter. Present one immediate interaction and wait for the players. Keep other hooks and financial detail in prep until relevant.
+
+   **Example, only for a party whose confirmed setup includes a shared wagon journey to market.** Send the establishing narration first:
+
+   > Beyond the barley fields, Greyford's walls rise above the river mist. You have shared the north road for three days, bringing your wagon to the town market. Wheel ruts fill with last night's rain; smoke from breakfast fires drifts over the road. Ahead, a gatekeeper stands beside a lowered wooden bar.
+
+   Then send the gatekeeper's dialogue separately with `send.py --npc "Gatekeeper Mara"`:
+
+   > "Morning. Two silver for the wagon."
+
+   Stop for the players' response. Keep the prior one-silver rate in canonical notes; if the characters already know that rate, mention their knowledge now so they can judge the demand. Let the increase's explanation emerge if they ask or investigate. Introduce buyers, cargo offers, obligations and further NPCs when the party reaches or pursues them. Do not assume they pay, bargain or enter. Adapt the setting and encounter to the actual campaign; this is a pacing example, not a required plot. Use the normal opener and scene/media protocol for the establishing scene.
 
 ---
 

@@ -255,6 +255,8 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
         return (
             SCENE_PROTOCOL +
             f"Read this repository's D&D skill and complete /dm:dnd new for campaign {name}. "
+            "Before the first gameplay decision, follow the Campaign openings guidance in SKILL.md "
+            "and the opening-scene step in SKILL-commands.md. "
             "The completed questionnaire below is the authoritative campaign and character setup. "
             "Submitting it authorises you to create all listed characters with legal, concept-fitting defaults "
             "for blank choices, balanced point-buy abilities, equipment and spells. Do not ask routine setup "
@@ -275,6 +277,8 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
         return (
             SCENE_PROTOCOL +
             f"Read this repository's D&D skill and begin the /dm:dnd new procedure for campaign {name}. "
+            "Before the first gameplay decision, follow the Campaign openings guidance in SKILL.md "
+            "and the opening-scene step in SKILL-commands.md. "
             "The local cinematic display is already running at http://127.0.0.1:5001; reuse it without "
             "restarting the display or opening another tab. Ask each setup question in this interactive "
             "session and wait for my answer. Once the campaign is selected, send player-facing narration "
