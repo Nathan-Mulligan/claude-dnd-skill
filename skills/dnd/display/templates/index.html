@@ -6694,7 +6694,7 @@ function _setTrack(el, on) {
 
 function _audioCtx() {
   if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
-  if (_actx.state === 'suspended') _actx.resume().catch(() => {});
+  if (_actx.state === 'suspended' || _actx.state === 'interrupted') _actx.resume().catch(() => {});
   return _actx;
 }
 
@@ -6800,7 +6800,7 @@ async function _startMusic(kind, url) {
     source.start();
     gain.gain.setTargetAtTime(_musicLevel(kind), ctx.currentTime, 0.18);
     setTimeout(() => {
-      if (_musicEnabled(kind) && _musicSource === source && ctx.state === 'suspended')
+      if (_musicEnabled(kind) && _musicSource === source && (ctx.state === 'suspended' || ctx.state === 'interrupted'))
         _showToast('Click inside the display to enable music');
     }, 700);
   } catch (_) {

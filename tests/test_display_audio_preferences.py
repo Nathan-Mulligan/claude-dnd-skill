@@ -112,3 +112,18 @@ await _ttsBrowserSay('Two sentences.');
 console.log(JSON.stringify(volumes));
 ''')
     assert actual == [0.37, 0.37]
+
+
+@pytest.mark.parametrize('state, resumes', [('suspended', 1), ('interrupted', 1), ('running', 0)])
+def test_music_context_resumes_safari_interruption(state, resumes):
+    source = HTML.read_text(encoding='utf-8')
+    context = source[source.index('function _audioCtx()'):source.index('async function _playSfx(')]
+    actual = run_browser_code('''
+let _actx = {state:''' + json.dumps(state) + ''', resumes:0,
+  resume() {this.resumes++; this.state = 'running'; return Promise.resolve();}};
+''' + context + '''
+const original = _actx;
+const returned = _audioCtx();
+console.log(JSON.stringify({sameContext:original === returned, resumes:_actx.resumes, state:_actx.state}));
+''')
+    assert actual == {'sameContext': True, 'resumes': resumes, 'state': 'running'}
