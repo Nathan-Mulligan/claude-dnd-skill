@@ -101,9 +101,9 @@ def runtime_config(config_path: Path | None = None) -> LocalConfig | None:
 
 
 ERA_GUIDANCE = {
-    "medieval": "A pre-industrial medieval fantasy world, historically inspired rather than contemporary. Period material culture throughout: rough-hewn timber, limewashed stone, hand-forged iron, pottery, wooden furnishings, beeswax candles and hearth light. Any tiny incidental background figures are dressed in long-sleeved linen tunics, woollen cloaks, long skirts, leather belts and plain leather boots, with hand-sewn garments. ",
-    "renaissance": "A Renaissance-inspired fantasy world with carved stone and timber architecture, period furnishings, oil lamps and candles. Any incidental figures wear era-appropriate doublets, long gowns, cloaks, hose and leather shoes. ",
-    "ancient": "An ancient-world fantasy setting with era-appropriate stone, plaster and timber architecture, pottery and oil lamps. Any incidental figures wear draped linen or wool robes, tunics and sandals appropriate to the established culture. ",
+    "medieval": "A pre-industrial medieval fantasy world, historically inspired rather than contemporary. Period material culture throughout: rough-hewn timber, limewashed stone, hand-forged iron, pottery, wooden furnishings, beeswax candles and hearth light. Only if a person is essential to the described scene, use a tiny distant silhouette dressed in long-sleeved linen tunics, woollen cloaks, long skirts, leather belts and plain leather boots, with hand-sewn garments. ",
+    "renaissance": "A Renaissance-inspired fantasy world with carved stone and timber architecture, period furnishings, oil lamps and candles. Only if a person is essential to the described scene, use a tiny distant silhouette in era-appropriate doublets, long gowns, cloaks, hose and leather shoes. ",
+    "ancient": "An ancient-world fantasy setting with era-appropriate stone, plaster and timber architecture, pottery and oil lamps. Only if a person is essential to the described scene, use a tiny distant silhouette in draped linen or wool robes, tunics and sandals appropriate to the established culture. ",
     "modern": "An explicitly modern world with contemporary architecture, furnishings, technology and everyday clothing appropriate to the described scene. ",
     "futuristic": "An explicitly futuristic world with advanced architecture, technology, materials and future-era clothing appropriate to the described scene. ",
 }
@@ -133,14 +133,18 @@ def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bo
     genre = "fantasy " if fantasy_era else ""
     return (
         guidance + "Preserve any fantastical machines, constructs or other exceptional elements explicitly described in this world. " +
-        opening + f"Paint a very wide shallow illustrated {genre}panorama of {environment}. " + tone +
+        opening + "An unoccupied environment establishing shot, focused on scenery, landscape and architecture. "
+        "Keep the foreground, paths and central reading area empty of people. "
+        "Do not add bystanders or populate the setting. Only if people are essential to the described scene, "
+        "include at most two tiny distant silhouettes, subordinate to the environment. " +
+        f"Paint a very wide shallow illustrated {genre}panorama of {environment}. " + tone +
         f"{mood.capitalize()} atmosphere. Recognisable distant scenery, soft painterly forms and shaded depth. "
         "Place the horizon and major landmarks in the upper quarter, with restrained framing at the outer edges. "
         "The lower three quarters and central reading area are a dark reading area, quiet low-contrast shadow with subtle visible "
         "surface detail. Blend the scenery gradually into that reading area, with no abrupt black band or "
         "solid rectangle. " + palette + "Landmarks are distant and small, not large "
         "focal subjects. Matte storybook painting that supports narration rather than dominating it. "
-        "No people, creatures, text, lettering, interface, borders, sun, stars or decorative clouds."
+        "No crowds, groups, portraits, close-up figures, creatures, text, lettering, interface, borders, sun, stars or decorative clouds."
     )
 
 
