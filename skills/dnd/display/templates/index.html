@@ -8187,7 +8187,26 @@ function _reserveInputSpace() {
   }
   const scroll = document.getElementById('text-scroll');
   if (scroll) {
-    scroll.addEventListener('transitionend', _reserveInputSpace);
+    const moving = new Set();
+    let frame = 0;
+    function followColumn() {
+      frame = 0;
+      _reserveInputSpace();
+      if (moving.size) frame = requestAnimationFrame(followColumn);
+    }
+    scroll.addEventListener('transitionrun', event => {
+      if (event.target !== scroll || !['padding-left', 'padding-right'].includes(event.propertyName)) return;
+      moving.add(event.propertyName);
+      if (!frame) frame = requestAnimationFrame(followColumn);
+    });
+    function finishTransition(event) {
+      if (event.target !== scroll) return;
+      moving.delete(event.propertyName);
+      if (!moving.size && frame) { cancelAnimationFrame(frame); frame = 0; }
+      _reserveInputSpace();
+    }
+    scroll.addEventListener('transitionend', finishTransition);
+    scroll.addEventListener('transitioncancel', finishTransition);
     new MutationObserver(_reserveInputSpace).observe(scroll, {attributes:true, attributeFilter:['class']});
   }
   if (panel) panel.addEventListener('transitionend', _reserveInputSpace); // drawer slide / collapse

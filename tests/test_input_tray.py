@@ -54,3 +54,34 @@ def test_reply_history_is_native_collapsible_and_closed_by_default():
     assert tag == 'details'
     assert 'open' not in attrs
     assert parser.summary == 'summary'
+
+
+def test_tray_follows_each_frame_of_a_sideways_column_transition():
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node unavailable')
+    source = HTML.read_text()
+    code = source[source.index('function _reserveInputSpace()'):source.index('// Initialise with no extra chars')]
+    result = subprocess.run([node, '-'], text=True, capture_output=True, check=True, input='''
+let columnLeft = 100;
+const frames = [], listeners = {};
+const panel = {style:{},getBoundingClientRect:()=>({height:200,top:600}),addEventListener(){}};
+const scroll = {style:{},addEventListener:(name,handler)=>listeners[name]=handler};
+const content = {getBoundingClientRect:()=>({left:columnLeft,width:400})};
+const document = {body:{classList:{contains:()=>false}},getElementById:id=>({'input-panel':panel,'text-scroll':scroll,'text-content':content}[id])};
+const window = {innerHeight:800,addEventListener(){}};
+class MutationObserver {observe(){}}
+function requestAnimationFrame(callback) { frames.push(callback); return frames.length; }
+function cancelAnimationFrame() {}
+''' + code + '''
+if (listeners.transitionrun) listeners.transitionrun({target:scroll,propertyName:'padding-left'});
+columnLeft = 110;
+if (frames.length) frames.shift()();
+const first = panel.style.left;
+columnLeft = 120;
+if (frames.length) frames.shift()();
+const second = panel.style.left;
+if (listeners.transitionend) listeners.transitionend({target:scroll,propertyName:'padding-left'});
+console.log(JSON.stringify({first,second,width:panel.style.width}));
+''')
+    assert json.loads(result.stdout) == {'first': '110px', 'second': '120px', 'width': '400px'}
