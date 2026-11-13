@@ -1286,6 +1286,9 @@ _input_lock = threading.Lock()
 # send.py --wait polls GET /dice-request/<id> to know when the DM can move on.
 _dice_pending: dict = {}
 _dice_pending_lock = threading.Lock()
+# Roll lines of finished requests, so send.py --wait can print them to the DM.
+_dice_finished: dict = {}
+_DICE_FINISHED_KEEP = 64
 
 
 def _dice_pending_snapshot() -> list:
@@ -2601,9 +2604,13 @@ def player_dice():
                 matched = next((c for c in entry["chars"] if c.lower() == ci), None)
                 if matched is not None:
                     entry["chars"].discard(matched)
+                    entry.setdefault("results", []).append(text)
                     pending_changed = True
                     if not entry["chars"]:
                         _dice_pending.pop(req_id, None)
+                        _dice_finished[req_id] = entry["results"]
+                        while len(_dice_finished) > _DICE_FINISHED_KEEP:
+                            _dice_finished.pop(next(iter(_dice_finished)))
     if pending_changed:
         _broadcast({"dice_pending": _dice_pending_snapshot()})
 
@@ -2702,7 +2709,8 @@ def dice_request():
 def dice_request_status(request_id):
     """Poll a dice request's completion state.
 
-    Returns 200 with {complete, pending, label, started_at}. A request that
+    Returns 200 with {complete, pending, results, label, started_at}; results
+    holds the roll lines received so far. A request that
     never existed (or has already fully drained) reports complete=True with
     an empty pending list — send.py --wait treats both identically.
     """
@@ -2711,10 +2719,12 @@ def dice_request_status(request_id):
     with _dice_pending_lock:
         entry = _dice_pending.get(request_id)
         if entry is None or not entry["chars"]:
-            return jsonify({"complete": True, "pending": []}), 200
+            return jsonify({"complete": True, "pending": [],
+                            "results": list(_dice_finished.get(request_id, []))}), 200
         return jsonify({
             "complete": False,
             "pending": sorted(entry["chars"]),
+            "results": list(entry.get("results", [])),
             "label": entry["meta"].get("label", ""),
             "started_at": entry["started_at"],
         }), 200

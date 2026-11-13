@@ -1,6 +1,6 @@
 # D&D Skill — Command Procedures
 
-Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at `/dm:dnd load` or before executing any slash command.
+Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the procedure you need: `grep -n '^## ' SKILL-commands.md` for its heading, then `sed -n` for that section. The rules of play are in `DM-CORE.md`.
 
 > **Path note:** commands below use `${CLAUDE_SKILL_DIR}` for the skill directory. This file is read verbatim, so that token is **not** auto-expanded here — substitute the absolute skill-dir path (from `SKILL.md`) before running any command, or it will fail with a broken `/scripts/…` path.
 >
@@ -14,7 +14,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 
 ## `/dm:dnd new <campaign-name> [theme]`
 
-**Completed startup questionnaire:** when the launch supplies a completed questionnaire, use its campaign, rules, dice, world and party answers as already confirmed. Do not repeat setup questions or request character-build confirmation. Blank choices authorise legal, concept-fitting defaults, including names, point-buy abilities, equipment and spells. Generate the selected guided arc or sandbox, create every listed character, save the canonical files and push full party stats before narrating the opening scene. Apply the audience and content boundaries throughout. This shortcut replaces only setup questions; normal gameplay choices and rolls still apply. Without a completed questionnaire, follow the interactive procedure below.
+**Completed startup questionnaire:** when the launch supplies a completed questionnaire, use its campaign, rules, dice, world and party answers as already confirmed. Do not repeat setup questions or request character-build confirmation. Blank choices authorise legal, concept-fitting defaults, including names, point-buy abilities, equipment and spells. Generate the selected guided arc or sandbox, create every listed character, save the canonical files and push full party stats, then run step 17 (the opening scene). Apply the audience and content boundaries throughout. This shortcut replaces only setup questions; normal gameplay choices and rolls still apply. Without a completed questionnaire, follow the interactive procedure below.
 
 1. **Session setup — call `AskUserQuestion`** with **two questions**:
 
@@ -72,10 +72,18 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 14. Write state.md with session count 0, starting location.
 15. **Physical dice server check (only if installed).** Skip this step unless the optional dice server is set up: probe with `test -d ~/.dnd-dice || test "$DND_DICE_PHYSICAL" = "1"` and short-circuit out if the test fails. When it passes, run `curl -sf http://localhost:7777/health` (timeout 1s). If it returns OK, fetch the LAN IP with `python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()"` and announce: *"Dice server is up. Once each player has made a character via `/dm:dnd character new`, they should open `http://<ip>:7777/?player=<pc-name>` on their phone (lowercase, hyphens for spaces) and tap **consecrate** before play starts. NPC/DM rolls auto-resolve on the host."* If unreachable, skip silently.
 16. Confirm creation, offer `/dm:dnd character new`.
+17. **Opening scene.** Once the party's characters exist, open play; don't wait to be asked.
+   - Improvised campaigns: write `## Next Hooks` (two or three bullets) and `## Clocks` (two to four bullets, `- <in-world date>: <what happens> (seen by: <how the party could notice>)`) in state.md first. Each clock names a person or faction and a verb.
+   - Open in a moment already moving, drawn from the first beat's `world_pressure`, a Next Hook or the nearest clock. Someone wants something from the party now, and waiting has a cost. One or two sensory details, then the pressure. End on it, not on a question (DM-CORE.md, sections 1 and 11).
+   - Send a scene cue with the opener for the first place.
+   - Structured campaigns: read the first chapter's `source/<chapter-id>.md` and open with its read-aloud text and first scene.
 
 ---
 
 ## `/dm:dnd load <campaign-name>`
+
+**Launched by the campaign portal:** the display is already running (`_display_running = true`) and the portal handles campaign selection and the display tail. Skip step 0 and the two questions in step 1. Keep the saved `roll_mode` (write `roll_mode: players` if none is saved) and don't ask about autorun. Run the rest of the procedure, including the prep pass (step 8) and the opening (step 9).
+
 0. **Pick the campaign if none was named.** If `<campaign-name>` was supplied (or the player clearly named one), use it. Otherwise `ls` the campaigns dir (`~/.claude/dnd/campaigns/` or `$DND_CAMPAIGN_ROOT/campaigns/`) and **call `AskUserQuestion`**: *"Which campaign?"* with the existing campaign names as options (most-recently-played first — sort by `state.md` mtime). The player can pick "Other" to type a name. If there are no campaigns, tell them and offer `/dm:dnd new`.
 1. **Session setup — call `AskUserQuestion`** with **two questions** (not typed y/n prompts):
 
@@ -127,7 +135,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 
 3. **Read campaign ruleset** for this session: `python3 ${CLAUDE_SKILL_DIR}/scripts/paths.py campaign-ruleset <name>` (or import `campaign_ruleset` directly). Stash the result; pass `--ruleset <value>` to `lookup.py`, `build_supplemental.py`, and `combat.py` mastery calls so they route to the correct dataset. The display companion picks up the same value automatically via `push_stats.py --set-campaign`.
 
-4. Read SKILL-scripts.md (for script syntax this session)
+4. Don't read SKILL-scripts.md whole. Look up a script's syntax by section when you need it (`grep -n '^## ' SKILL-scripts.md`, then `sed -n`).
 5. **Mark this campaign active** (for the autosave hook): write `{"name": "<campaign-name>"}` to `$(python3 ${CLAUDE_SKILL_DIR}/scripts/paths.py runtime-dir)/active-campaign.json`. This is what `autosave_checkpoint.py` reads to know which campaign to checkpoint; a stale marker is harmless. Then read state.md, world.md, npcs.md (index only), and all characters/*.md
    - **state.md contains `## DM Style Notes`** — read and internalize before narrating anything. These are table-specific calibration patterns that override default DM instincts.
    - **state.md contains `## Pinned Facts`** — read and keep hot for the whole session. These are stable soft facts the table has chosen never to forget (a promise made, a dead relative's name, a house rule, a running joke, a detail the player flagged as mattering). Unlike Live State Flags, they don't change turn-to-turn — they are standing canon. Weave them in when relevant and never contradict one; if a pinned fact is now wrong, correct it via `/dm:dnd pin` rather than silently overriding it. If the section reads *(none pinned yet)*, there's nothing to load.
@@ -236,10 +244,19 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Load this file at
 
       For fresh (non-legacy) campaigns: skip the offer entirely — there's nothing to compress yet, and the going-forward rule covers all future entries.
 
-   6. Re-run scene-context (now populated). Then proceed to step 6 (recap).
+   6. Re-run scene-context (now populated). Then proceed to step 8 (prep pass).
 
-8. Deliver one in-character paragraph recapping current situation — where the party is, what's at stake, what was last happening.
-9. Enter active DM mode — no `/dm:dnd` prefix needed from this point.
+8. **Prep pass.** Check whether the last session ended properly: its newest entry in session-log.md has a filled `### Recap`. If it doesn't (the session just stopped, or `/dm:dnd end` never ran), do the end-of-session prep now, quietly, before narrating:
+   - **Faction moves.** For each active faction, write one line under `## Faction Moves`: what they did while the party was busy.
+   - **Beat check.** `python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py status --campaign <name>`. If the current beat's change has already happened in play, run `arc.py advance`. If its pressure no longer fits where the party is, run `arc.py revise --beat <id> --pressure "..."` with a pressure that names a person or faction near the party.
+   - **Next Hooks.** Rewrite `## Next Hooks` for where the party is now and where they are heading: two or three bullets, each with who is there, what they need and how it ties to the current beat.
+
+   In every improvised campaign, whether or not the last session ended properly: if `## Next Hooks` or `## Clocks` is missing or empty, write it now. If a `## DM Style Notes` line or the arc's `steering_notes` says "wait for the players", "let the players set the pace" or "do not force", keep leading anyway (only the `spotlight` dial sets who leads) and mention the line to the table owner after the opening.
+9. **Open the session.** Ask no setup questions when the display and dice flags are saved or the portal launched you.
+   - Three sentences of "last time": where the party is, what they just did, and what is unresolved.
+   - Then a scene already moving, drawn from a Next Hook or a clock that has fired (check `calendar.py -c <name> now` against `## Clocks`). Someone arrives, a deadline lands or something has changed. End on that pressure, not on "what would you like to do?".
+   - Send it through `send.py` (opener first, scene cue if the place is new).
+10. Enter active DM mode — no `/dm:dnd` prefix needed from this point.
 
 ---
 
@@ -441,6 +458,9 @@ If `graph.json` doesn't exist yet for this campaign, skip the sweep entirely (no
 ---
 
 ## `/dm:dnd end`
+
+**No-questions mode.** When the campaign portal asks you to end the session, or the table asks you to end without questions, run every step below but ask nothing: skip the calibration question in 1b (leave `### DM Calibration` blank), and in 1e decide yourself which beats landed. If the portal launched you, it owns the display, so skip steps 2 and 3 (don't stop the display).
+
 1. Run `/dm:dnd save`, then:
    a. Append **Session Recap** block to session-log.md with key events and open threads.
    b. Ask: *"Quick calibration — what worked this session, and what would you adjust next time?"* Write answers to `### DM Calibration`. If skipped, leave blank.
@@ -455,6 +475,8 @@ If `graph.json` doesn't exist yet for this campaign, skip the sweep entirely (no
         - **Did not land — pressure absorbed without consequence** → the beat is overdue and its current shape no longer fits. **Run `/dm:dnd arc revise` immediately**; do not just update `steering_notes`. The beat's `what_changes` was event-shaped (something specific happens) when it should be consequence-shaped (something fundamentally different is true) — revise both `what_changes` and `world_pressure` to fit a path that DOES land. The committed shape bends; it does not break.
         - **Pressure not yet delivered** → leave beat alone; expected to deliver next session.
       iv. Update `steering_notes` for the next outstanding beat with the *consequence shape* expected, not the specific event.
+   e2. **Next session prep** (improvised campaigns): refresh `## Next Hooks` (two or three, for where the party is heading) and `## Clocks` (drop fired ones, add one so two to four stay live).
+   e3. **Closing line.** Send one or two sentences of narration through `send.py` that land on a hook for next time: a consequence arriving, or a decision still open.
    f. **Tail verification (added 2026-05-01):** before killing the display, verify the campaign-side `session_tail.json` is healthy:
       ```bash
       bash ${CLAUDE_SKILL_DIR}/display/verify_tail.sh <campaign-name>
