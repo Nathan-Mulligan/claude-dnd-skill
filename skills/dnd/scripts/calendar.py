@@ -19,10 +19,13 @@ Usage:
         --month-length 30 \
         --day-names "Sunday,Moonday,Ironday,Windday,Earthday,Fireday,Starday"
 
-    # Advance time
+    # Advance time. In improvised campaigns (type dynamic or sandbox) each whole
+    # day passed also rolls one road day, because day-long skips are usually travel.
     python3 calendar.py -c <campaign> advance 8 hours
     python3 calendar.py -c <campaign> advance 2 days
     python3 calendar.py -c <campaign> advance 1 week
+    # Time passing without travel (waiting in town, recovering, downtime):
+    python3 calendar.py -c <campaign> advance 3 days --no-road
 
     # Rest shortcuts
     python3 calendar.py -c <campaign> rest short    # +1 hour
@@ -47,6 +50,7 @@ import sys
 import subprocess
 import argparse
 from paths import find_campaign as _find_campaign, display_dir as _display_dir
+import oracle
 
 SEND_PY = str(_display_dir() / "send.py")
 
@@ -209,7 +213,33 @@ def cmd_init(campaign: str, args) -> None:
     print(f"Calendar initialised: {_format_date(cal)}")
 
 
-def cmd_advance(campaign: str, amount: int, unit: str) -> None:
+ROAD_HEADER = ("On the road: one roll per travel day (improvised campaign). Not travelling? "
+               "Ignore these, and use --no-road for rests, waiting in town or downtime.")
+
+
+def _short_date(cal: dict) -> str:
+    months = _month_list(cal)
+    month = cal.get("month", 1)
+    name = months[month - 1] if months and 1 <= month <= len(months) else f"Month {month}"
+    return f"{cal.get('day', 1)} {name} {cal.get('year', 1)}"
+
+
+def _print_road(campaign: str, start: dict, days: int) -> None:
+    folder = _find_campaign(campaign)
+    state = folder / "state.md"
+    if days < 1 or not state.is_file() or not oracle.is_improvised(state.read_text(encoding="utf-8")):
+        return
+    cal = dict(start)
+    labels = []
+    for _ in range(days):
+        _advance_hours(cal, 24)
+        labels.append(_short_date(cal))
+    print(ROAD_HEADER)
+    for number, (day, label) in enumerate(zip(oracle.campaign_road(folder, days), labels), 1):
+        print(oracle.format_road_day(day, number, days, label))
+
+
+def cmd_advance(campaign: str, amount: int, unit: str, road: bool = True) -> None:
     cal = _load(campaign)
     if not cal:
         print("Calendar not initialised. Run `calendar.py -c <campaign> init` first.")
@@ -217,12 +247,15 @@ def cmd_advance(campaign: str, amount: int, unit: str) -> None:
 
     hours = {"hour": 1, "hours": 1, "day": 24, "days": 24, "week": 168, "weeks": 168}.get(unit, 1)
     total_hours = amount * hours
+    start = dict(cal)
     _advance_hours(cal, total_hours)
     _save(campaign, cal)
 
     label = f"+{amount} {unit}"
     print(f"  {label} → {_format_date(cal)}")
     _send_date(cal)
+    if road:
+        _print_road(campaign, start, total_hours // 24)
 
 
 def cmd_rest(campaign: str, rest_type: str) -> None:
@@ -328,6 +361,9 @@ def main() -> None:
     adv.add_argument("amount", type=int)
     adv.add_argument("unit",
                      choices=["hour","hours","day","days","week","weeks"])
+    adv.add_argument("--no-road", action="store_true",
+                     help="time passes but the party is not travelling (resting, waiting in town, "
+                          "downtime): skip the road rolls")
 
     rst = sub.add_parser("rest", help="Advance time for a short or long rest")
     rst.add_argument("type", choices=["short","long"])
@@ -349,7 +385,7 @@ def main() -> None:
     args = p.parse_args()
 
     if   args.cmd == "init":    cmd_init(args.campaign, args)
-    elif args.cmd == "advance": cmd_advance(args.campaign, args.amount, args.unit)
+    elif args.cmd == "advance": cmd_advance(args.campaign, args.amount, args.unit, road=not args.no_road)
     elif args.cmd == "rest":    cmd_rest(args.campaign, args.type)
     elif args.cmd == "now":     cmd_now(args.campaign)
     elif args.cmd == "set":     cmd_set(args.campaign, args.date, args.time)
