@@ -178,7 +178,7 @@ def _deliver_party_input() -> bool:
     try:
         campaign_dir = campaign_path(str(meta.get("campaign", "")))
         pulse = arc_pulse.plan(campaign_dir)
-    except (OSError, ValueError):
+    except Exception:  # steering is optional; a bad state.md must never block the party's reply
         pulse = None
     prompt = (
         SCENE_PROTOCOL +

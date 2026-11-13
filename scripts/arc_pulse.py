@@ -55,8 +55,10 @@ def current_beat(state_text: str) -> Beat | None:
     if not isinstance(arc, dict) or arc.get("type") != "dynamic":
         return None
     beat_id = str(arc.get("current_beat") or "").strip()
-    for act in arc.get("acts") or []:
-        for beat in (act or {}).get("beats") or []:
+    acts = arc.get("acts")
+    for act in acts if isinstance(acts, list) else []:
+        beats = act.get("beats") if isinstance(act, dict) else None
+        for beat in beats if isinstance(beats, list) else []:
             if isinstance(beat, dict) and str(beat.get("id")) == beat_id:
                 return Beat(beat_id, str(beat.get("label") or beat_id),
                             str(beat.get("what_changes") or ""), str(beat.get("world_pressure") or ""))

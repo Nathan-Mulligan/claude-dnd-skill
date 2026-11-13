@@ -135,3 +135,18 @@ def test_failed_delivery_does_not_count_a_turn(delivery):
     result["code"] = 1
     assert not reply()
     assert not (folder / "arc_pulse.json").exists()
+
+
+@pytest.mark.parametrize("arc", ["acts: [unfinished]", "acts: 1", "acts:\n  - beats: oops", "- just a list"])
+def test_malformed_arc_never_blocks_steering(tmp_path, arc):
+    folder = tmp_path / "campaigns" / "Bad"
+    folder.mkdir(parents=True)
+    (folder / "state.md").write_text(f"## Campaign Arc\n```yaml\ntype: dynamic\ncurrent_beat: 1a\n{arc}\n```\n", encoding="utf-8")
+    assert arc_pulse.plan(folder) is None
+
+
+def test_reply_still_reaches_the_dm_when_steering_breaks(delivery, monkeypatch):
+    folder, sent, _ = delivery
+    monkeypatch.setattr(portal.arc_pulse, "plan", lambda folder: 1 / 0)
+    assert reply()
+    assert "We haggle over the flour" in sent[-2]

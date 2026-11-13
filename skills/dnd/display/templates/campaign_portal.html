@@ -217,6 +217,10 @@
       const codexOption = $('dm-launcher').querySelector('option[value="codex"]');
       codexOption.disabled = !data.codex_enabled;
       codexOption.textContent = data.codex_enabled ? codexOption.dataset.label : `${codexOption.dataset.label} · unavailable`;
+      if ($('dm-launcher').selectedOptions[0]?.disabled) {
+        $('dm-launcher').value = Array.from($('dm-launcher').options).find(option => !option.disabled).value;
+        showModels();
+      }
       const oldValue = $('saved').value;
       const names = [...data.campaigns];
       if (state.active && state.meta.campaign && !names.includes(state.meta.campaign)) names.unshift(state.meta.campaign);
