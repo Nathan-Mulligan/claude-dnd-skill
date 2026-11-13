@@ -76,6 +76,7 @@ except Exception:
 
 import music as _music_module
 import backgrounds as _background_module
+import cast_voices as _cast_voices
 
 # TTS module — degrades silently if Gemini API key not configured
 try:
@@ -1674,6 +1675,13 @@ def chunk():
     except Exception:
         pass
 
+    # A speaking NPC gets a saved voice before its line reaches the page, so
+    # the cast broadcast lands first and the line is read in that voice.
+    if is_npc:
+        new_cast = _ensure_npc_voice(data["npc"], data.get("npc_voice") or "")
+        if new_cast is not None:
+            _broadcast({"cast": new_cast})
+
     with _text_log_lock:
         _text_log.append(log_entry)
     with _tail_lock:
@@ -2321,12 +2329,92 @@ def _cast_file():
 
 
 def _read_cast(path):
+    return _cast_voices.voices(_cast_voices.read_raw(path))
+
+
+def _cast_voice_pool(narrator: str) -> list:
+    """Voices the fallback may hand out: the narrator's backend catalog."""
+    if _tts is None:
+        return []
+    if narrator in _tts.GEMINI_VALID_VOICES:
+        return list(_tts.GEMINI_VOICES_MALE + _tts.GEMINI_VOICES_FEMALE)
+    return list(_tts.LOCAL_VOICES_MALE + _tts.LOCAL_VOICES_FEMALE)
+
+
+def _recent_npc_names(limit: int = 12) -> list:
+    """Lower-case names of the NPCs heard most recently in this campaign."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return {k.lower(): v for k, v in data.items()
-                if isinstance(v, str) and k != "_comment"}
-    except (OSError, ValueError, AttributeError):
-        return {}
+        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
+    except OSError:
+        camp = ""
+    with _tail_lock:
+        entries = list(_tail_buffer)
+    names = []
+    for entry in reversed(entries):
+        npc = entry.get("npc") if isinstance(entry, dict) else None
+        if not npc or (camp and entry.get("_camp") not in (None, camp)):
+            continue
+        key = str(npc).strip().lower()
+        if key not in names:
+            names.append(key)
+        if len(names) >= limit:
+            break
+    return names
+
+
+def _ensure_npc_voice(name: str, requested: str = "") -> "dict | None":
+    """Give a speaking NPC a saved voice; return the new cast when it changed.
+
+    A voice the DM names is saved unless a hand pick from the voice menu
+    already exists for that name. Otherwise an unknown name gets a stable
+    voice from `_cast_voices.pick_voice`. Existing entries are never replaced
+    by the fallback. Failures never block the narration.
+    """
+    if _tts is None:
+        return None
+    raw_name = str(name or "").strip().lower()
+    if not raw_name or len(raw_name) > 80 or raw_name.startswith("_"):
+        return None
+    requested = str(requested or "").strip()
+    narrator = _read_narrator_voice()
+    gemini = narrator in _tts.GEMINI_VALID_VOICES
+    if requested and (not _voice_ok(requested)
+                      or (requested in _tts.GEMINI_VALID_VOICES) != gemini):
+        requested = ""     # unknown, or from the other backend: pick one instead
+    try:
+        with _cast_lock:
+            path = _cast_file()
+            raw = _cast_voices.read_raw(path)
+            cast = _cast_voices.voices(raw)
+            src = _cast_voices.sources(raw)
+            key = _cast_voices.cast_key(cast, raw_name)
+            if key in cast:
+                if not requested or cast[key] == requested:
+                    return None
+                if src.get(key) not in (_cast_voices.DM, _cast_voices.AUTO):
+                    return None          # a hand pick always wins
+                cast[key], src[key] = requested, _cast_voices.DM
+            elif requested:
+                cast[key], src[key] = requested, _cast_voices.DM
+            else:
+                with _stats_lock:
+                    party_names = [str(p.get("name", "")) for p in _current_stats.get("players", [])
+                                   if isinstance(p, dict)]
+                party = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in party_names if n)
+                         if k in cast]
+                recent = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in _recent_npc_names())
+                          if k in cast]
+                voice = _cast_voices.pick_voice(
+                    key, _cast_voice_pool(narrator), narrator=narrator,
+                    party=party, recent=recent, used=cast.values())
+                if not voice:
+                    return None
+                cast[key], src[key] = voice, _cast_voices.AUTO
+            _cast_voices.write_raw(path, cast, src, raw.get("_comment"))
+            return cast
+    except Exception as exc:          # never lose narration over a voice
+        print(f"[cast] could not save a voice for {raw_name!r}: {exc}", file=_sys.stderr)
+        return None
 
 
 CLIENTLOG_FILE = rt("client-errors.log")
@@ -2374,17 +2462,30 @@ def cast_set():
     d = request.get_json(silent=True) or {}
     name = str(d.get("name") or "").strip().lower()
     voice = str(d.get("voice") or "").strip()
+    source = str(d.get("source") or "").strip().lower()
     if not name or len(name) > 80 or name.startswith("_") or not _voice_ok(voice):
         return jsonify({"error": "bad name or voice"}), 400
+    if source not in ("", "manual", _cast_voices.DM):
+        return jsonify({"error": "bad source"}), 400
     with _cast_lock:
         path = _cast_file()
-        data = _read_cast(path)
+        raw = _cast_voices.read_raw(path)
+        data = _cast_voices.voices(raw)
+        src = _cast_voices.sources(raw)
+        if source == _cast_voices.DM:
+            # The DM may set or change its own and automatic picks, never a hand pick.
+            name = _cast_voices.cast_key(data, name)
+            if name in data and src.get(name) not in (_cast_voices.DM, _cast_voices.AUTO):
+                if data[name] == voice:
+                    return jsonify({"name": name, "voice": voice}), 200
+                return jsonify({"error": "chosen by hand", "name": name,
+                                "voice": data[name]}), 409
+            src[name] = _cast_voices.DM
+        else:
+            src.pop(name, None)       # a pick in the voice menu is a hand pick
         data[name] = voice
-        tmp = path.with_suffix(".json.tmp")
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            os.replace(tmp, path)
+            _cast_voices.write_raw(path, data, src, raw.get("_comment"))
         except OSError:
             return jsonify({"error": "Could not save voice"}), 500
     _broadcast({"cast": data})
@@ -3168,6 +3269,8 @@ def stream():
     q.put_nowait({"music": _music.snapshot()})
     q.put_nowait({"background": _background.snapshot()})
     q.put_nowait({"party_feedback": _party_feedback_snapshot()})
+    # Voices may have changed while this browser was away.
+    q.put_nowait({"cast": _read_cast(_cast_file())})
     if _setup_question:
         q.put_nowait({"setup_question": _setup_question})
 

@@ -21,6 +21,11 @@ Usage:
     "I've been waiting for you."
     DNDEND
 
+    # A new speaking NPC: give them a voice the first time they speak
+    python3 send.py --npc "Vesna" --npc-voice bf_alice << 'DNDEND'
+    "I've been waiting for you."
+    DNDEND
+
     # Tutor/learning mode hint — collapsible parchment block on display
     python3 send.py --tutor << 'DNDEND'
     You could try a Perception check (WIS) to scan the room before acting.
@@ -229,6 +234,8 @@ def _verify_health() -> "dict | None":
 
 
 _CAMPAIGN_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+# Kokoro ids (af_heart, bm_lewis, blends with "+") or a Gemini name (Kore).
+_VOICE_ID = re.compile(r"[a-z]{2}_[a-z0-9]+(\+[a-z]{2}_[a-z0-9]+)*|[A-Z][a-z]+")
 
 
 def _derive_scene(cue: str, mood: "str | None"):
@@ -461,6 +468,11 @@ def main() -> None:
         help="Send as NPC dialogue with amber styling and character name header",
     )
     parser.add_argument(
+        "--npc-voice", metavar="VOICE",
+        help="With --npc: save this TTS voice for the NPC (e.g. bf_alice). "
+             "A voice picked by hand in the voice menu is kept",
+    )
+    parser.add_argument(
         "--dice", action="store_true",
         help="Send as a dice result (inline gold styling)",
     )
@@ -616,6 +628,10 @@ def main() -> None:
             scene = SceneContext.parse(value)
         except ValueError as error:
             parser.error(str(error))
+    if args.npc_voice is not None and not args.npc:
+        parser.error("--npc-voice requires --npc")
+    if args.npc_voice is not None and not _VOICE_ID.fullmatch(args.npc_voice.strip()):
+        parser.error("--npc-voice takes a voice id such as bf_alice or am_onyx")
     music_event, music_setting, music_mood = args.music_event, args.music_setting, args.music_mood
     _ensure_active_campaign()
     scene_note = None
@@ -823,6 +839,8 @@ def main() -> None:
                 payload["player"] = args.player
             elif args.npc:
                 payload["npc"] = args.npc
+                if args.npc_voice:
+                    payload["npc_voice"] = args.npc_voice.strip()
             elif args.dice:
                 payload["dice"] = True
             elif args.tutor:
