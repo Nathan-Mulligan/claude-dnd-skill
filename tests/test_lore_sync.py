@@ -144,17 +144,42 @@ def test_unreadable_stats_never_publishes_empty_lists(monkeypatch, tmp_path):
     assert all(path == "/stats/lore" for path, _ in live.posts)  # never a list-replacing post
 
 
-def test_failed_post_is_retried_next_time(monkeypatch, tmp_path):
+def test_failed_post_is_retried_next_time_without_new_model_call(monkeypatch, tmp_path):
     live = Live(monkeypatch, tmp_path)
     live.fail_post = True
     try:
         lore_sync.run(settle_s=0)
     except OSError:
         pass
-    assert not (tmp_path / "lore_notes.json").exists()
+    assert lore_sync.load_cache("Test")["published"] is False
     live.fail_post = False
     assert lore_sync.run(settle_s=0) == "updated"
-    assert len(live.calls) == 2
+    assert len(live.calls) == 1  # reused the saved notes
+    assert lore_sync.load_cache("Test")["published"] is True
+    assert lore_sync.run(settle_s=0) == "unchanged"
+
+
+def test_notes_are_saved_before_publishing(monkeypatch, tmp_path):
+    live = Live(monkeypatch, tmp_path)
+    seen = []
+    real = live.request
+
+    def request(path, data=None, timeout=5):
+        if path == "/stats/lore":  # a DM push landing now must already refill the new notes
+            seen.append(lore_sync.load_cache("Test").get("factions"))
+        return real(path, data, timeout)
+    monkeypatch.setattr(lore_sync, "_request", request)
+    lore_sync.run(settle_s=0)
+    assert seen == [{"Road Wardens": "Keep the toll road."}]
+
+
+def test_every_earlier_helper_note_is_sent_as_previous(monkeypatch, tmp_path):
+    live = Live(monkeypatch, tmp_path)
+    lore_sync.run(settle_s=0)
+    live.write_stats({"factions": [{"name": "Road Wardens", "standing": "Hostile"}], "quests": []})
+    lore_sync.run(settle_s=0)
+    _, body = live.posts[-1]
+    assert body["previous"]["factions"]["Road Wardens"] == ["Keep the toll road."]
 
 
 def test_campaign_switch_during_generation_blocks_publish(monkeypatch, tmp_path):
@@ -176,20 +201,10 @@ def test_push_while_busy_is_replayed(monkeypatch, tmp_path):
     assert len(live.calls) == 2 and "Road Wardens (Hostile)" in live.calls[1]
 
 
-def test_old_display_falls_back_to_full_post_without_campaign_key(monkeypatch, tmp_path):
+def test_old_display_never_gets_whole_lists_reposted(monkeypatch, tmp_path):
     live = Live(monkeypatch, tmp_path)
     live.old_server = True
-    assert lore_sync.run(settle_s=0) == "updated"
-    path, body = live.posts[-1]
-    assert path == "/stats" and "campaign" not in body  # campaign key would switch campaigns
-    assert body["factions"][0]["detail"] == "Keep the toll road."
-
-
-def test_unreadable_stats_on_old_display_never_publishes(monkeypatch, tmp_path):
-    live = Live(monkeypatch, tmp_path)
-    live.old_server = True
-    live.on_model = lambda: live.write_stats('{"factions": [')
-    assert lore_sync.run(settle_s=0) == "unreadable"
+    assert lore_sync.run(settle_s=0) == "display-too-old"
     assert live.posts == []
 
 
@@ -282,3 +297,12 @@ def test_old_single_campaign_cache_still_reads(monkeypatch, tmp_path):
     (tmp_path / "lore_notes.json").write_text(json.dumps(
         {"campaign": "Enderal", "fingerprint": "f", "factions": {"Road Wardens": "n"}, "quests": {}}), encoding="utf-8")
     assert lore_sync.load_cache("Enderal")["factions"] == {"Road Wardens": "n"}
+
+
+def test_lore_endpoint_accepts_a_list_of_earlier_helper_notes(display):
+    module, client = display
+    r = client.post("/stats/lore", json={"campaign": "Test", "factions": {"Wardens": "new"},
+                                         "previous": {"factions": {"Wardens": ["older", "old helper note"]}}})
+    assert r.status_code == 204
+    f = {x["name"]: x for x in module._current_stats["factions"]}
+    assert f["Wardens"]["detail"] == "new"

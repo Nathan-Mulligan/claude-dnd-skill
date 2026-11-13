@@ -316,42 +316,44 @@ def sync_once() -> str:
         return "empty"
     fp = fingerprint(public, factions, quests)
     old = load_cache(campaign)
-    if old.get("fingerprint") == fp:
+    if old.get("fingerprint") == fp and old.get("published") is not False:
         return "unchanged"
 
-    result = ask_model(build_prompt(public, factions, quests))
-    new = {
-        "campaign": campaign,
-        "fingerprint": fp,
-        "factions": clean_notes(result.get("factions"), [f.get("name") for f in factions if isinstance(f, dict)]),
-        "quests": clean_notes(result.get("quests"), [q.get("name") for q in quests if isinstance(q, dict)]),
-    }
+    if old.get("fingerprint") == fp:  # notes already written, the screen never got them
+        new = old
+    else:
+        result = ask_model(build_prompt(public, factions, quests))
+        new = {
+            "campaign": campaign,
+            "fingerprint": fp,
+            "factions": clean_notes(result.get("factions"), [f.get("name") for f in factions if isinstance(f, dict)]),
+            "quests": clean_notes(result.get("quests"), [q.get("name") for q in quests if isinstance(q, dict)]),
+        }
+    # Every note this helper has written for a name, so an older one still on
+    # screen is never mistaken for a note the DM wrote.
+    written = {k: {n: list(v) for n, v in ((old.get("written") or {}).get(k) or {}).items()} for k in ("factions", "quests")}
+    for k in ("factions", "quests"):
+        for n, note in (old.get(k) or {}).items():
+            written[k].setdefault(n, [])
+            if note not in written[k][n]:
+                written[k][n] = (written[k][n] + [note])[-8:]
+    new = dict(new, written=written, published=False)
+    # Saved before publishing: a DM push in between already refills the new notes.
+    save_cache(new)
 
-    # Publish only to the campaign the notes were written for.
     if active_campaign() != campaign:
         return "campaign-changed"
-    mine = old if old.get("campaign") == campaign else {}
     body = {"campaign": campaign, "factions": new["factions"], "quests": new["quests"],
-            "previous": {k: mine.get(k) or {} for k in ("factions", "quests")}}
+            "previous": written}
     try:
         _request("/stats/lore", json.dumps(body).encode("utf-8"))  # notes only; lists untouched
     except urllib.error.HTTPError as e:
         if e.code == 409:
             return "campaign-changed"
-        if e.code != 404:
-            raise
-        # Display started before /stats/lore existed: repost the latest lists with notes.
-        latest = _current_stats()
-        if latest is None:
-            return "unreadable"
-        payload = {k: [dict(x) for x in (latest.get(k) or []) if isinstance(x, dict)] for k in ("factions", "quests")}
-        for k in ("factions", "quests"):  # drop only notes this helper wrote earlier
-            for x in payload[k]:
-                if x.get("detail") and (mine.get(k) or {}).get(str(x.get("name", ""))) == x["detail"]:
-                    x.pop("detail")
-        apply_cached(payload, campaign, new)  # no "campaign" key: on /stats it switches campaigns
-        _request("/stats", json.dumps(payload).encode("utf-8"))  # raises on failure
-    save_cache(new)  # only after the display has the notes, so a failed post is retried
+        if e.code == 404:  # display older than /stats/lore: wait for its restart, never repost lists
+            return "display-too-old"
+        raise
+    save_cache(dict(new, published=True))
     return "updated"
 
 

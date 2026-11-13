@@ -1976,7 +1976,8 @@ def stats_lore():
     Used by lore_sync.py. Never replaces the lists, so a DM update made while
     notes were being written is kept. Body: {"campaign": str,
     "factions": {name: note}, "quests": {name: note},
-    "previous": {"factions": {name: note}, "quests": {name: note}}}.
+    "previous": {"factions": {name: [notes]}, "quests": {name: [notes]}}}
+    (a single note string per name is also accepted).
     A previous helper note still showing is removed when no new note replaces it;
     a detail the DM wrote is never touched. 409 if the campaign has changed.
     """
@@ -2000,7 +2001,9 @@ def stats_lore():
                 if isinstance(item, dict):
                     item = dict(item)
                     name = str(item.get("name", ""))
-                    mine = not item.get("detail") or old.get(name) == item.get("detail")
+                    was = old.get(name)
+                    was = was if isinstance(was, list) else [was]
+                    mine = not item.get("detail") or item.get("detail") in was
                     if mine:
                         note = str(notes.get(name) or "").strip()[:400]
                         if note:
