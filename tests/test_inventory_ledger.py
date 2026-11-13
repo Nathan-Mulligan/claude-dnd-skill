@@ -337,3 +337,49 @@ def test_without_a_ledger_the_display_gets_the_prose_lines(enderal):
     name, data = sheet_extract.sheet_payload(enderal, enderal / "characters/nella-reed.md")
     assert name == "Nella Reed" and "ledger" not in data
     assert data["inventory"][3].startswith("**Currency:** 109 gp")
+
+
+def test_forced_remigration_reads_the_generated_section_back_unchanged(enderal):
+    migrated(enderal)
+    cli("equip", "--character", "elbane-iii", "Shortsword")
+    before = ledger(enderal, "elbane-iii")
+    assert cli("migrate", "--character", "elbane-iii", "--write", "--force")[0] == 0
+    after = ledger(enderal, "elbane-iii")
+    by_name = lambda items: sorted(items, key=lambda i: i["name"])  # noqa: E731
+    assert after["coins"] == before["coins"]
+    assert by_name(after["items"]) == by_name(before["items"])
+
+
+def test_broken_cargo_file_refuses_before_any_coin_moves(enderal):
+    migrated(enderal)
+    (enderal / "party_inventory.json").write_text("{not json", encoding="utf-8")
+    before = (enderal / "characters/elbane-iii.inventory.json").read_text(encoding="utf-8")
+    code, _, err = cli("spend", "--character", "elbane-iii", "1 gp")
+    assert code == 2 and "party_inventory.json" in err
+    assert (enderal / "characters/elbane-iii.inventory.json").read_text(encoding="utf-8") == before
+
+
+def test_template_labels_carry_to_the_bullets_below_them():
+    parsed = inv.parse_prose_inventory(
+        "**Weapons:**\n- Net\n- 2 javelins\n\n**Armour:**\n- Leather\n\n**Adventuring Gear:**\n- Bedroll\n"
+        "\n**Currency:** 0gp 4sp 0cp\n")
+    got = {(i["name"], i["qty"], i["category"], i["equipped"]) for i in parsed["items"]}
+    assert got == {("Net", 1, "weapons", False), ("Javelin", 2, "weapons", False),
+                   ("Leather", 1, "armour", True), ("Bedroll", 1, "gear", False)}
+    assert parsed["coins"]["sp"] == 4 and not parsed["unread"]
+
+
+def test_renaming_a_pc_moves_the_ledger_with_the_sheet(enderal):
+    import os
+    import subprocess
+    migrated(enderal)
+    (enderal / "state.md").write_text("# Enderal\n- **Party:** Elbane III, Nella Reed\n", encoding="utf-8")
+    out = subprocess.run(
+        [sys.executable, str(SCRIPTS / "npc_rename.py"), "--campaign", "Enderal", "--old", "Nella Reed",
+         "--new", "Nella Thorn", "--type", "pc", "--yes"],
+        capture_output=True, text=True, env={**os.environ}, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert not (enderal / "characters/nella-reed.inventory.json").exists()
+    assert ledger(enderal, "nella-thorn")["character"] == "Nella Thorn"
+    code, text, _ = cli("show", "--character", "Nella Thorn")
+    assert code == 0 and "109 gp" in text

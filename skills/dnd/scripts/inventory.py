@@ -577,11 +577,19 @@ def parse_item_phrase(phrase: str, category: str | None, default: str = "gear") 
     m = re.match(r"^(.*?)\s*\((.+)\)\s*$", phrase)
     if m:
         phrase, notes = m.group(1), m.group(2)
+    worn = False
+    if notes:  # this script's own "(equipped; 2 lb; notes)" form, when re-reading a section
+        bits = [b.strip() for b in notes.split(";")]
+        worn = "equipped" in bits
+        notes = "; ".join(b for b in bits if b != "equipped")
     qty = 1
     m = _COUNT.match(phrase)
     if m:
         qty = int(m.group(1)) if m.group(1) else _WORD_NUM[phrase.split()[0].lower()]
         phrase = m.group(2)
+    m = re.match(r"^(.*?)\s*[×x](\d+)$", phrase)
+    if m and qty == 1:
+        phrase, qty = m.group(1), int(m.group(2))
     if qty > 1:
         phrase = singular_name(phrase)
     guessed = guess_category(phrase, default=category or default)
@@ -590,7 +598,7 @@ def parse_item_phrase(phrase: str, category: str | None, default: str = "gear") 
         chosen = guessed
     else:
         chosen = category
-    equipped = chosen == "armour"
+    equipped = worn or chosen == "armour"
     return make_item(phrase, qty, chosen, equipped=equipped, notes=notes)
 
 
@@ -629,6 +637,7 @@ def _parse_caravan(body: str) -> tuple[list[dict], list[str]]:
 def parse_prose_inventory(section: str) -> dict:
     """Read a hand-written inventory section. Returns what was understood, for a human to confirm."""
     result = {"coins": empty_purse(), "items": [], "cargo": [], "notes": [], "unread": []}
+    current = None  # the template puts "**Weapons:**" on its own line with bullets below
     for raw in section.splitlines():
         line = raw.strip()
         if not line or line.startswith("<!--"):
@@ -648,15 +657,21 @@ def parse_prose_inventory(section: str) -> dict:
             elif body:
                 result["unread"].append(line)
             continue
+        if low == "items" and body.lower() == "none":
+            continue
+        if low == "shared cargo (party)":  # generated from party_inventory.json; it is not this sheet's
+            continue
         if re.search(r"caravan|cargo|wagon|cart|shared|party", low):
             items, notes = _parse_caravan(body)
             result["cargo"].extend(items)
             result["notes"].extend(f"{label}: {n}" for n in notes)
             continue
-        category = _label_category(label) if label else None
-        if label and category is None:
-            result["unread"].append(line)
-            continue
+        if label:
+            current = _label_category(label)
+            if current is None:
+                result["unread"].append(line)
+                continue
+        category = current
         for phrase in _split_list(body):
             try:
                 item = parse_item_phrase(phrase, category)
@@ -695,6 +710,7 @@ def migrate(campaign: Path, sheet: Path, write: bool, force: bool = False) -> li
     parsed = parse_prose_inventory(section)
     cargo = load_cargo(campaign)
     lines = describe_migration(name, parsed, cargo["items"])
+    others = {o: load_ledger(o) for o in character_sheets(campaign) if o != sheet}  # validate first
     if not write:
         return lines + ["Dry run: nothing written. Re-run with --write once this reads right."]
     stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -711,9 +727,9 @@ def migrate(campaign: Path, sheet: Path, write: bool, force: bool = False) -> li
     notes = parsed["notes"] + [f"Unparsed inventory line: {u}" for u in parsed["unread"]]
     _atomic_write(sheet, append_notes(text, notes))
     write_section(sheet, ledger, cargo)
-    for other in character_sheets(campaign):  # cargo shows on every sheet that has a ledger
-        if other != sheet and load_ledger(other) is not None:
-            write_section(other, load_ledger(other), cargo)
+    for other, other_ledger in others.items():  # cargo shows on every sheet that has a ledger
+        if other_ledger is not None:
+            write_section(other, other_ledger, cargo)
     return lines + [f"Written: {ledger_path(sheet).name}; sheet backup backups/{backup.name}"]
 
 
@@ -753,6 +769,7 @@ def run(args) -> tuple[str, list[Path]]:
     if cmd == "migrate":
         return "\n".join(migrate(campaign, sheet, args.write, args.force)), [sheet] if args.write else []
     ledger = require_ledger(sheet)
+    cargo = load_cargo(campaign)  # validated before anything is written
     who = ledger.get("character") or sheet.stem
     if cmd == "show":
         lines = section_lines(ledger, load_cargo(campaign))
@@ -796,7 +813,7 @@ def run(args) -> tuple[str, list[Path]]:
     else:
         raise LedgerError(f"unknown command {cmd}")
     save_ledger(sheet, ledger)
-    write_section(sheet, ledger, load_cargo(campaign))
+    write_section(sheet, ledger, cargo)
     return message, [sheet]
 
 
