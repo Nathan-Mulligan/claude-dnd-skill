@@ -166,8 +166,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
          "spell_slots": {},
          "sheet": {
            "attacks": [{"name":"...","bonus":"+N","damage":"...","type":"...","notes":"..."}],
-           "features": [{"name":"Feature 1","text":"Description of what it does."},{"name":"Feature 2","text":"Description."}],
-           "inventory": ["Item 1", "Item 2"]
+           "attacks": [...]
          }
        }
      ]
@@ -175,6 +174,8 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
    ```
 
    For casters, add `"spells": {"cantrips":["..."],"level1":["..."]}` inside `sheet`. Omit for non-casters.
+
+   Do not write `features` or `inventory` by hand: add `--from-sheets <campaign-name>` to the same call and it fills features (grouped by class, species and background), inventory and the coin ledger from the sheet files. If `inventory.py show --campaign <campaign-name>` reports `no ledger` for a character, run `inventory.py migrate` for them (dry run), show the player what it understood, and add `--write` only once they confirm.
 
    **Inspiration:** read from `state.md → ## Current Situation → Party status`. Set `"inspiration": 1` (or `true`) if the character has it, `0` if not. Inspiration is NOT reset by a long rest — it persists until spent. Must be explicitly tracked in the party status line at `/dm:dnd save` (e.g., `Mara: Inspiration ✓`) and loaded at `/dm:dnd load`. Use `push_stats.py --player <name> --inspiration true/false` for mid-session updates.
 
@@ -185,6 +186,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --replace-players \
      --json '{...players...}' \
+     --from-sheets <campaign-name> \
      --world-time '{...}' \
      --factions '[...]' \
      --quests '[...]'
@@ -198,11 +200,13 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 
    The faction panel only appears when at least one faction is present — do not skip this push.
 
+   Optional `detail` on any faction or quest: a sentence or two shown when a player clicks it in the sidebar. **Write only what the party knows.** Hidden faction moves, clocks, Next Hooks and DM-only notes never go here. Leave it out rather than guess. When you leave it out, `display/lore_sync.py` fills it in the background from the party-known sections of `state.md` (World State, Active Quests, Open Threads & Rumours, Recent Events, and an optional `## Party Knowledge`). Put anything players may see but those sections lack under `## Party Knowledge`. Example: `{"name":"Road Wardens","standing":"Neutral","detail":"Keep the Brackenford road and collect its toll. The toll recently doubled; nobody has said why."}`
+
    Quest JSON structure:
    ```json
    [{"name":"The Missing Shipment","status":"resolved"},{"name":"Keth the Collector","status":"threat"}]
    ```
-   Quest `status` values: `active` (amber), `threat` (red), `resolved` (green), `failed` (muted). Use `[]` to clear all quests:
+   Quest `status` values: `active` (amber), `threat` (red), `resolved` (green), `failed` (muted). Quests take the same optional party-known `detail` field as factions. Use `[]` to clear all quests:
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --quests '[...]'
    ```
@@ -597,7 +601,7 @@ Default to `Step by step` if the question is dismissed. Either path lands in the
 4. Run `character.py calc --race <race> [--subrace <subrace>]` with the BASE ability array. **It applies the racial bonuses itself** and prints base / race / final, along with every secondary stat — do not add racial bonuses by hand first, and do not omit `--race`. An unknown race exits non-zero rather than applying nothing, so a typo cannot produce a sheet quietly missing its bonuses. `lookup.py race <name>` has the full entry (bonuses, traits, speed, languages) if the player wants to read it.
 5. Ask: Fighting Style (Fighter/Paladin/Ranger), spells (if caster)
 6. Assign starting equipment per class + background
-7. Write to `characters/<name>.md` using `templates/character-sheet.md`; set `## Campaign History → Origin campaign`
+7. Write to `characters/<name>.md` using `templates/character-sheet.md`; set `## Campaign History → Origin campaign`. Then run `inventory.py migrate --campaign <campaign> --character <name> --write` so the ledger owns the equipment and coins from the start.
 8. Add to `state.md` party line
 9. Mirror to global roster: `cp characters/<name>.md ~/.claude/dnd/characters/<name>.md`
 10. Run supplemental builder to fetch any non-SRD spells/features the character uses:

@@ -464,6 +464,7 @@ python3 ${CLAUDE_SKILL_DIR}/display/send.py --npc "Septemous" << 'DNDEND'
 DNDEND
 ```
 Brief NPC interjections within narration don't need a separate block.
+The first time a new NPC speaks, add `--npc-voice <id>` (for example `--npc-voice bf_alice`) chosen for their gender, age and manner; the voice is saved in the campaign's `cast.json`. If you forget, the display picks a free voice by itself. Neither replaces a voice picked by hand in the voice menu.
 
 *Opener first.* The table hears nothing until a send lands, and writing a full paragraph takes several seconds. So once the outcome of the turn is decided (after any rolls), send the scene's first sentence or two on their own with `--opener`, in their own Bash call, before writing the rest. Keep it to roughly 15-30 words of plain narration, consistent with what follows, no stat flags. The display speaks it at once and holds the paragraph open, so the full narration sent next continues it. Then send the rest exactly as below, starting after the opener (don't repeat it):
 ```bash
@@ -477,7 +478,7 @@ Skip the opener for one-line replies, out-of-character answers, and turns whose 
 
 At the start of a fight, send `--music-event combat-start` with the first combat narration. The display stops the ambience and plays one fresh ten-second battle cue, then silence. At the end, send `--music-event combat-end` with the first post-combat narration. The display makes a new texture for the remembered location. Combat turn-order stats also provide a fallback if one of these cues is missed. The cues never block narration and should not be repeated on every round.
 
-*DM narration* — **CRITICAL:** compose the complete narration (after any opener) first, then call `send.py` as the very last action. Never call `send.py` mid-response apart from the opener. The send must contain the **complete, unabridged text** — do not summarize or condense. **Bundle all stat changes (HP, spell slots, conditions, concentration, inventory) into this same send.py call** using `--stat-*` flags — no separate `push_stats.py` call needed for turn-resolution state:
+*DM narration* — **CRITICAL:** compose the complete narration (after any opener) first, then call `send.py` as the very last action. Never call `send.py` mid-response apart from the opener. The send must contain the **complete, unabridged text** — do not summarize or condense. **Bundle all stat changes (HP, spell slots, conditions, concentration) into this same send.py call** using `--stat-*` flags — no separate `push_stats.py` call needed for turn-resolution state. Items and coins go through `scripts/inventory.py`, which updates the sheet and the display itself:
 ```bash
 # With stat changes (any HP/slot/condition that changed this turn):
 python3 ${CLAUDE_SKILL_DIR}/display/send.py \
@@ -503,8 +504,6 @@ DNDEND
 | `--stat-condition-add` | `"NAME:CONDITION"` | Condition applied |
 | `--stat-condition-remove` | `"NAME:CONDITION"` | Condition ends |
 | `--stat-concentrate` | `"NAME:SPELL"` | Concentration starts (empty SPELL = clear) |
-| `--stat-inventory-add` | `"NAME:ITEM"` | Item gained |
-| `--stat-inventory-remove` | `"NAME:ITEM"` | Item spent or given away |
 | `--effect-start` | `"NAME:SPELL:DURATION"` | Start timed effect — DURATION: `10r` / `60m` / `8h` / `indef`; append `:conc` if concentration |
 | `--effect-end` | `"NAME:SPELL"` | End effect (broken concentration, dispelled, player drops it) |
 

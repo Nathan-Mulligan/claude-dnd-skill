@@ -75,7 +75,10 @@
           <div><label for="mode">Campaign</label><select id="mode"><option value="new">New campaign</option><option value="resume">Load campaign</option></select></div>
           <div><label for="dm-launcher">Dungeon Master</label><select id="dm-launcher">{% for launcher, label in launcher_labels.items() %}<option value="{{ launcher }}" data-label="{{ label }}">{{ label }}</option>{% endfor %}</select></div>
           <div id="model-field"><label for="provider">Model</label><select id="provider">{% for key, choice in dm_choices.items() %}<option value="{{ key }}" data-launcher="{{ choice.launcher }}">{{ choice.model }}</option>{% endfor %}</select></div>
+          <div id="effort-field"><label for="effort">DM thinking effort</label><select id="effort">{% for key, label in efforts.items() %}<option value="{{ key }}"{% if key == default_effort %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         </div>
+        <div id="helper-field"><label for="helper">Sidebar notes helper</label><select id="helper">{% for key, label in helpers.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+          <p class="hint" id="helper-hint">A second, smaller model writes the short notes shown when you tap a faction or quest in the sidebar, using only what the party knows. It works in the background and only when those lists change, so it never slows the DM. Off turns it off; a change applies straight away.</p></div>
         <div id="new-fields"><label for="name">Campaign name · optional</label><input id="name" maxlength="60" placeholder="Name your adventure" autocomplete="off"></div>
         <div id="resume-fields" hidden><label for="saved">Saved campaign</label><select id="saved"></select></div>
         <label for="description" id="description-label">What kind of adventure?</label>
@@ -128,6 +131,7 @@
     let switching = false;
     let keepDisplayDuringSwitch = false;
     let refreshing = false;
+    let savingHelper = false;
     const allModels = Array.from($('provider').options, option => option.cloneNode(true));
     function showModels() {
       const launcher = $('dm-launcher').value;
@@ -136,10 +140,13 @@
       $('provider').replaceChildren(...models.map(option => option.cloneNode(true)));
       if (models.some(option => option.value === current)) $('provider').value = current;
       $('model-field').hidden = models.length < 2;
+      $('effort-field').hidden = launcher !== 'codex';
     }
     const message = (text, error=false) => { $('status').textContent=text; $('status').classList.toggle('error', error); };
     const selectedName = () => $('mode').value === 'new' ? $('name').value.trim() : $('saved').value;
-    const continuing = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider;
+    const codexDm = () => $('dm-launcher').value === 'codex';
+    const sameEffort = () => !codexDm() || $('effort').value === (state.meta.effort || 'medium');
+    const continuing = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider && sameEffort();
     let nextCharacterId = 0;
     function updateCharacterButtons() {
       const cards = $('characters').querySelectorAll('.character-card');
@@ -195,7 +202,7 @@
       $('continue').hidden = !(state && state.active) || continuing();
       $('continue').disabled = busy;
       $('close-campaign').disabled = busy;
-      for (const id of ['mode', 'dm-launcher', 'provider', 'name', 'saved', 'description']) $(id).disabled = busy;
+      for (const id of ['mode', 'dm-launcher', 'provider', 'effort', 'name', 'saved', 'description']) $(id).disabled = busy;
       $('start').disabled = busy || !state || (resume && !selectedName());
       $('start').textContent = continuing() ? 'Continue campaign' : state && state.active ? (resume ? 'Save & switch' : 'Save & start new campaign') : resume ? 'Load campaign' : 'Create campaign & begin';
       window.DndSelect?.refresh();
@@ -233,9 +240,11 @@
           $('saved').value=state.meta.campaign;
           const savedChoice = allModels.find(option => option.value === state.meta.provider);
           if (savedChoice) { $('dm-launcher').value=savedChoice.dataset.launcher; showModels(); $('provider').value=savedChoice.value; }
+          if (state.meta.effort) $('effort').value=state.meta.effort;
         } else if (names.length) $('mode').value='resume';
         initialized=true;
       }
+      if (data.helper && !savingHelper && document.activeElement !== $('helper') && $('helper').value !== data.helper) $('helper').value = data.helper;
       const terminal = $('terminal');
       const output = state.active ? data.output || 'Your DM is starting…' : 'No model session is running.';
       if (terminal.textContent !== output) terminal.textContent = output;
@@ -279,6 +288,7 @@
       message(state.active ? 'Saving your campaign before switching…' : 'Creating your adventure from these answers…');
       try {
         const payload = {provider:$('provider').value, mode:$('mode').value, name:selectedName(), description:$('description').value};
+        if (codexDm()) payload.effort = $('effort').value;
         if (payload.mode === 'new') payload.onboarding = questionnaire();
         if (state.active) {
           keepDisplayDuringSwitch = payload.mode === 'resume' && payload.name === state.meta.campaign;
@@ -318,8 +328,17 @@
     dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
     dialog.addEventListener('close', () => display.contentWindow.postMessage({type:'dnd-campaign-closed'}, displayOrigin));
     $('dm-launcher').addEventListener('change', showModels);
+    $('helper').addEventListener('change', async () => {
+      const choice = $('helper').value;
+      savingHelper = true;
+      try {
+        await api('/api/helper', 'POST', {helper:choice});
+        message(choice === 'off' ? 'Sidebar notes helper is off.' : `Sidebar notes will be written by ${$('helper').selectedOptions[0].textContent}.`);
+      } catch (error) { message(error.message, true); }
+      finally { savingHelper = false; }
+    });
     showModels();
-    for (const id of ['mode', 'dm-launcher', 'provider', 'name', 'saved']) $(id).addEventListener('change', updateControls);
+    for (const id of ['mode', 'dm-launcher', 'provider', 'effort', 'name', 'saved']) $(id).addEventListener('change', updateControls);
     dialog.showModal();
     refresh();
     setInterval(refresh, 1200);

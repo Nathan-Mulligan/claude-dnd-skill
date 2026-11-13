@@ -107,6 +107,29 @@ Each action returns its event and the next token. For a multiattack, the next to
 
 ---
 
+## Inventory and Coins — `scripts/inventory.py`
+
+The ledger owns each character's items and coins (`characters/<sheet>.inventory.json`) and the party's shared cargo (`party_inventory.json`). Every change rewrites the sheet's `## Equipment & Inventory` section and pushes to the display when it shows this campaign. Never edit that section by hand. Refusals exit 2 with one line and change nothing.
+
+```bash
+I="python3 ${CLAUDE_SKILL_DIR}/scripts/inventory.py"
+$I show    --campaign $CAMP [--character Nella]          # every character without --character
+$I buy     --campaign $CAMP --character Nella "Lantern" --price "5 gp" [--qty 1]
+$I sell    --campaign $CAMP --character Elbane "Blanket" --price "24 sp" [--qty 4]
+$I spend   --campaign $CAMP --character Elbane "3 sp"     # tolls, rent, bribes: makes change
+$I earn    --campaign $CAMP --character Elbane "26 sp"
+$I add     --campaign $CAMP --character Nella "Iron key" [--qty 1] [--category gear] [--notes "..."]
+$I remove  --campaign $CAMP --character Nella "Torch" [--qty 1 | --all]
+$I equip   --campaign $CAMP --character Nella "Shield"     # unequip to take off
+$I cargo   --campaign $CAMP add|remove|show "Sack of salt" [--qty 3] [--notes "..."]
+$I migrate --campaign $CAMP --character Nella [--write]    # prose section → ledger; dry run first
+$I sync    --campaign $CAMP                                # regenerate sections and push
+```
+
+Categories: weapons, armour, gear, tools, consumables, trade goods, treasure (guessed when omitted). Amounts are written like `"2 gp 5 sp"`. `migrate` prints what it understood; show it to the player and add `--write` only after they confirm. It moves trade history (sales, debts paid) to `## Backstory & Notes` and keeps a backup under `backups/`.
+
+---
+
 ## Combat Script — `scripts/combat.py`
 ```bash
 # Roll initiative and print tracker
@@ -163,17 +186,14 @@ python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --replace-players --json '{
         {"name": "Handaxe",   "bonus": "+4", "damage": "1d6+2", "type": "Slashing", "notes": "Thrown 20/60 ft"}
       ],
       "spells": null,
-      "features": [
-        {"name": "Second Wind",  "text": "Bonus action: regain 1d10+level HP. Recharges on short/long rest."},
-        {"name": "Action Surge", "text": "Once per rest: take an additional action on your turn."}
-      ],
-      "inventory": ["Longsword", "Handaxe ×2", "Chain Mail", "Shield", "Explorer'\''s Pack", "15 gp"]
+      "spells": null
     }
   }]
-}'
+}' --from-sheets $CAMP
 
 # sheet sub-keys: attacks, spells ({slots, save_dc, attack_bonus, cantrips, prepared} or null),
-# features ([{name, text}]), inventory ([strings])
+# features, inventory and ledger. --from-sheets fills the last three from the sheet files and
+# ledgers (features grouped by class, species and background); do not write them by hand.
 # sheet is optional — omit if you only need the stats sidebar without the full sheet modal
 
 # Partial updates (use whenever values change mid-session):
@@ -209,14 +229,13 @@ python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --player Flerb \
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --player Flerb --slot-use 1      # expend one 1st-level slot
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --player Flerb --slot-restore 2  # restore one 2nd-level slot
 
-# Inventory — granular (preferred to full --sheet rewrite):
-python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --player Flerb --inventory-add "Iron key"
-python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --player Flerb --inventory-remove "Folded paper"
+# Items and coins: scripts/inventory.py (it pushes for you). Not --inventory-add.
 
 # Faction standings (party-wide — REQUIRED at /dm:dnd load to show faction panel):
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py \
   --factions '[{"name":"Pale Court","standing":"Allied"},{"name":"Watch","standing":"Neutral"}]'
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --factions '[]'   # clear all
+# Optional "detail" on a faction or quest: shown when a player clicks it. Party-known facts only, no DM secrets.
 
 # Combat turn order (on /dm:dnd combat start):
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --turn-order \
@@ -272,7 +291,7 @@ If `check_input.py` returns output, prepend it to the player's terminal input wh
 - Spell slot used → `--player NAME --slot-use <level>`; restored → `--slot-restore <level>`
 - Condition gained → `--player NAME --conditions-add "Name"`; removed → `--conditions-remove "Name"`
 - Concentration started → `--player NAME --concentrate "Spell"`; ended → `--concentrate ""`
-- Item picked up → `--player NAME --inventory-add "Item"`; dropped/used → `--inventory-remove "Item"`
+- Item or coin change → `scripts/inventory.py` (it updates the sheet and the display)
 - Timed effect starts → `--effect-start "NAME:SPELL:DURATION[:conc]"` bundled with narration send
 - Timed effect ends → `--effect-end "NAME:SPELL"` bundled with narration send
 - Faction standing changes → `--factions '[...]'` (full replace)

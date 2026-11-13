@@ -85,6 +85,15 @@ _LAST = [
 ]
 
 
+def _pc_files(camp_dir: pathlib.Path, old: str, new: str) -> tuple[pathlib.Path, pathlib.Path]:
+    """The PC sheet to move: `nella_reed.md`, or the hyphenated `nella-reed.md` other tools write."""
+    for style in (lambda n: slug(n), lambda n: slug(n).replace("_", "-")):
+        old_pc = camp_dir / "characters" / f"{style(old)}.md"
+        if old_pc.exists():
+            return old_pc, camp_dir / "characters" / f"{style(new)}.md"
+    return camp_dir / "characters" / f"{slug(old)}.md", camp_dir / "characters" / f"{slug(new)}.md"
+
+
 def random_name(taken_slugs: set[str]) -> str:
     """Pick first + last from corpus; reject if slug already taken; up to 50 retries.
 
@@ -401,9 +410,9 @@ def main() -> int:
             pass
     # PC file rename preview
     if args.type == "pc":
-        old_pc = camp_dir / "characters" / f"{slug(args.old)}.md"
+        old_pc, new_pc = _pc_files(camp_dir, args.old, new_name)
         if old_pc.exists():
-            print(f"  characters/{slug(args.old)}.md → characters/{slug(new_name)}.md")
+            print(f"  characters/{old_pc.name} → characters/{new_pc.name}")
             print(f"  WARNING: PC rename also updates global roster at "
                   f"{characters_dir() / (slug(args.old) + '.md')}")
 
@@ -440,11 +449,18 @@ def main() -> int:
 
     # PC file rename
     if args.type == "pc":
-        old_pc = camp_dir / "characters" / f"{slug(args.old)}.md"
+        old_pc, new_pc = _pc_files(camp_dir, args.old, new_name)
         if old_pc.exists():
-            new_pc = camp_dir / "characters" / f"{slug(new_name)}.md"
             old_pc.rename(new_pc)
-            print(f"    characters/{slug(args.old)}.md → characters/{slug(new_name)}.md")
+            old_ledger = old_pc.with_name(old_pc.stem + ".inventory.json")
+            if old_ledger.exists():  # inventory.py finds the ledger by the sheet's file name
+                new_ledger = new_pc.with_name(new_pc.stem + ".inventory.json")
+                data = json.loads(old_ledger.read_text(encoding="utf-8"))
+                data["character"] = new_name
+                new_ledger.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                old_ledger.unlink()
+                print(f"    characters/{old_ledger.name} → characters/{new_ledger.name}")
+            print(f"    characters/{old_pc.name} → characters/{new_pc.name}")
             # Mirror to global roster
             global_old = characters_dir() / f"{slug(args.old)}.md"
             global_new = characters_dir() / f"{slug(new_name)}.md"
