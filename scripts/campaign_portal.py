@@ -34,17 +34,22 @@ PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 class DmChoice(NamedTuple):
     launcher: str
-    label: str
+    model: str
     args: tuple[str, ...]
 
 
-# Keys are stored in portal-session.json as "provider"; "codex" stays Terra so saved sessions keep their meaning.
+LAUNCHER_LABELS = {"codex": "Codex", "claude": "Claude", "qwen": "Ollama"}
+_CODEX_EFFORT = ("-c", 'model_reasoning_effort="medium"')
+# Keys are stored in portal-session.json as "provider"; "codex" and "claude" keep their original meaning.
 DM_CHOICES = {
-    "codex-sol": DmChoice("codex", "Codex · Sol", ("-m", "gpt-6.1-sol", "-c", 'model_reasoning_effort="medium"')),
-    "codex-astra": DmChoice("codex", "Codex · Astra", ("-m", "gpt-6-astra", "-c", 'model_reasoning_effort="medium"')),
-    "codex": DmChoice("codex", "Codex · Terra", ("-m", "gpt-6.1-terra", "-c", 'model_reasoning_effort="medium"')),
-    "claude": DmChoice("claude", "Claude · Opus", ("--model", "opus")),
-    "qwen": DmChoice("qwen", "Qwen · local", ()),
+    "codex-sol": DmChoice("codex", "Sol", ("-m", "gpt-6.1-sol", *_CODEX_EFFORT)),
+    "codex-astra": DmChoice("codex", "Astra", ("-m", "gpt-6-astra", *_CODEX_EFFORT)),
+    "codex-luna": DmChoice("codex", "Luna", ("-m", "gpt-6-luna", *_CODEX_EFFORT)),
+    "codex": DmChoice("codex", "Terra", ("-m", "gpt-6.1-terra", *_CODEX_EFFORT)),
+    "claude": DmChoice("claude", "Opus", ("--model", "opus")),
+    "claude-fable": DmChoice("claude", "Fable", ("--model", "fable")),
+    "claude-sonnet": DmChoice("claude", "Sonnet", ("--model", "sonnet")),
+    "qwen": DmChoice("qwen", "Qwen 3.6 35B", ()),
 }
 ALLOWED_PROVIDERS = set(DM_CHOICES)
 CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
@@ -686,7 +691,7 @@ def create_app() -> Flask:
 
     @app.get("/")
     def home():
-        return render_template("campaign_portal.html", token=token, dm_choices=DM_CHOICES)
+        return render_template("campaign_portal.html", token=token, dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS)
 
     @app.get("/icon.png")
     def icon():

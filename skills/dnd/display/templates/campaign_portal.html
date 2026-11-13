@@ -73,7 +73,8 @@
       <form id="campaign-form">
         <div class="grid">
           <div><label for="mode">Campaign</label><select id="mode"><option value="new">New campaign</option><option value="resume">Load campaign</option></select></div>
-          <div><label for="provider">Dungeon Master</label><select id="provider">{% for key, choice in dm_choices.items() %}<option value="{{ key }}" data-launcher="{{ choice.launcher }}" data-label="{{ choice.label }}">{{ choice.label }}</option>{% endfor %}</select></div>
+          <div><label for="dm-launcher">Dungeon Master</label><select id="dm-launcher">{% for launcher, label in launcher_labels.items() %}<option value="{{ launcher }}" data-label="{{ label }}">{{ label }}</option>{% endfor %}</select></div>
+          <div id="model-field"><label for="provider">Model</label><select id="provider">{% for key, choice in dm_choices.items() %}<option value="{{ key }}" data-launcher="{{ choice.launcher }}">{{ choice.model }}</option>{% endfor %}</select></div>
         </div>
         <div id="new-fields"><label for="name">Campaign name · optional</label><input id="name" maxlength="60" placeholder="Name your adventure" autocomplete="off"></div>
         <div id="resume-fields" hidden><label for="saved">Saved campaign</label><select id="saved"></select></div>
@@ -127,7 +128,15 @@
     let switching = false;
     let keepDisplayDuringSwitch = false;
     let refreshing = false;
-    const providerOptions = () => Array.from($('provider').options);
+    const allModels = Array.from($('provider').options, option => option.cloneNode(true));
+    function showModels() {
+      const launcher = $('dm-launcher').value;
+      const current = $('provider').value;
+      const models = allModels.filter(option => option.dataset.launcher === launcher);
+      $('provider').replaceChildren(...models.map(option => option.cloneNode(true)));
+      if (models.some(option => option.value === current)) $('provider').value = current;
+      $('model-field').hidden = models.length < 2;
+    }
     const message = (text, error=false) => { $('status').textContent=text; $('status').classList.toggle('error', error); };
     const selectedName = () => $('mode').value === 'new' ? $('name').value.trim() : $('saved').value;
     const continuing = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider;
@@ -186,7 +195,7 @@
       $('continue').hidden = !(state && state.active) || continuing();
       $('continue').disabled = busy;
       $('close-campaign').disabled = busy;
-      for (const id of ['mode', 'provider', 'name', 'saved', 'description']) $(id).disabled = busy;
+      for (const id of ['mode', 'dm-launcher', 'provider', 'name', 'saved', 'description']) $(id).disabled = busy;
       $('start').disabled = busy || !state || (resume && !selectedName());
       $('start').textContent = continuing() ? 'Continue campaign' : state && state.active ? (resume ? 'Save & switch' : 'Save & start new campaign') : resume ? 'Load campaign' : 'Create campaign & begin';
       window.DndSelect?.refresh();
@@ -205,10 +214,9 @@
     }
     function updateState(data) {
       state = {...data, meta:data.meta || {}};
-      for (const option of providerOptions().filter(option => option.dataset.launcher === 'codex')) {
-        option.disabled = !data.codex_enabled;
-        option.textContent = data.codex_enabled ? option.dataset.label : `${option.dataset.label} · unavailable`;
-      }
+      const codexOption = $('dm-launcher').querySelector('option[value="codex"]');
+      codexOption.disabled = !data.codex_enabled;
+      codexOption.textContent = data.codex_enabled ? codexOption.dataset.label : `${codexOption.dataset.label} · unavailable`;
       const oldValue = $('saved').value;
       const names = [...data.campaigns];
       if (state.active && state.meta.campaign && !names.includes(state.meta.campaign)) names.unshift(state.meta.campaign);
@@ -219,7 +227,8 @@
         if (state.active) {
           $('mode').value='resume';
           $('saved').value=state.meta.campaign;
-          if (providerOptions().some(option => option.value === state.meta.provider)) $('provider').value=state.meta.provider;
+          const savedChoice = allModels.find(option => option.value === state.meta.provider);
+          if (savedChoice) { $('dm-launcher').value=savedChoice.dataset.launcher; showModels(); $('provider').value=savedChoice.value; }
         } else if (names.length) $('mode').value='resume';
         initialized=true;
       }
@@ -304,7 +313,9 @@
     $('close-campaign').addEventListener('click', closeDialog);
     dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
     dialog.addEventListener('close', () => display.contentWindow.postMessage({type:'dnd-campaign-closed'}, displayOrigin));
-    for (const id of ['mode', 'provider', 'name', 'saved']) $(id).addEventListener('change', updateControls);
+    $('dm-launcher').addEventListener('change', showModels);
+    showModels();
+    for (const id of ['mode', 'dm-launcher', 'provider', 'name', 'saved']) $(id).addEventListener('change', updateControls);
     dialog.showModal();
     refresh();
     setInterval(refresh, 1200);

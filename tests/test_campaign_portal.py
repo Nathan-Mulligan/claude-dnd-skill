@@ -404,4 +404,5 @@ def test_page_lists_every_dm_choice(client):
     page = client[0].get("/", base_url="http://127.0.0.1:5002").get_data(as_text=True)
     for key, choice in portal.DM_CHOICES.items():
         assert f'value="{key}" data-launcher="{choice.launcher}"' in page
-    assert page.index('value="codex-sol"') < page.index('value="codex"')
+    assert page.index('value="codex-sol" data-launcher') < page.index('value="codex" data-launcher')
+    assert '<option value="qwen" data-label="Ollama">' in page
