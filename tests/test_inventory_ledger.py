@@ -383,3 +383,39 @@ def test_renaming_a_pc_moves_the_ledger_with_the_sheet(enderal):
     assert ledger(enderal, "nella-thorn")["character"] == "Nella Thorn"
     code, text, _ = cli("show", "--character", "Nella Thorn")
     assert code == 0 and "109 gp" in text
+
+
+def test_tonights_lines_become_cargo_and_a_document_item():
+    parsed = inv.parse_prose_inventory(
+        "**Shared caravan property:** one additional shortbow confiscated from the surrendered road "
+        "bandit on 17 Duskfall; no extra arrows or coins taken.\n"
+        "**Business documents:** Dera Voss’s order: two crates of iron barrel hoops, 4 sp cartage.\n")
+    assert [(c["name"], c["notes"]) for c in parsed["cargo"]] == [
+        ("Shortbow", "confiscated from the surrendered road bandit on 17 Duskfall")]
+    assert parsed["notes"] == ["Shared caravan property: No extra arrows or coins taken."]
+    doc = parsed["items"][0]
+    assert doc["name"] == "Business documents" and doc["category"] == "gear" and "4 sp cartage" in doc["notes"]
+    assert not parsed["unread"]
+
+
+def test_parenthesised_notes_keep_their_and():
+    parsed = inv.parse_prose_inventory("**Adventuring Gear:** rope (gift from Ada and Bob), 2 sacks\n")
+    assert [(i["name"], i.get("notes")) for i in parsed["items"]] == [
+        ("Rope", "gift from Ada and Bob"), ("Sack", None)]
+
+
+def test_forced_remigration_keeps_armour_taken_off(enderal):
+    migrated(enderal)
+    cli("unequip", "--character", "nella-reed", "Shield")
+    assert cli("migrate", "--character", "nella-reed", "--write", "--force")[0] == 0
+    shield = next(i for i in ledger(enderal, "nella-reed")["items"] if i["name"] == "Shield")
+    assert shield["equipped"] is False
+
+
+def test_cargo_change_refused_before_writing_when_a_ledger_is_broken(enderal):
+    migrated(enderal)
+    (enderal / "characters/nella-reed.inventory.json").write_text("{bad", encoding="utf-8")
+    before = (enderal / "party_inventory.json").read_text(encoding="utf-8")
+    code, _, err = cli("cargo", "add", "Barrel hoops", "--qty", "2")
+    assert code == 2 and "nella-reed.inventory.json" in err
+    assert (enderal / "party_inventory.json").read_text(encoding="utf-8") == before
