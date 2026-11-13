@@ -2369,8 +2369,11 @@ def _ensure_npc_voice(name: str, requested: str = "") -> "dict | None":
     if not raw_name or len(raw_name) > 80 or raw_name.startswith("_"):
         return None
     requested = str(requested or "").strip()
-    if requested and not _voice_ok(requested):
-        requested = ""
+    narrator = _read_narrator_voice()
+    gemini = narrator in _tts.GEMINI_VALID_VOICES
+    if requested and (not _voice_ok(requested)
+                      or (requested in _tts.GEMINI_VALID_VOICES) != gemini):
+        requested = ""     # unknown, or from the other backend: pick one instead
     try:
         with _cast_lock:
             path = _cast_file()
@@ -2387,7 +2390,6 @@ def _ensure_npc_voice(name: str, requested: str = "") -> "dict | None":
             elif requested:
                 cast[key], src[key] = requested, _cast_voices.DM
             else:
-                narrator = _read_narrator_voice()
                 with _stats_lock:
                     party_names = [str(p.get("name", "")) for p in _current_stats.get("players", [])
                                    if isinstance(p, dict)]

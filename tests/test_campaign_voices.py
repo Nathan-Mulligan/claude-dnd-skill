@@ -204,6 +204,15 @@ def test_dm_voice_is_saved_and_can_replace_an_automatic_pick(cast_display):
     assert client.get('/cast').json['pell'] in KOKORO
 
 
+def test_voice_from_the_other_backend_is_replaced_by_a_matching_pick(cast_display, monkeypatch):
+    module, client, sent = cast_display
+    monkeypatch.setattr(module, '_read_narrator_voice', lambda: 'Enceladus')
+    monkeypatch.setattr(module, '_voice_ok', lambda voice: True)
+    _npc(client, 'Vesna', npc_voice='bf_alice')
+    voice = client.get('/cast').json['vesna']
+    assert voice in module._tts.GEMINI_VALID_VOICES and voice != 'Enceladus'
+
+
 def test_dm_voice_never_replaces_a_hand_pick(cast_display):
     module, client, sent = cast_display
     client.post('/cast', json={'name': 'Nella Reed', 'voice': 'bf_emma'})
