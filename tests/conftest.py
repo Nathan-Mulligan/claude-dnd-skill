@@ -10,6 +10,10 @@ from pathlib import Path
 _campaign_sandbox = tempfile.TemporaryDirectory(prefix="dnd-pytest-campaigns-")
 os.environ["DND_CAMPAIGN_ROOT"] = _campaign_sandbox.name
 os.environ.pop("DND_RUNTIME_DIR", None)
+# Music and background renderers are configured by these or by runtime JSON files;
+# without either, the display never starts a real render during tests.
+for _name in [name for name in os.environ if name.startswith(("DND_MUSIC_", "DND_IMAGE_"))]:
+    os.environ.pop(_name)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/dnd/scripts"))
 import paths
 

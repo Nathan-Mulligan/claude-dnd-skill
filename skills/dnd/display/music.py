@@ -22,115 +22,10 @@ from pathlib import Path
 from typing import Callable
 
 from music_filter import lowpass_wav
+from scene_engine import (  # noqa: F401  (re-exported for callers of music)
+    MOOD_PROFILES, MOODS, SETTING_ALIASES, SETTINGS, SceneContext, music_prompt as prompt_for, theme_mood,
+)
 
-SETTINGS = frozenset({
-    "arcane", "castle", "cave", "city", "crypt", "desert", "dungeon",
-    "fire", "forest", "mine", "mountain", "night", "ocean", "prison",
-    "ruins", "swamp", "tavern", "temple",
-})
-SETTING_ALIASES = {"tower": "arcane"}
-MOODS = frozenset({"calm", "curious", "ominous", "tense", "warm"})
-
-
-MOOD_PROFILES = {
-    "warm": {"atmosphere": "Welcoming, happy and gently playful fantasy atmosphere.",
-             "visual": "Muted leaf greens, warm amber and soft golden light in the scenery.",
-             "music": "Consonant acoustic folk phrasing, gentle lilting melody and warm harmonies."},
-    "ominous": {"atmosphere": "Shadowed, uncanny dark fantasy atmosphere.",
-                "visual": "Cool slate blues, deep violet shadows and sparse restrained amber light.",
-                "music": "Restrained minor or suspended harmonies, low strings and distant hollow bells."},
-    "curious": {"atmosphere": "Curious fantasy wonder with a light sense of mystery.",
-                "visual": "Balanced muted teal and brass, soft pools of light and inviting shaded detail.",
-                "music": "Light plucked phrases, airy woodwind answers and gently exploring motifs."},
-    "calm": {"atmosphere": "Peaceful, tranquil and unhurried fantasy atmosphere.",
-             "visual": "Soft sage, muted blue and lavender, diffused light and gentle edges.",
-             "music": "Long gentle melodic sustains, sparse harp and settled quiet harmonies."},
-    "tense": {"atmosphere": "Tense fantasy anticipation with restrained urgency.",
-              "visual": "Desaturated umber, cool shadows and small restrained red accents.",
-              "music": "Held string figures and a restrained uneven pulse without harsh stingers."},
-}
-
-
-@dataclass(frozen=True)
-class PlaceTheme:
-    name: str
-    mood: str | None = None
-
-    def __post_init__(self):
-        if not isinstance(self.name, str) or not self.name.strip() or len(self.name) > 100 or "\0" in self.name:
-            raise ValueError("invalid place theme name")
-        if self.mood is not None and (not isinstance(self.mood, str) or self.mood not in MOODS):
-            raise ValueError("invalid place theme mood")
-
-    def to_dict(self) -> dict:
-        return {"name": self.name} | ({"mood": self.mood} if self.mood is not None else {})
-
-
-@dataclass(frozen=True)
-class SceneContext:
-    key: str
-    label: str
-    description: str
-    theme: tuple[PlaceTheme, ...] | None = None
-    era: str | None = None
-
-    @classmethod
-    def parse(cls, value: dict | SceneContext | None) -> SceneContext | None:
-        if value is None:
-            return None
-        if isinstance(value, cls):
-            return value
-        required = {"key", "label", "description"}
-        if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"theme", "era"}:
-            raise ValueError("scene requires key, label and description")
-        if not all(isinstance(value[key], str) for key in required):
-            raise ValueError("scene fields must be text")
-        theme = None
-        if "theme" in value:
-            levels = value["theme"]
-            if not isinstance(levels, list) or len(levels) > 8:
-                raise ValueError("scene theme must contain at most eight places")
-            parsed = []
-            for level in levels:
-                if not isinstance(level, dict) or "name" not in level or set(level) - {"name", "mood"}:
-                    raise ValueError("place theme requires a name and optional mood")
-                if not isinstance(level["name"], str):
-                    raise ValueError("place theme name must be text")
-                parsed.append(PlaceTheme(level["name"].strip(), level.get("mood")))
-            theme = tuple(parsed)
-        era = None
-        if "era" in value:
-            era = value["era"]
-            if not isinstance(era, str) or not era.isprintable():
-                raise ValueError("invalid scene era")
-            era = era.strip()
-        return cls(**{key: value[key].strip() for key in required}, theme=theme, era=era)
-
-    def __post_init__(self):
-        if not isinstance(self.key, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", self.key):
-            raise ValueError("invalid scene key")
-        for text, limit in ((self.label, 120), (self.description, 800)):
-            if not isinstance(text, str) or not text.strip() or len(text) > limit or "\0" in text:
-                raise ValueError("invalid scene label or description")
-        if self.theme is not None and (not isinstance(self.theme, tuple) or len(self.theme) > 8 or
-                                       not all(isinstance(level, PlaceTheme) for level in self.theme)):
-            raise ValueError("invalid scene theme")
-        if self.era is not None and (not isinstance(self.era, str) or not self.era.strip() or
-                                     len(self.era) > 100 or not self.era.isprintable()):
-            raise ValueError("invalid scene era")
-
-    def to_dict(self) -> dict:
-        value = {"key": self.key, "label": self.label, "description": self.description}
-        if self.theme is not None:
-            value["theme"] = [level.to_dict() for level in self.theme]
-        if self.era is not None:
-            value["era"] = self.era
-        return value
-
-    def place_guidance(self) -> str:
-        if not self.theme:
-            return ""
-        return "Place ancestry: " + " > ".join(level.name for level in self.theme) + ". The resolved atmosphere below takes precedence over ancestor tones. "
 
 @dataclass(frozen=True)
 class Job:
@@ -144,63 +39,7 @@ class Job:
     path: Path
 
 
-# Each setting supplies a default tone; an explicit/inherited mood overrides it.
-SCENE_MUSIC = {
-    "arcane": ("Arcane tower", "curious", "Measured, intricate and subtly strange."),
-    "castle": ("Castle", "calm", "Measured, steady and dignified."),
-    "cave": ("Gloomy cavern", "ominous", "Low, hollow and shadowed, with slow movement."),
-    "city": ("City", "warm", "Everyday activity and a steady pace."),
-    "crypt": ("Ancient crypt", "ominous", "Still, shadowed and restrained."),
-    "desert": ("Desert journey", "calm", "Open, dry and unhurried."),
-    "dungeon": ("Dungeon", "ominous", "Low, shadowed and restrained."),
-    "fire": ("Firelit", "tense", "A steady pulse and a sense of approaching danger."),
-    "forest": ("Calm woodland", "calm", "Grounded, spacious and gently flowing."),
-    "mine": ("Old mine", "ominous", "Deep stone passages and distant activity."),
-    "mountain": ("Mountain journey", "calm", "Open, steady and dignified, with a sense of distance."),
-    "night": ("Night journey", "calm", "Quiet, measured and unhurried."),
-    "ocean": ("Ocean journey", "calm", "Broad, gently flowing and steady."),
-    "prison": ("Prison", "ominous", "Confined, subdued and watchful."),
-    "ruins": ("Ancient ruins", "curious", "Weathered stone, forgotten history and quiet mystery."),
-    "swamp": ("Swamp", "ominous", "Low, murky and slow-moving."),
-    "tavern": ("Medieval tavern", "warm", "A friendly but aged roadside inn."),
-    "temple": ("Sacred sanctuary", "calm", "Still, reverent and softly resonant."),
-}
-MUSIC_MOODS = {
-    "calm": "Grounded, spacious and gently flowing.",
-    "curious": "Measured and quietly mysterious.",
-    "ominous": "Low, shadowed and restrained.",
-    "tense": "Restrained unease, a steady pulse and a sense of approaching danger.",
-    "warm": "Understated warmth and an easygoing pace.",
-}
 NEGATIVE_PROMPT = "Vocals, distortion, guitar, lute, drone."
-BATTLE_PROMPT = (
-    "Medieval fantasy battle music with frame drum. Driving rhythm, "
-    "forceful bowed string phrases. Urgent and determined."
-)
-
-
-def prompt_for(setting: str, mood: str, kind: str, scene: SceneContext | None = None) -> str:
-    era = scene.era if scene and scene.era else "medieval"
-    if kind == "combat":
-        return BATTLE_PROMPT.replace("Medieval", era.capitalize(), 1)
-    title, default_mood, tone = SCENE_MUSIC[setting]
-    if mood != default_mood:
-        title = title.removeprefix("Calm ").removeprefix("Gloomy ")
-        tone = MUSIC_MOODS[mood]
-    if era != "medieval":
-        title = title.removeprefix("Medieval ")
-    prefix = f"{title} fantasy music. {tone}"
-    if kind == "bed":
-        purpose = (f"Atmospheric {era} instrumental background music with sparse frame drum. "
-                   "Spacious and understated, long spaces between melodies.")
-    else:
-        purpose = f"{era.capitalize()} instrumental music with frame drum."
-    context = ""
-    if scene:
-        context = f" Scene: {scene.label}. {scene.description}"
-        if scene.theme:
-            context += " Place ancestry: " + " > ".join(level.name for level in scene.theme) + "."
-    return f"{prefix} {purpose}{context}".strip()
 
 
 def runtime_config(config_path: Path) -> tuple[Path | None, Path | None]:
@@ -427,7 +266,7 @@ class MusicDirector:
                     context = replace(context, theme=self.scene.theme)
                 if context is not None and context.era is None and self.scene is not None:
                     context = replace(context, era=self.scene.era)
-                inherited = next((level.mood for level in reversed(context.theme or ()) if level.mood is not None), None) if context else None
+                inherited = theme_mood(context.theme) if context else None
                 same_place = (context is not None and self.scene is not None and
                               context.key == self.scene.key and setting == self.setting and
                               context.theme == self.scene.theme)
