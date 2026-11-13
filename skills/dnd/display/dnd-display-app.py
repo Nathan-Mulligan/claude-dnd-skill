@@ -1175,6 +1175,7 @@ _load_log()
 # Players are merged by name so partial updates (just HP, just XP) work.
 
 _current_stats: dict = {}
+_stats_owner: Optional[str] = None  # campaign whose party _current_stats holds; None after /clear
 _stats_lock = threading.Lock()
 
 
@@ -1185,13 +1186,10 @@ def _active_campaign_name() -> Optional[str]:
         return None
 
 
-def _party_file(campaign: Optional[str] = None) -> Optional[Path]:
+def _party_file(campaign: str) -> Optional[Path]:
     """The campaign's own copy of its sidebar stats, so a switch never depends on the DM re-pushing them."""
-    name = campaign if campaign is not None else _active_campaign_name()
-    if not name:
-        return None
     try:
-        folder = _find_campaign(name)
+        folder = _find_campaign(campaign)
     except Exception:
         return None
     return folder / "party_stats.json" if folder.is_dir() else None
@@ -1210,9 +1208,10 @@ def _persist_stats() -> None:
     try:
         with _stats_lock:
             data = dict(_current_stats)
+            owner = _stats_owner
         with open(STATS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
-        party = _party_file()
+        party = _party_file(owner) if owner else None
         if party and data.get("players"):
             tmp = party.with_name(party.name + ".tmp")
             tmp.write_text(json.dumps(data), encoding="utf-8")
@@ -1222,18 +1221,36 @@ def _persist_stats() -> None:
 
 
 def _select_party(campaign: str) -> None:
-    """Show the selected campaign's saved party, unless this campaign's party is already on screen."""
-    global _current_stats, _expected_count
+    """Show the selected campaign's saved party.
+
+    A party pushed since the last /clear has no owner yet; selecting a campaign adopts it.
+    """
+    global _current_stats, _stats_owner, _expected_count
     with _stats_lock:
-        if campaign == _active_campaign_name() and _current_stats.get("players"):
+        if _stats_owner == campaign or (_stats_owner is None and _current_stats.get("players")):
+            _stats_owner = campaign
             return
         _current_stats = _read_party(campaign)
+        _stats_owner = campaign
         if _current_stats.get("players"):
             _expected_count = max(1, len(_current_stats["players"]))
 
 
+def _restore_before_partial_update() -> None:
+    """A partial player update after /clear merges into the saved sheet instead of replacing it with a stub."""
+    global _current_stats, _stats_owner
+    name = _active_campaign_name()
+    with _stats_lock:
+        if _stats_owner is not None or _current_stats.get("players") or not name:
+            return
+        saved = _read_party(name)
+        if saved:
+            _current_stats = {**saved, **_current_stats, "players": saved["players"]}
+            _stats_owner = name
+
+
 def _load_stats() -> None:
-    global _expected_count
+    global _expected_count, _stats_owner
     try:
         with open(STATS_FILE, encoding="utf-8") as f:
             data = json.load(f)
@@ -1241,21 +1258,15 @@ def _load_stats() -> None:
         data = {}
     if not isinstance(data, dict):
         data = {}
-    if not data.get("players"):
-        name = _active_campaign_name()
-        saved = _read_party(name) if name else {}
-        data = {**data, **saved}
-    try:
-        with _stats_lock:
-            _current_stats.update(data)
-        # Initialise expected player count from persisted stats so solo-mode
-        # detection is correct immediately after restart, without waiting for
-        # the next /stats POST.
-        loaded_players = data.get("players", [])
-        if loaded_players:
-            _expected_count = max(1, len(loaded_players))
-    except Exception:
-        pass
+    name = _active_campaign_name()
+    saved = _read_party(name) if name else {}
+    if saved:
+        data = {**saved, **data, "players": saved["players"]}
+    with _stats_lock:
+        _current_stats.update(data)
+        _stats_owner = name if saved else None
+    if data.get("players"):
+        _expected_count = max(1, len(data["players"]))
 
 
 _load_stats()
@@ -1683,6 +1694,8 @@ def stats():
         return "", 204
     if str(data.get("campaign") or "").strip():
         _select_party(str(data["campaign"]).strip())
+    elif data.get("players") and not data.get("replace_players"):
+        _restore_before_partial_update()
 
     _effect_expire_events: list[dict] = []
     with _stats_lock:
@@ -2379,11 +2392,12 @@ def clear():
     """
     if not _token_ok():
         return "Forbidden", 403
-    global _scene_buffer, _current_scene_name, _current_stats, _setup_question, _expected_count
+    global _scene_buffer, _current_scene_name, _current_stats, _stats_owner, _setup_question, _expected_count
     with _text_log_lock:
         _text_log.clear()
     with _stats_lock:
         _current_stats = {}
+        _stats_owner = None
     _scene_buffer = []
     _current_scene_name = "tavern"
     _setup_question = ""

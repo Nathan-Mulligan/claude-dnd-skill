@@ -95,3 +95,48 @@ def test_dm_push_still_updates_a_restored_party(display):
     client.post("/stats", json={"players": [{"name": "Elbane III", "hp": {"current": 4, "max": 10}}]})
     player = module._current_stats["players"][0]
     assert player["hp"]["current"] == 4 and player["class"] == "Rogue"
+
+
+def saved_names(tmp_path, campaign):
+    path = tmp_path / "campaigns" / campaign / "party_stats.json"
+    if not path.exists():
+        return None
+    return [p["name"] for p in json.loads(path.read_text(encoding="utf-8"))["players"]]
+
+
+def test_new_campaign_party_never_lands_in_the_previous_campaign(display):
+    module, client, tmp_path = display
+    select(client, "Enderal")
+    client.post("/stats", json={"players": [ELBANE], "replace_players": True})
+    assert client.post("/clear", json={}).status_code == 204
+    client.post("/stats", json={"players": [KICK], "replace_players": True})
+    assert saved_names(tmp_path, "Enderal") == ["Elbane III"]
+    client.post("/stats", json={"campaign": "Machines"})
+    assert names(module) == ["Karate Kick"]
+    assert saved_names(tmp_path, "Machines") == ["Karate Kick"]
+    assert saved_names(tmp_path, "Enderal") == ["Elbane III"]
+
+
+def test_partial_update_after_clear_keeps_the_full_saved_sheet(display):
+    module, client, tmp_path = display
+    select(client, "Enderal")
+    client.post("/stats", json={"players": [ELBANE], "replace_players": True})
+    assert client.post("/clear", json={}).status_code == 204
+    client.post("/stats", json={"players": [{"name": "Elbane III", "hp": {"current": 4, "max": 10}}]})
+    player = module._current_stats["players"][0]
+    assert player["class"] == "Rogue" and player["hp"]["current"] == 4
+    saved = json.loads((tmp_path / "campaigns/Enderal/party_stats.json").read_text(encoding="utf-8"))
+    assert saved["players"][0]["class"] == "Rogue"
+
+
+def test_startup_keeps_newer_runtime_details_with_the_saved_party(display):
+    module, client, tmp_path = display
+    select(client, "Enderal")
+    client.post("/stats", json={"players": [ELBANE], "replace_players": True, "world_time": {"date": "old"}})
+    Path(module.STATS_FILE).write_text(json.dumps({"world_time": {"date": "new"}}), encoding="utf-8")
+    with module._stats_lock:
+        module._current_stats.clear()
+    module._load_stats()
+    assert names(module) == ["Elbane III"]
+    assert module._current_stats["world_time"] == {"date": "new"}
+    assert module._stats_owner == "Enderal"
