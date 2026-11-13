@@ -1085,8 +1085,24 @@
     font-size:var(--type-support); color: rgba(200,185,150,0.6); line-height: 1.55;
   }
   .sm-inventory-list {
-    list-style: none; column-count: 2; column-gap: 24px;
+    list-style: none; padding: 0; margin: 0;
   }
+  .sm-inv-label {
+    font-family:var(--font-heading); font-size:var(--type-label);
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: rgba(180,140,60,0.75); margin-right: 8px;
+  }
+  .sm-purse {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px;
+    margin-top: 10px;
+  }
+  .sm-purse .sm-stat-label { display: inline; }
+  .sm-coin { font-family:var(--font-heading); font-size:var(--type-body); }
+  .sm-coin-pp { color: rgb(120,140,170); }
+  .sm-coin-gp { color: rgb(200,150,40); }
+  .sm-coin-ep { color: rgb(150,145,110); }
+  .sm-coin-sp { color: rgb(125,135,150); }
+  .sm-coin-cp { color: rgb(180,100,55); }
   .sm-inventory-list li {
     font-size:var(--type-support); color: rgba(200,185,150,0.7);
     padding: 2px 0; break-inside: avoid;
@@ -5914,6 +5930,21 @@ function _smDivider() {
 
 let _openSheetName = null;
 
+function _isCurrencyLine(line) {
+  return /^\s*(\*\*)?\s*(currency|coins?|purse|money)\b/i.test(String(line || ''));
+}
+// "**Currency:** 32 gp 8 sp 7 cp (after …)" → [["32","gp"],["8","sp"],["7","cp"]].
+// Reads only the leading run of amounts, so later history ("less 91 gp") is ignored.
+function _purseFromInventory(inv) {
+  const line = (inv || []).find(_isCurrencyLine);
+  if (!line) return null;
+  const body = String(line).replace(/^\s*(\*\*)?[^:]*:\s*(\*\*)?\s*/, '');
+  const run = body.match(/^(?:\s*[\d,]+\s*(?:pp|gp|ep|sp|cp)\b[\s,]*)+/i);
+  if (!run) return null;
+  const out = [...run[0].matchAll(/([\d,]+)\s*(pp|gp|ep|sp|cp)\b/gi)].map(m => [m[1], m[2].toLowerCase()]);
+  return out.length ? out : null;
+}
+
 function openSheet(name) {
   _openSheetName = name;
   const p = _playerData[name];
@@ -5984,6 +6015,24 @@ function openSheet(name) {
     content.appendChild(xpEl);
   }
 
+  // Coin purse, read from the sheet's "Currency" inventory line.
+  const sheet = p.sheet || {};
+  const purse = _purseFromInventory(sheet.inventory);
+  if (purse) {
+    const pEl = document.createElement('div');
+    pEl.className = 'sm-purse';
+    const lab = document.createElement('span');
+    lab.className = 'sm-stat-label'; lab.textContent = 'Purse';
+    pEl.appendChild(lab);
+    purse.forEach(([n, coin]) => {
+      const c = document.createElement('span');
+      c.className = 'sm-coin sm-coin-' + coin;
+      c.textContent = `${n} ${coin}`;
+      pEl.appendChild(c);
+    });
+    content.appendChild(pEl);
+  }
+
   // Ability scores (always shown in modal)
   if (p.ability_scores) {
     content.appendChild(_smDivider());
@@ -6004,8 +6053,6 @@ function openSheet(name) {
     });
     content.appendChild(grid);
   }
-
-  const sheet = p.sheet || {};
 
   // Show friendly notice when sheet data hasn't been pushed yet
   if (!p.sheet) {
@@ -6106,6 +6153,34 @@ function openSheet(name) {
     }
   }
 
+  // Inventory (above Features). Lines arrive as "**Label:** text" from the sheet file.
+  const invLines = (sheet.inventory || []).filter(l => !_isCurrencyLine(l) || !purse);
+  if (invLines.length) {
+    content.appendChild(_smDivider());
+    const title = document.createElement('div');
+    title.className = 'sm-section-title';
+    title.innerHTML = '<img src="/icons/pack.png" class="sheet-section-icon" alt="">Inventory';
+    content.appendChild(title);
+    const list = document.createElement('ul');
+    list.className = 'sm-inventory-list';
+    invLines.forEach(item => {
+      const li = document.createElement('li');
+      const m = String(item).match(/^\s*\*\*([^*]+?):?\*\*:?\s*(.*)$/s);
+      if (m) {
+        const lab = document.createElement('span');
+        lab.className = 'sm-inv-label';
+        lab.textContent = m[1].replace(/:$/, '');
+        li.appendChild(lab);
+        li.appendChild(document.createTextNode(m[2]));
+      } else {
+        li.textContent = item;
+      }
+      li.dataset.srdName = item; li.dataset.srdCategory = 'item';
+      list.appendChild(li);
+    });
+    content.appendChild(list);
+  }
+
   // Features & Passives
   if (sheet.features && sheet.features.length) {
     content.appendChild(_smDivider());
@@ -6127,24 +6202,6 @@ function openSheet(name) {
       el.appendChild(textEl);
       content.appendChild(el);
     });
-  }
-
-  // Inventory
-  if (sheet.inventory && sheet.inventory.length) {
-    content.appendChild(_smDivider());
-    const title = document.createElement('div');
-    title.className = 'sm-section-title';
-    title.innerHTML = '<img src="/icons/pack.png" class="sheet-section-icon" alt="">Inventory';
-    content.appendChild(title);
-    const list = document.createElement('ul');
-    list.className = 'sm-inventory-list';
-    sheet.inventory.forEach(item => {
-      const li = document.createElement('li');
-      li.textContent = item;
-      li.dataset.srdName = item; li.dataset.srdCategory = 'item';
-      list.appendChild(li);
-    });
-    content.appendChild(list);
   }
 
   // Relationships
