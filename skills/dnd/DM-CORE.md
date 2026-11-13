@@ -97,7 +97,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`. Pipe with `echo` instead when the text holds shell variables.
 - Send the whole narration, word for word. Never send probe or debug text.
 - Put stat changes on the narration send, for example `--stat-hp "NAME:CUR:MAX"` or `--stat-condition-add "NAME:Poisoned"`. The full list is under Display sync in SKILL.md.
-- When the party reaches a new place, or a place's mood truly changes, add `--scene "<place>: <what is happening>"` to that narration's `send.py` call. Add `--mood calm|curious|ominous|tense|warm` only when the moment's feel differs from the place. No `/health` read is needed, and repeating the current place changes nothing.
+- When the party reaches a new place, or a place's mood truly changes, add `--scene "<place>: <what is happening>"` to that narration's `send.py` call. After the colon, describe the actual view and its atmosphere, including darkness where appropriate, because it drives the music and the background image. Add `--mood calm|curious|ominous|tense|warm` only when the moment's feel differs from the place. No `/health` read is needed, and repeating the current place changes nothing.
 - When a fight starts, put `--music-event combat-start` on the first combat narration. Put `--music-event combat-end` on the first narration after it.
 
 ## 11. Opening a session

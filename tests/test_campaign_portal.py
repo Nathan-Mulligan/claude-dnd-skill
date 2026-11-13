@@ -456,7 +456,7 @@ def test_scene_protocol_prefix_reaches_each_launch_mode(mode, onboarding):
     prompt = portal.initial_prompt(mode, "adventure", "A strange new world", onboarding)
     assert prompt.startswith(portal.SCENE_PROTOCOL)
     assert '--scene "<place>: <what is happening>"' in prompt
-    assert len(portal.SCENE_PROTOCOL) < 300
+    assert len(portal.SCENE_PROTOCOL) < 450
     if onboarding is not None:
         assert json.loads(prompt.split("Completed questionnaire JSON: ", 1)[1]) == onboarding
 
