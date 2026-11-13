@@ -1178,14 +1178,58 @@ _current_stats: dict = {}
 _stats_lock = threading.Lock()
 
 
+def _active_campaign_name() -> Optional[str]:
+    try:
+        return open(CAMP_FILE, encoding="utf-8").read().strip() or None
+    except OSError:
+        return None
+
+
+def _party_file(campaign: Optional[str] = None) -> Optional[Path]:
+    """The campaign's own copy of its sidebar stats, so a switch never depends on the DM re-pushing them."""
+    name = campaign if campaign is not None else _active_campaign_name()
+    if not name:
+        return None
+    try:
+        folder = _find_campaign(name)
+    except Exception:
+        return None
+    return folder / "party_stats.json" if folder.is_dir() else None
+
+
+def _read_party(campaign: str) -> dict:
+    path = _party_file(campaign)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path else {}
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) and isinstance(data.get("players"), list) else {}
+
+
 def _persist_stats() -> None:
     try:
         with _stats_lock:
             data = dict(_current_stats)
         with open(STATS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
+        party = _party_file()
+        if party and data.get("players"):
+            tmp = party.with_name(party.name + ".tmp")
+            tmp.write_text(json.dumps(data), encoding="utf-8")
+            os.replace(tmp, party)
     except Exception:
         pass
+
+
+def _select_party(campaign: str) -> None:
+    """Show the selected campaign's saved party, unless this campaign's party is already on screen."""
+    global _current_stats, _expected_count
+    with _stats_lock:
+        if campaign == _active_campaign_name() and _current_stats.get("players"):
+            return
+        _current_stats = _read_party(campaign)
+        if _current_stats.get("players"):
+            _expected_count = max(1, len(_current_stats["players"]))
 
 
 def _load_stats() -> None:
@@ -1193,6 +1237,15 @@ def _load_stats() -> None:
     try:
         with open(STATS_FILE, encoding="utf-8") as f:
             data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    if not data.get("players"):
+        name = _active_campaign_name()
+        saved = _read_party(name) if name else {}
+        data = {**data, **saved}
+    try:
         with _stats_lock:
             _current_stats.update(data)
         # Initialise expected player count from persisted stats so solo-mode
@@ -1628,6 +1681,8 @@ def stats():
     data = request.get_json(silent=True) or {}
     if not data:
         return "", 204
+    if str(data.get("campaign") or "").strip():
+        _select_party(str(data["campaign"]).strip())
 
     _effect_expire_events: list[dict] = []
     with _stats_lock:
@@ -2073,13 +2128,6 @@ _KOKORO_VOICE = re.compile(r"[a-z]{2}_[a-z0-9]+(\+[a-z]{2}_[a-z0-9]+)*")
 
 def _voice_ok(voice: str) -> bool:
     return voice in _tts.VALID_VOICES or bool(_KOKORO_VOICE.fullmatch(voice))
-
-
-def _active_campaign_name() -> Optional[str]:
-    try:
-        return open(CAMP_FILE, encoding="utf-8").read().strip() or None
-    except OSError:
-        return None
 
 
 def _read_narrator_voice() -> str:
