@@ -73,7 +73,7 @@
       <form id="campaign-form">
         <div class="grid">
           <div><label for="mode">Campaign</label><select id="mode"><option value="new">New campaign</option><option value="resume">Load campaign</option></select></div>
-          <div><label for="provider">Dungeon Master</label><select id="provider"><option value="qwen">Qwen · local</option><option id="codex-option" value="codex">Codex</option><option value="claude">Claude</option></select></div>
+          <div><label for="provider">Dungeon Master</label><select id="provider">{% for key, choice in dm_choices.items() %}<option value="{{ key }}" data-launcher="{{ choice.launcher }}" data-label="{{ choice.label }}">{{ choice.label }}</option>{% endfor %}</select></div>
         </div>
         <div id="new-fields"><label for="name">Campaign name · optional</label><input id="name" maxlength="60" placeholder="Name your adventure" autocomplete="off"></div>
         <div id="resume-fields" hidden><label for="saved">Saved campaign</label><select id="saved"></select></div>
@@ -127,7 +127,7 @@
     let switching = false;
     let keepDisplayDuringSwitch = false;
     let refreshing = false;
-    const providerNames = {qwen:'Qwen', codex:'Codex', claude:'Claude'};
+    const providerOptions = () => Array.from($('provider').options);
     const message = (text, error=false) => { $('status').textContent=text; $('status').classList.toggle('error', error); };
     const selectedName = () => $('mode').value === 'new' ? $('name').value.trim() : $('saved').value;
     const continuing = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider;
@@ -205,8 +205,10 @@
     }
     function updateState(data) {
       state = {...data, meta:data.meta || {}};
-      $('codex-option').disabled = !data.codex_enabled;
-      $('codex-option').textContent = data.codex_enabled ? 'Codex' : 'Codex · unavailable';
+      for (const option of providerOptions().filter(option => option.dataset.launcher === 'codex')) {
+        option.disabled = !data.codex_enabled;
+        option.textContent = data.codex_enabled ? option.dataset.label : `${option.dataset.label} · unavailable`;
+      }
       const oldValue = $('saved').value;
       const names = [...data.campaigns];
       if (state.active && state.meta.campaign && !names.includes(state.meta.campaign)) names.unshift(state.meta.campaign);
@@ -217,7 +219,7 @@
         if (state.active) {
           $('mode').value='resume';
           $('saved').value=state.meta.campaign;
-          if (providerNames[state.meta.provider]) $('provider').value=state.meta.provider;
+          if (providerOptions().some(option => option.value === state.meta.provider)) $('provider').value=state.meta.provider;
         } else if (names.length) $('mode').value='resume';
         initialized=true;
       }
