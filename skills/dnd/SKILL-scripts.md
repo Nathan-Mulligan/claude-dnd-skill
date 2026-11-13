@@ -421,6 +421,11 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos --campaign $CAMP
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos set --campaign $CAMP --value 7
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos adjust --campaign $CAMP --pc-lost
 
+# Improvised campaigns only (Standard 16): a new NPC's temperament, and what each travel day brings.
+# road prints a skip notice for prebuilt (structured) campaigns.
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --trader
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py road --campaign $CAMP --days 3
+
 # Yes/no oracle — likelihood + chaos modifier → verdict + d100
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py ask --likelihood likely --campaign $CAMP
 # → "NO-BUT  (d100=82, likelihood=likely, chaos=8)"

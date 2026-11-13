@@ -227,6 +227,65 @@ def _resolve_state(name: str):
     return find_campaign(name) / "state.md"
 
 
+# ── improvised-campaign variety: NPC temperament and road days ───────────────
+# Weighted so most people are ordinary and a few stand out. One trait, played lightly.
+
+_TEMPERAMENTS = (
+    (60, "ordinary", ("busy and brisk", "friendly, a little chatty", "gruff but fair", "tired, wants this done",
+                      "cautious with strangers", "plain-spoken", "proud of their work", "distracted by a worry at home",
+                      "polite and forgettable", "quietly helpful")),
+    (30, "colourful", ("sly, enjoys a bargain as a game", "anxious, over-explains", "warmly nosy", "dry joker",
+                       "cheerful about grim things", "superstitious, reads small omens", "pompous about a small title",
+                       "suspicious of outsiders until proven otherwise")),
+    (10, "memorable", ("holds a grudge against someone the party has met", "quietly desperate for help they won't ask for",
+                       "former adventurer with a limp and strong opinions", "collector who trades in stories as well as coin",
+                       "knows more than they should about the current trouble")),
+)
+_WANTS = ("a fair deal and to get on with the day", "news from the road", "a small favour", "to be left alone",
+          "to sell something they've had too long", "a bit of gossip", "reassurance about a worry",
+          "someone to vouch for them")
+_TRADE_STANCES = ("names a fair price and barely haggles", "opens high and enjoys haggling", "needs the sale, flexible",
+                  "won't move on price but throws in something extra", "wants proof of quality first",
+                  "prefers a trade or favour to coin")
+
+_ROAD_DAYS = (
+    (40, "quiet", "An uneventful day. Give it one vivid line of colour (weather, scenery, a fellow traveller in the distance) and move on."),
+    (20, "traveller", "Someone on the road: a pedlar, pilgrims, a patrol or a family on the move. Give them a temperament and a want; they bring news, a trade or a request."),
+    (15, "obstacle", "The road makes them choose: washed-out ford, fallen tree, toll bridge, fog or a lame mule. Offer two real options with different costs."),
+    (10, "discovery", "Something off the road: an abandoned cart, a roadside shrine, fresh tracks, smoke on the horizon. Investigating costs time; ignoring it may cost later."),
+    (10, "danger", "Trouble scaled to the difficulty dial: bandits demanding a toll, wolves at dusk, a rival who followed them. Let talk, flight or a fight all work."),
+    (5, "story", "The current arc beat's world_pressure catches up with them on the road. Run it as a concrete event that demands a response."),
+)
+
+
+def _weighted(table, rng):
+    roll = rng.randint(1, sum(row[0] for row in table))
+    for row in table:
+        roll -= row[0]
+        if roll <= 0:
+            return row
+    return table[-1]
+
+
+def npc_temperament(rng=None, trader: bool = False) -> dict:
+    rng = rng or random.Random()
+    _, tier, traits = _weighted(_TEMPERAMENTS, rng)
+    result = {"tier": tier, "temperament": rng.choice(traits), "wants": rng.choice(_WANTS)}
+    if trader:
+        result["trades"] = rng.choice(_TRADE_STANCES)
+    return result
+
+
+def road_day(rng=None) -> tuple[str, str]:
+    rng = rng or random.Random()
+    _, kind, prompt = _weighted(_ROAD_DAYS, rng)
+    return kind, prompt
+
+
+def is_prebuilt(state_text: str) -> bool:
+    return re.search(r"^\s*type:\s*[\"']?structured", state_text, re.MULTILINE) is not None
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 
@@ -288,6 +347,30 @@ def cmd_scene(args) -> int:
     return 0
 
 
+def cmd_npc(args) -> int:
+    rng = random.Random(args.seed) if args.seed is not None else random.Random()
+    npc = npc_temperament(rng=rng, trader=args.trader)
+    print(f"temperament ({npc['tier']}): {npc['temperament']}")
+    print(f"wants right now: {npc['wants']}")
+    if "trades" in npc:
+        print(f"trades: {npc['trades']}")
+    print("Play one trait lightly and keep it every time they appear. Record it in npcs.md.")
+    return 0
+
+
+def cmd_road(args) -> int:
+    if args.campaign:
+        state_path = _resolve_state(args.campaign)
+        if state_path.exists() and is_prebuilt(state_path.read_text(encoding="utf-8")):
+            print("Prebuilt campaign: use the module's own travel and wandering-encounter rules, not this table.")
+            return 0
+    rng = random.Random(args.seed) if args.seed is not None else random.Random()
+    for day in range(1, args.days + 1):
+        kind, prompt = road_day(rng=rng)
+        print(f"day {day}: {kind}. {prompt}")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(prog="oracle", description=__doc__.split("\n", 2)[1])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -318,6 +401,17 @@ def main() -> int:
     sp = sub.add_parser("scene", help="random scene-meaning word pair")
     sp.add_argument("--seed", type=int)
     sp.set_defaults(func=cmd_scene)
+
+    sp = sub.add_parser("npc", help="temperament and current want for a new NPC (improvised campaigns)")
+    sp.add_argument("--trader", action="store_true", help="also roll how they trade")
+    sp.add_argument("--seed", type=int)
+    sp.set_defaults(func=cmd_npc)
+
+    sp = sub.add_parser("road", help="what each travel day brings (improvised campaigns)")
+    sp.add_argument("--days", type=int, default=1)
+    sp.add_argument("--campaign", help="skip the table for prebuilt (structured) campaigns")
+    sp.add_argument("--seed", type=int)
+    sp.set_defaults(func=cmd_road)
 
     args = p.parse_args()
     return args.func(args)
