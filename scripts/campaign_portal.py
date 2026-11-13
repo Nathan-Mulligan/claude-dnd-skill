@@ -59,8 +59,9 @@ HANDOFF_TIMEOUT = 180
 _handoff_lock = threading.Lock()
 _handoff = {"status": "idle", "message": ""}
 SCENE_PROTOCOL = (
-    "Scene media: when the place or mood truly changes, send the scene cue in SKILL-scripts.md with that "
-    "narration; otherwise keep the current scene. "
+    "Scene media: when the party reaches a new place or its mood truly changes, add "
+    "--scene \"<place>: <what is happening>\" [--mood calm|curious|ominous|tense|warm] to that narration's "
+    "send.py call. The script works out the rest; repeating the current place changes nothing. "
 )
 SETUP_NOTE = (
     "During campaign or character setup, treat it as the answer to your latest question. "

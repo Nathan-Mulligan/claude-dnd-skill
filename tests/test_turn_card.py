@@ -87,6 +87,15 @@ def test_npc_named_in_the_party_input_is_listed_with_attitude(enderal):
     assert "People here: Piers Lowell (jumpy, over-polite; unfriendly)" in text
 
 
+def test_npc_saved_by_the_oracle_shows_temperament_and_want(enderal):
+    oracle_spec = importlib.util.spec_from_file_location("oracle_for_card", REPO / "skills/dnd/scripts/oracle.py")
+    oracle = importlib.util.module_from_spec(oracle_spec)
+    oracle_spec.loader.exec_module(oracle)
+    oracle.save_npc_fields(enderal / "npcs.md", "Meren Vale",
+                           [("Temperament", "brisk, counts twice (ordinary)"), ("Wants now", "flour before the frost")])
+    assert "People here: Meren Vale (brisk, counts twice (ordinary); wants flour before the frost)" in card(enderal)
+
+
 def test_missing_sections_are_skipped(tmp_path):
     folder = tmp_path / "campaigns" / "Bare"
     folder.mkdir(parents=True)

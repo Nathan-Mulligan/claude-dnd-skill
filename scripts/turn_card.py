@@ -155,7 +155,8 @@ def _npc_entries(npcs: str) -> dict[str, dict]:
         if name.lower() in {"personality", "relationships", "notes"} or "<" in name:
             continue
         entry = entries.setdefault(name, {})
-        for label, key in (("Attitude toward party", "attitude"), ("Demeanor", "demeanor"), ("Temperament", "temperament")):
+        for label, key in (("Attitude toward party", "attitude"), ("Demeanor", "demeanor"), ("Temperament", "temperament"),
+                           ("Wants now", "wants")):
             found = re.search(rf"\**{label}:?\**:?\s*([^|\n]+)", body, re.IGNORECASE)
             if found and clean(found.group(1)):
                 entry.setdefault(key, clean(found.group(1)))
@@ -185,8 +186,9 @@ def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
         if not _mentioned(name, scene, first_names):
             continue
         attitude = info.get("attitude", "")
-        nature = info.get("demeanor") or info.get("temperament") or info.get("role") or info.get("summary", "")
-        detail = "; ".join(_clip(p, 90).rstrip(".;") for p in (nature, attitude) if p)
+        nature = info.get("temperament") or info.get("demeanor") or info.get("role") or info.get("summary", "")
+        wants = f"wants {info['wants']}" if info.get("wants") else ""
+        detail = "; ".join(_clip(p, 90).rstrip(".;") for p in (nature, attitude, wants) if p)
         present.append(f"{name} ({detail})" if detail else name)
         if len(present) == MAX_NPCS:
             break
