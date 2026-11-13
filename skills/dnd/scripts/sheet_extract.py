@@ -66,7 +66,7 @@ def _kind(heading: str, source: str, who: dict) -> str:
         words = re.findall(r"[a-z']+", value.lower())
         return bool(words) and src in {value.lower(), words[0]}
 
-    if "feat" in low:
+    if re.search(r"\bfeats?\b", low):
         return "feat"
     if same(who["class"]) or low.endswith(" class"):
         return "class"

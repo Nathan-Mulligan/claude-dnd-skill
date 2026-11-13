@@ -419,3 +419,17 @@ def test_cargo_change_refused_before_writing_when_a_ledger_is_broken(enderal):
     code, _, err = cli("cargo", "add", "Barrel hoops", "--qty", "2")
     assert code == 2 and "nella-reed.inventory.json" in err
     assert (enderal / "party_inventory.json").read_text(encoding="utf-8") == before
+
+
+def test_adding_to_a_stack_keeps_the_attributes_given(enderal):
+    migrated(enderal)
+    assert cli("add", "--character", "elbane-iii", "Dagger", "--equipped", "--weight", "1")[0] == 0
+    dagger = next(i for i in ledger(enderal, "elbane-iii")["items"] if i["name"] == "Dagger")
+    assert dagger["qty"] == 3 and dagger["equipped"] is True and dagger["weight"] == 1
+
+
+def test_a_features_heading_is_not_a_feats_heading():
+    text = ("# Bo\n- **Class:** Fighter | **Race:** Elf\n## Features & Traits\n### Fighter Features\n"
+            "- **Second Wind:** Heal.\n### Feats\n- **Alert:** Initiative.\n")
+    kinds = [(f["name"], f["kind"]) for f in sheet_extract.parse_features(text)]
+    assert kinds == [("Second Wind", "class"), ("Alert", "feat")]

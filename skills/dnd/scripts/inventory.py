@@ -267,6 +267,10 @@ def add_item(items: list, new: dict) -> dict:
     found = find_item(items, new["name"])
     if found:
         found["qty"] += new["qty"]
+        if new.get("equipped"):
+            found["equipped"] = True
+        if new.get("weight") is not None:
+            found["weight"] = new["weight"]
         if new.get("notes") and new["notes"] not in found.get("notes", ""):
             found["notes"] = "; ".join(filter(None, [found.get("notes"), new["notes"]]))
         return found
