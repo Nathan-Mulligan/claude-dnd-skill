@@ -1492,10 +1492,12 @@ def chunk():
         return "", 204
 
     music_cue = data.get("music")
+    explicit_music = False
     if isinstance(music_cue, dict) and not any((is_action, is_player, is_npc, is_dice, is_tutor)):
         try:
             _music.transition(music_cue.get("event"), music_cue.get("id"),
                               music_cue.get("setting"), music_cue.get("mood", "ominous"))
+            explicit_music = True
         except ValueError:
             pass  # A malformed optional cue must not suppress valid narration.
 
@@ -1515,14 +1517,23 @@ def chunk():
         if data.get("opener"):
             payload["opener"] = True
         # Scene detection only on DM narration
-        scene = _detect_scene(cleaned)
+        music_state = _music.snapshot()
+        scene = (_detect_scene(cleaned) if music_state["mode"] != "combat" or
+                 (explicit_music and music_cue.get("event") == "scene") else None)
         if scene:
             payload["scene"] = scene
             if _audio:
                 _audio.on_scene_change(scene["name"])
+        setting = scene["name"] if scene else _current_scene_name
+        if not explicit_music and music_state["mode"] != "combat" and (
+                music_state["mode"] == "idle" or
+                (scene and setting != music_state["setting"])):
+            _music.transition("scene", secrets.token_hex(16), setting, music_state["mood"])
         # SFX scan on all non-player text
         if _audio:
-            _audio.on_text(cleaned)
+            with _stats_lock:
+                names = [player.get("name", "") for player in _current_stats.get("players", [])]
+            _audio.on_text(cleaned, ignored_names=names)
 
     # Store full typed payload so replay preserves action/player/npc/dice/tutor context
     log_entry: dict = {"text": cleaned}
