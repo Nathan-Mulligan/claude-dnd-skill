@@ -198,11 +198,13 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 
    The faction panel only appears when at least one faction is present — do not skip this push.
 
+   Optional `detail` on any faction or quest: a sentence or two shown when a player clicks it in the sidebar. **Write only what the party knows.** Hidden faction moves, clocks, Next Hooks and DM-only notes never go here. Leave it out rather than guess. When you leave it out, `display/lore_sync.py` fills it in the background from the party-known sections of `state.md` (World State, Active Quests, Open Threads & Rumours, Recent Events, and an optional `## Party Knowledge`). Put anything players may see but those sections lack under `## Party Knowledge`. Example: `{"name":"Road Wardens","standing":"Neutral","detail":"Keep the Brackenford road and collect its toll. The toll recently doubled; nobody has said why."}`
+
    Quest JSON structure:
    ```json
    [{"name":"The Missing Shipment","status":"resolved"},{"name":"Keth the Collector","status":"threat"}]
    ```
-   Quest `status` values: `active` (amber), `threat` (red), `resolved` (green), `failed` (muted). Use `[]` to clear all quests:
+   Quest `status` values: `active` (amber), `threat` (red), `resolved` (green), `failed` (muted). Quests take the same optional party-known `detail` field as factions. Use `[]` to clear all quests:
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --quests '[...]'
    ```

@@ -217,6 +217,7 @@ python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --player Flerb --inventory-rem
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py \
   --factions '[{"name":"Pale Court","standing":"Allied"},{"name":"Watch","standing":"Neutral"}]'
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --factions '[]'   # clear all
+# Optional "detail" on a faction or quest: shown when a player clicks it. Party-known facts only, no DM secrets.
 
 # Combat turn order (on /dm:dnd combat start):
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --turn-order \

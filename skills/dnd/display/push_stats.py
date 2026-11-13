@@ -373,7 +373,18 @@ def main() -> None:
         print("Nothing to push. Use --help for usage.", file=sys.stderr)
         return
 
+    lore = "factions" in payload or "quests" in payload
+    if lore:
+        try:  # keep the background notes on screen when the DM re-pushes without them
+            import lore_sync
+            lore_sync.apply_cached(payload)
+        except Exception:
+            lore = False
+
     _send(FLASK_URL, json.dumps(payload).encode("utf-8"), _read_token())
+
+    if lore:
+        lore_sync.kick()  # refresh the notes in the background when quests or factions changed
 
 
 if __name__ == "__main__":

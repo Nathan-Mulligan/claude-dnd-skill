@@ -1283,6 +1283,15 @@
   .sb-quest-status.failed   { color: rgba(200,100,80,0.50); }
   .sb-quest-status.unknown  { color: rgba(200,185,150,0.25); }
 
+  /* ── Clickable faction / quest rows + detail card ── */
+  .sb-lore-item { cursor: pointer; border-radius: 2px; transition: background .15s; }
+  .sb-lore-item:hover, .sb-lore-item:focus-visible { background: rgba(180,140,60,0.08); outline: none; }
+  .sb-lore-item:hover .sb-faction-name,
+  .sb-lore-item:hover .sb-quest-name { color: rgba(220,200,160,0.9); }
+  .lore-status { margin-top: 4px; }
+  .lore-detail { font-size:var(--type-body); line-height: 1.6; color: inherit; opacity: .9; margin: 0 0 12px; }
+  .lore-empty { font-style: italic; opacity: .6; }
+
   /* ── Relationships (sheet modal) ── */
   .sm-relationship { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
   .sm-rel-name {
@@ -1364,10 +1373,9 @@
 
   /* ── World clock ── */
   #world-clock {
-    position: fixed;
-    top: 28px; right: 32px;
-    z-index: 5;
-    text-align: right;
+    position: static;
+    margin: 0 0 18px;
+    text-align: left;
     pointer-events: none;
     opacity: 0;
     transition: opacity 1s ease;
@@ -1403,25 +1411,17 @@
   /* 5e 2014 = subdued, 5e 2024 = amber/gold accent so the DM notices at a glance */
   #ruleset-badge {
     display: none;
-    margin-top: 6px;
-    padding: 2px 7px;
+    margin-top: 14px;
     font-family:var(--font-heading);
     font-size:var(--type-label);
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    border: 1px solid rgba(180,140,60,0.35);
-    border-radius: 2px;
-    color: rgba(180,140,60,0.55);
-    background: rgba(20,12,4,0.45);
+    color: rgba(180,140,60,0.45);
+    opacity: 0.8;
     line-height: 1.4;
   }
-  #ruleset-badge.has-data { display: inline-block; }
-  #ruleset-badge.rs-2024 {
-    color: rgba(245,200,90,0.92);
-    border-color: rgba(245,200,90,0.55);
-    background: rgba(50,30,4,0.55);
-    box-shadow: 0 0 6px rgba(245,200,90,0.25);
-  }
+  #ruleset-badge::before { content: 'Rules · '; }
+  #ruleset-badge.has-data { display: block; }
 
   /* ── Audio toggle controls ── */
   #audio-controls {
@@ -3779,14 +3779,6 @@
 <!-- CRIT / FUMBLE full-screen flash -->
 <div id="flash-overlay"></div>
 
-<!-- World time clock (top-right) -->
-<div id="world-clock">
-  <div id="wc-icon">☀</div>
-  <div id="wc-date"></div>
-  <div id="wc-sub"></div>
-  <!-- Ruleset badge — '5e 2014' or '5e 2024'; populated from stats.ruleset -->
-  <div id="ruleset-badge"></div>
-</div>
 
 <!-- Audio toggle controls — SFX triggered by narration text -->
 <div id="audio-controls">
@@ -3863,6 +3855,8 @@
       <button id="ts-inc" class="ts-btn" type="button" aria-label="Bigger text">A+</button>
     </span>
   </div>
+  <!-- Ruleset footnote — '5e 2014' or '5e 2024'; populated from stats.ruleset -->
+  <div id="ruleset-badge"></div>
   </div>
 </div>
 
@@ -4022,6 +4016,12 @@
 
 <!-- Character sidebar -->
 <div id="sidebar">
+  <!-- World time clock (top of the character column, above the party) -->
+  <div id="world-clock">
+    <div id="wc-icon">☀</div>
+    <div id="wc-date"></div>
+    <div id="wc-sub"></div>
+  </div>
   <!-- Player cards are injected here by updateStats() -->
   <!-- Turn order section (shown only during combat) -->
   <div id="sb-turn-section" style="display:none">
@@ -6301,8 +6301,15 @@ document.getElementById('sidebar').addEventListener('click', function(e) {
     openSrdModal(pill.dataset.srdName, 'condition', null);
     return;
   }
+  const lore = e.target.closest('.sb-lore-item');
+  if (lore && lore._lore) { openLoreCard(lore._lore); return; }
   const card = e.target.closest('.sb-player[data-player-name]');
   if (card) openSheet(card.dataset.playerName);
+});
+document.getElementById('sidebar').addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const lore = e.target.closest('.sb-lore-item');
+  if (lore && lore._lore) { e.preventDefault(); openLoreCard(lore._lore); }
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeSheet();
@@ -6396,6 +6403,35 @@ setInterval(() => {
 
 // ── Stats update ─────────────────────────────────────────────────────────────
 
+function st_cls(map, v) { return map[String(v || '').toLowerCase()] || 'unknown'; }
+
+// Faction / quest detail card — reuses the character-sheet modal.
+// Shows only what the DM pushed in the item's optional `detail` field.
+function openLoreCard(lore) {
+  _openSheetName = null;
+  const prevIco = document.getElementById('sm-class-ico');
+  if (prevIco) prevIco.remove();
+  const content = document.getElementById('sheet-content');
+  content.innerHTML = '';
+  const add = (cls, text, tag) => {
+    const el = document.createElement(tag || 'div');
+    el.className = cls; el.textContent = text;
+    content.appendChild(el); return el;
+  };
+  add('sm-section-title', lore.kind);
+  add('sm-name', lore.name || '—');
+  add((lore.kind === 'Faction' ? 'sb-faction-standing ' : 'sb-quest-status ') + lore.cls + ' lore-status', lore.status || '—');
+  add('sm-divider', '');
+  const detail = String(lore.detail || '').trim();
+  if (detail) {
+    detail.split(/\n{2,}/).forEach(par => add('lore-detail', par, 'p'));
+  } else {
+    add('lore-detail lore-empty', 'No notes yet. The DM adds details here as the party learns more.', 'p');
+  }
+  document.getElementById('sheet-modal').classList.add('open');
+  document.getElementById('sheet-close').focus();
+}
+
 function updateStats(stats) {
   if (!stats || !stats.players) return;
   const sidebar = document.getElementById('sidebar');
@@ -6457,7 +6493,9 @@ function updateStats(stats) {
                      unfriendly:'unfriendly', suspicious:'suspicious', hostile:'hostile' };
       factions.forEach(f => {
         const item = document.createElement('div');
-        item.className = 'sb-faction-item';
+        item.className = 'sb-faction-item sb-lore-item';
+        item.tabIndex = 0; item.setAttribute('role', 'button');
+        item._lore = { kind: 'Faction', name: f.name, status: f.standing, cls: st_cls(SCLS, f.standing), detail: f.detail };
         const nm = document.createElement('span');
         nm.className = 'sb-faction-name';
         nm.textContent = f.name || '—';
@@ -6483,7 +6521,9 @@ function updateStats(stats) {
       const QCLS = { active:'active', threat:'threat', resolved:'resolved', failed:'failed' };
       quests.forEach(q => {
         const item = document.createElement('div');
-        item.className = 'sb-quest-item';
+        item.className = 'sb-quest-item sb-lore-item';
+        item.tabIndex = 0; item.setAttribute('role', 'button');
+        item._lore = { kind: 'Quest', name: q.name, status: q.status, cls: st_cls(QCLS, q.status), detail: q.detail };
         const nm = document.createElement('span');
         nm.className = 'sb-quest-name';
         nm.textContent = q.name || '—';
