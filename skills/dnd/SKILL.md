@@ -97,7 +97,7 @@ Write narration as prose meant to be read at the table, never as a document. No 
 Even a minor character gets one or two distinct traits: a verbal tic, a visible contradiction, a motivation that makes them a person rather than a prop. Players will latch onto throwaway characters and make them central — that's a feature, not a problem. When it happens, honour it: update `npcs.md`, develop the character further, let them become what the player has decided they are.
 
 ### 6. Control the Pace Deliberately
-Knowing *when* to skip and *when* to linger is the most underrated DM skill. Fast-forward through uneventful travel. Slow down for a dramatic revelation. End a combat two rounds early if the outcome is clear and it has stopped being interesting. A scene that overstays its welcome kills momentum. A scene cut at the right moment leaves an impression. Actively ask yourself: *does this scene still have energy, or is it time to move?*
+Knowing *when* to skip and *when* to linger is the most underrated DM skill. Skip dead time, not the journey: in improvised campaigns travel runs a day at a time (Standard 16), and only the quiet days pass in a line. Slow down for a dramatic revelation. End a combat two rounds early if the outcome is clear and it has stopped being interesting. A scene that overstays its welcome kills momentum. A scene cut at the right moment leaves an impression. Actively ask yourself: *does this scene still have energy, or is it time to move?*
 
 Every session should have a shape: an opening that grounds the player in where they are and what's at stake, a pressure point roughly two-thirds through that forces a meaningful decision or escalation, and a closing beat that lands on something — a revelation, a consequence, a question left open. You don't script what happens at those moments, but you engineer the conditions for them. A session that simply stops is a missed opportunity. A session that ends on a genuine decision the player made leaves them wanting more.
 
@@ -149,7 +149,22 @@ You are the one who moves the story. The players choose *how* to respond; you de
 - **Leads go forward, not into storage.** When an NPC offers a clue "for later", bring it back within a scene or two, or have the world act on it.
 - **Do not write passivity into the campaign.** Never add "let the players set the pace", "wait for the players" or similar to `## DM Style Notes` on your own. If the table asks for a gentler or slower game, record it as the `pacing` or `spotlight` dial, which keeps the arc steering in force.
 
+In a prebuilt (structured) campaign, leading means running the book: read the current chapter's source before each scene, run it as written, and steer toward the chapter's key beats.
+
 Stalled beats are also caught mechanically: the campaign portal counts party turns on the current arc beat and adds a `[[DM steering…]]` directive when it stalls (see *Directives in party input*).
+
+---
+
+### 16. Brisk Trade, Rolls That Count, People Who Differ
+These keep play moving and varied. The trade and roll rules apply in every campaign. The NPC and road tables are for improvised (dynamic or sandbox) campaigns only. A prebuilt campaign uses its book's NPCs and encounter tables.
+
+- **Trade in one beat.** The trader names an offer, the party can push back once, and one roll settles it. Summarise routine buying and selling in a line ("You sell the four sacks to Tovin for 16 silver"). Slow down only when the deal carries the current beat or a relationship.
+- **Social rolls have bands.** Beat the DC by 5 or more: better than they asked, plus something extra (a favour, a lead, goodwill that lasts). Success: the deal they wanted. Failure: no movement, and a small cost such as time, suspicion or a worse alternative. Failure by 5 or more: the price rises, the NPC cools, or a door closes for now. A failed roll never quietly gets the success.
+- **People differ, lightly.** For each new named NPC in an improvised campaign, run `python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc` (add `--trader` for anyone buying or selling) and record the temperament, want and trading style in `npcs.md`. Most people come out ordinary, some colourful, a few memorable. Play the one trait lightly and keep it every time they appear. No extremes, no mental illness as flavour, and not everyone gets a quirk.
+- **Resolve routine errands briskly.** Don't send the party from person to person to get one thing done: one NPC can handle what several would, or the town comes to the party (a buyer seeks them out, a message finds them at the inn). Separate goals the players choose, encounters with consequences, and every declared action still get played (Standard 14).
+- **Work finds travellers.** Once the party is known for something (trading, a deed, their wagon), NPCs they deal with offer work along their route: "You're heading to Saltmere? The cooper there is short of hoops; carry a crate and she'll pay on delivery." Deliveries, messages, passengers and favours link one place to the next and to the current beat. Offer one when it fits, not every conversation.
+- **Plan a little ahead.** In an improvised campaign, keep `## Next Hooks` in `state.md`: two or three prepared situations for the places on the party's route (who is there, what they need, how it ties to the current beat or an open thread). Write it at load if it is missing, refresh it on each arrival and departure, and draw on it when an NPC offers work or the road brings the story. It is prep, not a script: drop or reshape a hook when the party goes elsewhere.
+- **Play the road.** In an improvised campaign, run travel a day at a time with `python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py road --campaign <name> --days <N>`. Give quiet days one line of colour. Stop at anything else, present it, and let the party choose. Never compress a multi-day journey into one sentence.
 
 ---
 

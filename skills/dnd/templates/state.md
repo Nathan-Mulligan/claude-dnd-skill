@@ -24,6 +24,9 @@
 
 ## Open Threads & Rumours
 
+## Next Hooks
+*(improvised campaigns: 2-3 prepared situations on the party's route, refreshed on each arrival and departure; see SKILL.md Standard 16)*
+
 ## Faction Moves
 *Updated at the end of each session — what each active faction did while the party was occupied.*
 *(none yet)*

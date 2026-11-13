@@ -110,5 +110,47 @@ class SceneMeaningTests(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+class ImprovVarietyTests(unittest.TestCase):
+    def test_most_npcs_are_ordinary_and_some_stand_out(self):
+        rng = random.Random(3)
+        tiers = [oracle.npc_temperament(rng=rng)["tier"] for _ in range(2000)]
+        self.assertGreater(tiers.count("ordinary"), 1000)
+        self.assertGreater(tiers.count("colourful"), 400)
+        self.assertGreater(tiers.count("memorable"), 100)
+        self.assertLess(tiers.count("memorable"), 350)
+
+    def test_traders_also_get_a_trading_style(self):
+        npc = oracle.npc_temperament(rng=random.Random(1), trader=True)
+        self.assertIn(npc["trades"], oracle._TRADE_STANCES)
+        self.assertNotIn("trades", oracle.npc_temperament(rng=random.Random(1)))
+
+    def test_most_road_days_are_quiet_but_not_all(self):
+        rng = random.Random(5)
+        kinds = [oracle.road_day(rng=rng)[0] for _ in range(2000)]
+        self.assertTrue(600 < kinds.count("quiet") < 1000)
+        self.assertEqual(set(kinds), {"quiet", "traveller", "obstacle", "discovery", "danger", "story"})
+
+    def test_prebuilt_campaigns_are_recognised(self):
+        self.assertTrue(oracle.is_prebuilt("## Campaign Arc\ntype: structured \u2014 published module."))
+        self.assertTrue(oracle.is_prebuilt("```yaml\ntype: \"structured\"\n```"))
+        self.assertFalse(oracle.is_prebuilt("```yaml\ntype: dynamic\n```"))
+
+
+class RoadCliTests(unittest.TestCase):
+    def run_road(self, *args):
+        import subprocess
+        return subprocess.run([sys.executable, str(SKILL / "scripts" / "oracle.py"), "road", *args],
+                              capture_output=True, text=True, encoding="utf-8")
+
+    def test_days_must_be_positive(self):
+        for days in ("0", "-3"):
+            self.assertNotEqual(self.run_road("--days", days).returncode, 0)
+
+    def test_unknown_campaign_is_an_error(self):
+        result = self.run_road("--campaign", "no-such-campaign-for-oracle-tests", "--seed", "1")
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("day 1", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
