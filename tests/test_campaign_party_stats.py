@@ -140,3 +140,27 @@ def test_startup_keeps_newer_runtime_details_with_the_saved_party(display):
     assert names(module) == ["Elbane III"]
     assert module._current_stats["world_time"] == {"date": "new"}
     assert module._stats_owner == "Enderal"
+
+
+def test_startup_ignores_an_unowned_runtime_party(display):
+    module, client, tmp_path = display
+    select(client, "Enderal")
+    client.post("/stats", json={"players": [ELBANE], "replace_players": True})
+    Path(module.CAMP_FILE).write_text("Machines", encoding="utf-8")
+    with module._stats_lock:
+        module._current_stats.clear()
+    module._load_stats()
+    assert names(module) == []
+    client.post("/stats", json={"campaign": "Machines"})
+    assert saved_names(tmp_path, "Machines") in (None, [])
+    assert saved_names(tmp_path, "Enderal") == ["Elbane III"]
+
+
+def test_emptying_the_party_is_saved(display):
+    module, client, tmp_path = display
+    select(client, "Enderal")
+    client.post("/stats", json={"players": [ELBANE], "replace_players": True})
+    client.post("/stats", json={"players": [], "replace_players": True})
+    select(client, "Machines")
+    select(client, "Enderal")
+    assert names(module) == []

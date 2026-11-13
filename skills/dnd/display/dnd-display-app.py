@@ -1177,6 +1177,7 @@ _load_log()
 _current_stats: dict = {}
 _stats_owner: Optional[str] = None  # campaign whose party _current_stats holds; None after /clear
 _stats_lock = threading.Lock()
+_persist_lock = threading.Lock()  # keeps snapshot order and write order the same
 
 
 def _active_campaign_name() -> Optional[str]:
@@ -1205,19 +1206,20 @@ def _read_party(campaign: str) -> dict:
 
 
 def _persist_stats() -> None:
-    try:
-        with _stats_lock:
-            data = dict(_current_stats)
-            owner = _stats_owner
-        with open(STATS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-        party = _party_file(owner) if owner else None
-        if party and data.get("players"):
-            tmp = party.with_name(party.name + ".tmp")
-            tmp.write_text(json.dumps(data), encoding="utf-8")
-            os.replace(tmp, party)
-    except Exception:
-        pass
+    with _persist_lock:
+        try:
+            with _stats_lock:
+                data = dict(_current_stats)
+                owner = _stats_owner
+            with open(STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            party = _party_file(owner) if owner else None
+            if party:
+                tmp = party.with_name(party.name + ".tmp")
+                tmp.write_text(json.dumps(data), encoding="utf-8")
+                os.replace(tmp, party)
+        except Exception:
+            pass
 
 
 def _select_party(campaign: str) -> None:
@@ -1250,6 +1252,7 @@ def _restore_before_partial_update() -> None:
 
 
 def _load_stats() -> None:
+    """Startup trusts players only from the active campaign's own file; the runtime file carries no owner."""
     global _expected_count, _stats_owner
     try:
         with open(STATS_FILE, encoding="utf-8") as f:
@@ -1260,12 +1263,11 @@ def _load_stats() -> None:
         data = {}
     name = _active_campaign_name()
     saved = _read_party(name) if name else {}
-    if saved:
-        data = {**saved, **data, "players": saved["players"]}
+    data = {**saved, **data, "players": saved.get("players", [])}
     with _stats_lock:
         _current_stats.update(data)
-        _stats_owner = name if saved else None
-    if data.get("players"):
+        _stats_owner = name
+    if data["players"]:
         _expected_count = max(1, len(data["players"]))
 
 
