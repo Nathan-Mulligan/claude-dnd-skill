@@ -13,7 +13,7 @@ def test_tray_keyboard_toggle_remembers_choice():
     node = shutil.which('node')
     if not node:
         pytest.skip('node unavailable')
-    source = HTML.read_text()
+    source = HTML.read_text(encoding="utf-8")
     code = source[source.index('function _setInputExpanded('):source.index('// ── Build character tabs')]
     result = subprocess.run([node, '-'], text=True, capture_output=True, check=True, input='''
 const classes = new Set(['collapsed']);
@@ -49,7 +49,7 @@ def test_reply_history_is_native_collapsible_and_closed_by_default():
                 self.summary = tag
 
     parser = HistoryParser()
-    parser.feed(HTML.read_text())
+    parser.feed(HTML.read_text(encoding="utf-8"))
     tag, attrs = parser.history
     assert tag == 'details'
     assert 'open' not in attrs
@@ -60,7 +60,7 @@ def test_tray_follows_each_frame_of_a_sideways_column_transition():
     node = shutil.which('node')
     if not node:
         pytest.skip('node unavailable')
-    source = HTML.read_text()
+    source = HTML.read_text(encoding="utf-8")
     code = source[source.index('function _reserveInputSpace()'):source.index('// Initialise with no extra chars')]
     result = subprocess.run([node, '-'], text=True, capture_output=True, check=True, input='''
 let columnLeft = 100;

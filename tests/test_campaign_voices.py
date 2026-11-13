@@ -25,7 +25,7 @@ def display(tmp_path, monkeypatch):
     monkeypatch.setattr(module, '_voice_ok', lambda voice: voice in ('bf_emma', 'bm_george'))
     for name in ('one', 'two'):
         (tmp_path / 'campaigns' / name).mkdir(parents=True)
-    Path(module.CAMP_FILE).write_text('one')
+    Path(module.CAMP_FILE).write_text('one', encoding='utf-8')
     return module, module.app.test_client()
 
 
@@ -33,12 +33,12 @@ def test_voice_choice_survives_reload_and_does_not_change_other_campaign(display
     module, client = display
     assert client.post('/cast', json={'name': 'Nella Reed', 'voice': 'bf_emma'}).status_code == 200
     assert client.get('/cast').json == {'nella reed': 'bf_emma'}
-    Path(module.CAMP_FILE).write_text('two')
+    Path(module.CAMP_FILE).write_text('two', encoding='utf-8')
     assert client.get('/cast').json == {}
     assert client.post('/cast', json={'name': 'Nella Reed', 'voice': 'bm_george'}).status_code == 200
-    Path(module.CAMP_FILE).write_text('one')
+    Path(module.CAMP_FILE).write_text('one', encoding='utf-8')
     assert client.get('/cast').json == {'nella reed': 'bf_emma'}
-    assert json.loads(module._cast_file().read_text()) == {'nella reed': 'bf_emma'}
+    assert json.loads(module._cast_file().read_text(encoding='utf-8')) == {'nella reed': 'bf_emma'}
 
 
 def test_voice_save_failure_is_reported(display, monkeypatch):
@@ -73,7 +73,7 @@ def test_browser_reuses_preloaded_samples_and_skips_paid_catalog():
     node = shutil.which('node')
     if not node:
         pytest.skip('node unavailable')
-    source = (DISPLAY / 'templates/index.html').read_text()
+    source = (DISPLAY / 'templates/index.html').read_text(encoding='utf-8')
     code = source[source.index('const _ttsSamples ='):source.index('function _ttsBuildVoiceMenu')]
     result = subprocess.run([node, '--input-type=module', '-'], text=True, capture_output=True, check=True, input='''
 let requests = [];
@@ -103,7 +103,7 @@ def test_short_speaker_name_keeps_the_full_character_assignment():
     node = shutil.which('node')
     if not node:
         pytest.skip('node unavailable')
-    source = (DISPLAY / 'templates/index.html').read_text()
+    source = (DISPLAY / 'templates/index.html').read_text(encoding='utf-8')
     code = source[source.index('function _castKey('):source.index('function _voiceForBlock(')]
     result = subprocess.run([node, '-'], text=True, capture_output=True, check=True, input='''
 const _CAST = {'nella reed':'bf_emma', 'ann':'af_bella'};
