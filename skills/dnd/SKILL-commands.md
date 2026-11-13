@@ -45,7 +45,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 8. **Three Truths** — one settlement, one nearby threat, one mystery (with clue trail). Write to respective sections in world.md.
 9. **Threat Escalation Arc** — fill the five-stage table in world.md immediately after threat generation. Set current stage to 1. Write `Threat arc stage: 1 — Now` to `state.md → ## World State`.
 10. **2 Factions** — archetype, all fields including current activity. Write to `## Factions` in world.md. Write one-line faction states to `state.md → ## World State`.
-11. **3 NPCs with relationship web** — full entries (role, stats, demeanor, motivation, secret, speech quirk, faction, current goal, schedule, personality axes). Roll each NPC's demeanor with `oracle.py npc` (Standard 16) so the cast varies. Generate all three first, then fill Relationships (every NPC needs ≥2 links to others). Update index table.
+11. **3 NPCs with relationship web** — full entries (role, stats, demeanor, motivation, secret, speech quirk, faction, current goal, schedule, personality axes). Roll each NPC with `oracle.py npc --campaign <name> --name "<Full Name>"` (Standard 16) so the cast varies; it saves them to `npcs.md`. Generate all three first, then fill Relationships (every NPC needs ≥2 links to others). Update index table.
 12. **3–5 Quest Seeds** from threat, factions, mystery, NPC motivations. Write to `## Quest Seed Bank` in world.md.
 13. **Dynamic Campaign Arc** — auto-generate the arc from all world data just created. Use Opus for this step. Ask: *"Generate a committed narrative arc? [y/n — recommended]"*
 
@@ -75,7 +75,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 17. **Opening scene.** Once the party's characters exist, open play; don't wait to be asked.
    - Improvised campaigns: write `## Next Hooks` (two or three bullets) and `## Clocks` (two to four bullets, `- <in-world date>: <what happens> (seen by: <how the party could notice>)`) in state.md first. Each clock names a person or faction and a verb.
    - Open in a moment already moving, drawn from the first beat's `world_pressure`, a Next Hook or the nearest clock. Someone wants something from the party now, and waiting has a cost. One or two sensory details, then the pressure. End on it, not on a question (DM-CORE.md, sections 1 and 11).
-   - Send a scene cue with the opener for the first place.
+   - Add `--scene "<place>: <what is happening>"` to the opening narration's `send.py` call.
    - Structured campaigns: read the first chapter's `source/<chapter-id>.md` and open with its read-aloud text and first scene.
 
 ---
@@ -255,7 +255,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 9. **Open the session.** Ask no setup questions when the display and dice flags are saved or the portal launched you.
    - Three sentences of "last time": where the party is, what they just did, and what is unresolved.
    - Then a scene already moving, drawn from a Next Hook or a clock that has fired (check `calendar.py -c <name> now` against `## Clocks`). Someone arrives, a deadline lands or something has changed. End on that pressure, not on "what would you like to do?".
-   - Send it through `send.py` (opener first, scene cue if the place is new).
+   - Send it through `send.py` (opener first; add `--scene "<place>: <what is happening>"` if the place is new).
 10. Enter active DM mode — no `/dm:dnd` prefix needed from this point.
 
 ---

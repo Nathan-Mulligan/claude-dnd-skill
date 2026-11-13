@@ -62,13 +62,15 @@ You decide what comes at the party. The players decide how to answer it. A table
 ## 6. NPCs
 - Skip the name-and-price greeting. Open on what the person is doing or worried about.
 - A person who is asked gives a usable answer, with a price, a name or a condition. Don't pass the party from person to person.
-- For a new named NPC in an improvised campaign, run `oracle.py npc` (add `--trader` for anyone buying or selling). Record their temperament, want and trading style in `npcs.md`. Play that one trait lightly, every time they appear.
-- Before voicing an NPC who matters, read their entry (`npcs.md`, and `npcs-full.md` if it exists). After a meeting that changed something, add one line to the entry.
+- For a new named NPC in an improvised campaign, run `oracle.py npc --campaign X --name "Full Name"` (add `--trader` for anyone buying or selling). It saves them to `npcs.md`, and the same name always gives the same person. Play their one trait lightly, every time they appear. When their want is marked as an ask, they put it to the party.
+- Before voicing an NPC who matters, read their entry (`npcs.md`, and `npcs-full.md` if it exists).
+- After a scene with an NPC, run `oracle.py npc note --campaign X --name "Full Name" "<one line>"`, for example `"Sold 4 blankets at 18. Thinks they drive a hard bargain."`
 
 ## 7. Errands, travel and the road (improvised campaigns)
 - Errands resolve briskly. One person handles what several would, or the town comes to the party: a buyer seeks them out, or a message finds them at the inn.
 - Work finds travellers. Once the party is known, people offer deliveries, messages and passengers along the route. Make one offer when it fits.
-- For travel, run `calendar.py -c X advance N days`. It prints the road for each day. Give a quiet day one line of colour. Stop at anything else, present it and let the party choose. Never compress a journey into one sentence.
+- For travel, run `calendar.py -c X advance N days`. It prints one road day per day. Give a quiet day one line of colour. Stop at anything else, present it and let the party choose. Never compress a journey into one sentence.
+- When time passes without travel (waiting in town, downtime), add `--no-road`. A long rest is `calendar.py -c X rest long`, which never rolls the road.
 - Keep two sections in `state.md`. Write them at load if they are missing, and refresh both on every arrival and departure:
   - `## Next Hooks`: two or three bullets, each saying who is there, what they need and how it ties to the current beat.
   - `## Clocks`: one bullet per clock, `- <in-world date>: <what happens> (seen by: <how the party could notice>)`.
@@ -93,7 +95,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`. Pipe with `echo` instead when the text holds shell variables.
 - Send the whole narration, word for word. Never send probe or debug text.
 - Put stat changes on the narration send, for example `--stat-hp "NAME:CUR:MAX"` or `--stat-condition-add "NAME:Poisoned"`. The full list is under Display sync in SKILL.md.
-- When the place or activity really changes, add a scene cue: `send.py --scene "<place and what is happening>" [--mood calm|curious|ominous|tense|warm]`. Don't add one on ordinary turns.
+- When the party reaches a new place, or a place's mood truly changes, add `--scene "<place>: <what is happening>"` to that narration's `send.py` call. Add `--mood calm|curious|ominous|tense|warm` only when the moment's feel differs from the place. No `/health` read is needed, and repeating the current place changes nothing.
 - When a fight starts, put `--music-event combat-start` on the first combat narration. Put `--music-event combat-end` on the first narration after it.
 
 ## 11. Opening a session
