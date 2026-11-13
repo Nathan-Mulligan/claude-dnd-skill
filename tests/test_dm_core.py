@@ -38,7 +38,7 @@ def test_dm_core_fits_in_one_read_and_ends_with_a_check_phrase():
     "--dice-request", "--dc", "--wait", "oracle.py npc", "calendar.py",
     "arc.py advance", "arc.py revise", "--scene", "## Next Hooks", "## Clocks",
     "Turn card", "Trade policy", "spotlight", "dictated", "source/",
-    "npc note", "--no-road", "--name",
+    "npc note", "--no-road", "--name", "inventory.py",
 ])
 def test_dm_core_carries_the_play_rules(needle):
     assert needle in _read(CORE)

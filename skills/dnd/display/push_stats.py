@@ -44,9 +44,9 @@ Usage:
     python3 push_stats.py --player Flerb --slot-use 1      # expend one 1st-level slot
     python3 push_stats.py --player Flerb --slot-restore 2  # restore one 2nd-level slot
 
-    # Inventory — granular add/remove (preferred to full --sheet rewrite):
-    python3 push_stats.py --player Flerb --inventory-add "Iron key"
-    python3 push_stats.py --player Flerb --inventory-remove "Folded paper"
+    # Features and inventory from the campaign's sheet files and ledgers (use at load):
+    python3 push_stats.py --from-sheets Enderal
+    # Item and coin changes: scripts/inventory.py, which pushes for you.
 
     # Faction standings (party-wide):
     python3 push_stats.py --factions '[{"name":"Pale Court","standing":"Suspicious"},{"name":"Merchant Guild","standing":"Friendly"}]'
@@ -121,6 +121,26 @@ def _send(url: str, data: bytes, token: str) -> None:
         pass  # Display not running — fail silently
 
 
+def _merge_sheets(payload: dict, campaign: str) -> None:
+    """Put features, inventory and ledger from the sheet files into each player's `sheet`.
+
+    Players already in the payload keep their other sheet keys (attacks, spells).
+    Without players in the payload, each character goes as a partial update.
+    """
+    sys.path.insert(0, os.path.join(_DISPLAY_DIR, os.pardir, "scripts"))
+    import sheet_extract
+    extracted = sheet_extract.campaign_payloads(campaign)
+    players = payload.get("players")
+    if players is None:
+        payload["players"] = [{"name": name, "sheet": data} for name, data in extracted]
+        return
+    by_name = {name.lower(): data for name, data in extracted}
+    for player in players:
+        data = by_name.get(str(player.get("name", "")).lower())
+        if data:
+            player["sheet"] = {**(player.get("sheet") or {}), **data}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Push stats to the DnD display server.")
     parser.add_argument("--json", metavar="JSON",
@@ -165,6 +185,9 @@ def main() -> None:
                         help="Set Inspiration: true or false (requires --player)")
     parser.add_argument("--sheet", metavar="JSON",
                         help='Full character sheet data: {"attacks":[...],"spells":{...},"features":[...],"inventory":[...]} (requires --player)')
+    parser.add_argument("--from-sheets", metavar="CAMPAIGN",
+                        help="Fill each character's sheet features, inventory and ledger from the "
+                             "campaign's sheet files (merged into --json players by name)")
     parser.add_argument("--factions", metavar="JSON",
                         help='Party faction standings: [{"name":"Pale Court","standing":"Suspicious"},...]; [] clears')
     parser.add_argument("--quests", metavar="JSON",
@@ -294,6 +317,14 @@ def main() -> None:
         if args.hit_dice_restore:
             player_update["_hd_restore"] = args.hit_dice_restore
         payload.setdefault("players", []).append(player_update)
+
+    # ── Sheet features and inventory, read from the campaign files ────────────
+    if args.from_sheets:
+        try:
+            _merge_sheets(payload, args.from_sheets)
+        except Exception as e:
+            print(f"--from-sheets: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # ── Factions ───────────────────────────────────────────────────────────────
     if args.factions is not None:
