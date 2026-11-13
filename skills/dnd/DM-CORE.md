@@ -46,7 +46,7 @@ You decide what comes at the party. The players decide how to answer it. A table
   1. Send one line of narration that names the DC and the stake.
   2. Run `send.py --dice-request --character "Nella" --modifier 3 --dc 13 --label "Persuasion: fail and the price holds" --wait`. Optional flags are `--spec 1d20`, `--advantage advantage|disadvantage` and `--wait-timeout 120`.
   3. `--wait` blocks until the roll, then prints the roll line. Resolve it and narrate the result in this same turn.
-  4. On a timeout (exit 2), ask for the number out loud and stop.
+  4. On a timeout (exit 2), ask for the number out loud and stop. With no display running, ask for the roll out loud and wait.
   5. Never roll a PC's die yourself in this mode.
 - **`roll_mode: auto`** means you roll the PCs openly with `dice.py d20+3`. Send the line with `send.py --dice` (`Nella, Persuasion (DC 13): d20+3 = 15, success`), then narrate.
 - You roll for NPCs and monsters with `dice.py`. Hidden rolls (Insight, Stealth) use `dice.py --silent`.
@@ -87,7 +87,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - SKILL.md Standards 1 and 10 (the sandbox rules) don't apply, and neither do the NPC and road tables.
 
 ## 10. Sending narration
-- The table hears only what you send. Every reply to the players goes through `send.py` in a real shell command, never as text in your reply.
+- With the display running, the table hears only what you send. Every reply to the players goes through `send.py` in a real shell command, never as text in your reply. With no display (the `No display` choice), write the narration in your reply instead.
 - Once the outcome is decided, send the first sentence or two on their own with `send.py --opener`. Then write the rest.
 - Then make one shell call with every block, in this order: `--player NAME` (their action, tidied), `--dice` (roll lines), the plain narration, `--npc NAME` (NPC speech), and `--tutor` last.
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`. Pipe with `echo` instead when the text holds shell variables.

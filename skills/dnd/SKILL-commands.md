@@ -459,7 +459,7 @@ If `graph.json` doesn't exist yet for this campaign, skip the sweep entirely (no
 
 ## `/dm:dnd end`
 
-**No-questions mode.** When the campaign portal asks you to end the session, or the table asks you to end without questions, run every step below but ask nothing: skip the calibration question in 1b (leave `### DM Calibration` blank), and in 1e decide yourself which beats landed. If the portal launched you, it owns the display, so skip steps 2 and 3 (don't stop the display).
+**No-questions mode.** When the campaign portal asks you to end the session, or the table asks you to end without questions, run every step below but ask nothing: skip the calibration question in 1b (leave `### DM Calibration` blank), and in 1e decide yourself which beats landed. In the save's graph sweep, apply nothing: write the proposed graph calls under `## DM Notes` in state.md as "Graph proposals awaiting approval", and offer them at the next load. If the portal launched you, it owns the display, so skip steps 2 and 3 (don't stop the display).
 
 1. Run `/dm:dnd save`, then:
    a. Append **Session Recap** block to session-log.md with key events and open threads.

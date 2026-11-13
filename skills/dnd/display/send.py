@@ -318,7 +318,7 @@ def bare_question_ending(text: str) -> "str | None":
     body = text.strip().strip("\"'“”‘’ ")
     if not body:
         return None
-    last = re.split(r"(?<=[.!?])\s+", body)[-1].strip("\"'“”‘’ ")
+    last = re.split(r"(?<=[.!?])\s+|(?<=[.!?][\"'”’])\s+", body)[-1].strip("\"'“”‘’ ")
     return last if _BARE_QUESTION.fullmatch(last) else None
 
 

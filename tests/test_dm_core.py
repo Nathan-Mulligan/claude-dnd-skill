@@ -152,6 +152,8 @@ def _send(sender, argv, body):
     "Where to next?",
     "What do you do?",
     "So, what do you do now?",
+    'The guard shouts, "Halt!" What do you do?',
+    "The guard shouts, “Halt!” Where to next?",
     "The bell on the bridge starts ringing; the gate will close before you reach it. What do you do?",
 ])
 def test_narration_ending_on_a_bare_question_warns_but_still_sends(tmp_path, capsys, ending):
