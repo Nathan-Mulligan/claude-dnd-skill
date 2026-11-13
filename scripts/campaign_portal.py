@@ -67,7 +67,9 @@ _handoff = {"status": "idle", "message": ""}
 SCENE_PROTOCOL = (
     "Scene media: when the party reaches a new place or its mood truly changes, add "
     "--scene \"<place>: <what is happening>\" [--mood calm|curious|ominous|tense|warm] to that narration's "
-    "send.py call. The script works out the rest; repeating the current place changes nothing. "
+    "send.py call. After the colon, describe the actual view and its atmosphere, including darkness where "
+    "appropriate; it drives the music and the background image. The script works out the rest; repeating the "
+    "current place changes nothing. "
 )
 SETUP_NOTE = (
     "During campaign or character setup, treat it as the answer to your latest question. "
@@ -98,7 +100,10 @@ def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess[str]:
 
 
 def running() -> bool:
-    return run("tmux", "has-session", "-t", f"={SESSION}").returncode == 0
+    try:
+        return run("tmux", "has-session", "-t", f"={SESSION}").returncode == 0
+    except FileNotFoundError:
+        return False
 
 
 def read_meta() -> dict:

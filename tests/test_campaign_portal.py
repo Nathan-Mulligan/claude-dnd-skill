@@ -456,7 +456,7 @@ def test_scene_protocol_prefix_reaches_each_launch_mode(mode, onboarding):
     prompt = portal.initial_prompt(mode, "adventure", "A strange new world", onboarding)
     assert prompt.startswith(portal.SCENE_PROTOCOL)
     assert '--scene "<place>: <what is happening>"' in prompt
-    assert len(portal.SCENE_PROTOCOL) < 300
+    assert len(portal.SCENE_PROTOCOL) < 450
     if onboarding is not None:
         assert json.loads(prompt.split("Completed questionnaire JSON: ", 1)[1]) == onboarding
 
@@ -594,3 +594,10 @@ def test_helper_file_follows_runtime_dir_override(tmp_path, monkeypatch):
     portal.save_helper("qwen")
     assert json.loads((tmp_path / "rt" / "helper-settings.json").read_text(encoding="utf-8")) == {"helper": "qwen"}
     assert portal.read_helper() == "qwen" and portal.lore_sync.saved_helper() == "qwen"
+
+
+def test_no_tmux_means_no_dm_running(monkeypatch):
+    def missing(*args, **kwargs):
+        raise FileNotFoundError("tmux")
+    monkeypatch.setattr(portal.subprocess, "run", missing)
+    assert portal.running() is False
