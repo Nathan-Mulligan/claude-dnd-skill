@@ -272,6 +272,23 @@ def test_road_log_avoids_the_last_ten_examples(campaign):
         assert day["text"] not in [d["text"] for d in days[max(0, i - 10):i]]
 
 
+@pytest.mark.parametrize("pacing", ["mixed", "adventure", "downtime"])
+def test_no_example_repeats_within_ten_days_at_any_pacing(pacing):
+    for seed in range(20):
+        days = oracle.roll_road(60, rng=random.Random(seed), context={"pacing": pacing})
+        for i, day in enumerate(days):
+            assert day["text"] not in [d["text"] for d in days[max(0, i - 10):i]], (seed, i)
+
+
+def test_one_hook_is_not_reused_as_story_then_traveller_within_ten_days():
+    context = {"pacing": "adventure", "hooks": ["Saltmere: the cooper needs a crate carried"], "clocks": []}
+    for seed in range(40):
+        days = oracle.roll_road(30, rng=random.Random(seed), context=context)
+        hits = [i for i, d in enumerate(days) if "cooper" in d["text"]]
+        for a, b in zip(hits, hits[1:]):
+            assert b - a > 10, (seed, hits)
+
+
 def test_danger_day_prints_an_encounter_budget_for_the_party(campaign):
     (campaign / "party_stats.json").write_text(json.dumps({"players": [
         {"name": "Elbane", "level": 1}, {"name": "Nella", "level": 1}]}), encoding="utf-8")
@@ -343,6 +360,26 @@ def test_seeded_npc_updates_an_existing_entry_in_place(tmp_path):
     assert "- **Role:** archivist\n- **Temperament:**" in mara
     assert "Temperament" not in tovin
     assert text.count("Mara Venn") == 1
+
+
+def test_npc_name_does_not_match_a_longer_name(tmp_path):
+    folder = make_campaign(tmp_path)
+    (folder / "npcs.md").write_text(
+        "# NPCs\n\n### Bera Holt II\n- **Role:** her son\n\n### Bera Holt (trader)\n- **Role:** trader\n",
+        encoding="utf-8")
+    assert run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Bera Holt", "Fair dealer.").returncode == 0
+    son, mother = (folder / "npcs.md").read_text(encoding="utf-8").split("### Bera Holt (trader)")
+    assert "Fair dealer" not in son and "Fair dealer" in mother
+
+
+def test_npc_exact_heading_wins_over_an_annotated_one(tmp_path):
+    folder = make_campaign(tmp_path)
+    (folder / "npcs.md").write_text(
+        "# NPCs\n\n### Bera Holt (the elder)\n- **Role:** gran\n\n### Bera Holt\n- **Role:** trader\n",
+        encoding="utf-8")
+    run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Bera Holt", "Fair dealer.")
+    elder, bera = (folder / "npcs.md").read_text(encoding="utf-8").split("### Bera Holt\n")
+    assert "Fair dealer" not in elder and "Fair dealer" in bera
 
 
 def test_npc_note_appends_a_line_to_the_entry(tmp_path):

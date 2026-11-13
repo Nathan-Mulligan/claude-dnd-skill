@@ -273,6 +273,10 @@ _ROAD_ROWS = {
         "A shepherd waves from a far slope and goes back to her flock.",
         "Fog until mid-morning, then a long bright afternoon of easy miles.",
         "Crows follow them for an hour, then lose interest.",
+        "A warm wind smelling of cut hay, and a farm dog that trots alongside for a mile.",
+        "Rain in the night; they wake to wet packs and a sky scrubbed clean.",
+        "An old woman selling eggs at a gate, who wishes them a good road.",
+        "The road climbs all day through pine and birch, and the night is cold and starry.",
     )),
     "traveller": ("Give them a temperament and a want (oracle.py npc --campaign <name> --name \"<Full Name>\"); "
                   "they bring news, a trade or a request.", (
@@ -482,19 +486,20 @@ def encounter_budget(party, difficulty: str = "standard") -> str:
 
 
 def _plot_texts(kind: str, context: dict, rng) -> list:
+    """(source, text) pairs; the source lets one hook or clock be kept out of both story and traveller days."""
     hooks = [h.rstrip(".") for h in context.get("hooks", ())]
     clocks = context.get("clocks", ())
     if kind == "story":
-        texts = [f"A hook ahead comes to meet them: {h}." for h in hooks]
+        texts = [(f"hook:{h}", f"A hook ahead comes to meet them: {h}.") for h in hooks]
         for c in clocks:
             show = f"Show it on the road: {c['seen_by']}." if c["seen_by"] else "Show its first signs on the road."
             due = f" (due {c['date']})" if c["date"] else ""
-            texts.append(f"A clock is ticking{due}: {c['what']}. {show}")
+            texts.append((f"clock:{c['what']}", f"A clock is ticking{due}: {c['what']}. {show}"))
         return texts
     if kind == "traveller" and (hooks or clocks) and rng.random() < 0.5:
-        texts = [f"Travellers who have seen it ({c['seen_by']}) bring news: {c['what']}"
-                 f"{' (due ' + c['date'] + ')' if c['date'] else ''}." for c in clocks if c["seen_by"]]
-        return texts + [f"A traveller tied to what lies ahead: {h}." for h in hooks]
+        texts = [(f"clock:{c['what']}", f"Travellers who have seen it ({c['seen_by']}) bring news: {c['what']}"
+                  f"{' (due ' + c['date'] + ')' if c['date'] else ''}.") for c in clocks if c["seen_by"]]
+        return texts + [(f"hook:{h}", f"A traveller tied to what lies ahead: {h}.") for h in hooks]
     return []
 
 
@@ -506,12 +511,18 @@ def road_day(rng=None, pacing: str = "mixed", context=None, recent=()) -> dict:
     rows = [(weight, kind) for kind, weight in _ROAD_WEIGHTS.get(pacing, _ROAD_WEIGHTS["mixed"])
             if kind == "quiet" or kind != last_kind]
     _, kind = _weighted(rows, rng)
-    used = {entry["text"] for entry in recent}
-    texts = [t for t in _plot_texts(kind, context or {}, rng) if t not in used]
-    if not texts:
-        examples = _ROAD_ROWS[kind][1]
-        texts = [t for t in examples if t not in used] or list(examples)
-    return {"kind": kind, "text": rng.choice(texts), "guidance": _ROAD_ROWS[kind][0]}
+    used = [entry["text"] for entry in recent]
+    used_sources = {entry.get("source") for entry in recent}
+    plot = [(src, t) for src, t in _plot_texts(kind, context or {}, rng) if src not in used_sources and t not in used]
+    day = {"kind": kind, "guidance": _ROAD_ROWS[kind][0]}
+    if plot:
+        day["source"], day["text"] = rng.choice(plot)
+        return day
+    examples = _ROAD_ROWS[kind][1]
+    fresh = [t for t in examples if t not in used]
+    # When a row is used up, the example seen longest ago is the least repetitive choice.
+    day["text"] = rng.choice(fresh) if fresh else min(examples, key=lambda t: max(i for i, u in enumerate(used) if u == t))
+    return day
 
 
 def roll_road(days: int, rng=None, context=None, recent=(), party=None) -> list:
@@ -524,9 +535,13 @@ def roll_road(days: int, rng=None, context=None, recent=(), party=None) -> list:
                        recent=recent[-ROAD_LOG_KEEP:])
         if day["kind"] == "danger":
             day["budget"] = encounter_budget(party, context.get("difficulty", "standard"))
-        recent.append({"kind": day["kind"], "text": day["text"]})
+        recent.append(_log_entry(day))
         rolled.append(day)
     return rolled
+
+
+def _log_entry(day: dict) -> dict:
+    return {key: day[key] for key in ("kind", "text", "source") if key in day}
 
 
 def _read_road_log(folder) -> list:
@@ -551,7 +566,7 @@ def campaign_road(folder, days: int, rng=None) -> list:
     text = state.read_text(encoding="utf-8") if state.is_file() else ""
     log = _read_road_log(folder)
     rolled = roll_road(days, rng=rng, context=read_road_context(text), recent=log, party=read_party(folder))
-    log += [{"kind": d["kind"], "text": d["text"]} for d in rolled]
+    log += [_log_entry(d) for d in rolled]
     _write_atomic(folder / ROAD_LOG, json.dumps(log[-ROAD_LOG_KEEP:], indent=2, ensure_ascii=False) + "\n")
     return rolled
 
@@ -568,9 +583,13 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 _ENTRY_SUBSECTIONS = {"personality", "relationships", "notes"}
 
 
-def _heading_is(text: str, name: str) -> bool:
+_ANNOTATION_STARTS = (" (", " —", " –", " - ", ",", ":")
+
+
+def _heading_is(text: str, name: str, exact: bool) -> bool:
+    """Exact name, or (exact=False) the name followed by an annotation such as "(trader)" or "— innkeeper"."""
     heading, wanted = _norm_name(text.strip("* ")), _norm_name(name)
-    return heading == wanted or (heading.startswith(wanted) and not heading[len(wanted)].isalnum())
+    return heading == wanted or (not exact and heading.startswith(tuple(wanted + a for a in _ANNOTATION_STARTS)))
 
 
 def _is_entry_heading(match) -> bool:
@@ -578,16 +597,17 @@ def _is_entry_heading(match) -> bool:
 
 
 def _entry_span(lines: list, name: str):
-    for i, line in enumerate(lines):
-        m = _HEADING_RE.match(line)
-        if not m or not 2 <= len(m.group(1)) <= 4 or not _heading_is(m.group(2), name):
-            continue
-        level = len(m.group(1))
-        for j in range(i + 1, len(lines)):
-            h = _HEADING_RE.match(lines[j])
-            if h and len(h.group(1)) <= level and _is_entry_heading(h):
-                return i, j
-        return i, len(lines)
+    for exact in (True, False):
+        for i, line in enumerate(lines):
+            m = _HEADING_RE.match(line)
+            if not m or not 2 <= len(m.group(1)) <= 4 or not _heading_is(m.group(2), name, exact):
+                continue
+            level = len(m.group(1))
+            for j in range(i + 1, len(lines)):
+                h = _HEADING_RE.match(lines[j])
+                if h and len(h.group(1)) <= level and _is_entry_heading(h):
+                    return i, j
+            return i, len(lines)
     return None
 
 
