@@ -1076,14 +1076,78 @@
     font-size:var(--type-support); color: rgba(200,185,150,0.3);
     font-style: italic; padding: 16px 0;
   }
-  .sm-feature { margin-bottom: 10px; }
+  /* Sheet palette for the inventory table and features: one set of tokens,
+     re-pointed by the light theme and the editorial skin below. */
+  #sheet-panel {
+    --sm-ink: rgba(225,205,165,0.95); --sm-soft: rgba(205,190,155,0.78);
+    --sm-mut: rgba(200,185,150,0.5); --sm-gold: rgba(200,160,70,0.85);
+    --sm-rule: rgba(180,140,60,0.14); --sm-hover: rgba(180,140,60,0.08);
+  }
+  .sm-feature-group { margin-bottom: 8px; }
+  .sm-feature-source { color: var(--sm-mut); margin-top: 10px; }
+  .sm-feature { border-bottom: 1px solid var(--sm-rule); }
   .sm-feature-name {
     font-family:var(--font-heading); font-size:var(--type-label);
-    color: rgba(200,165,80,0.75); margin-bottom: 2px;
+    color: var(--sm-gold); padding: 6px 2px;
+    display: flex; align-items: baseline; gap: 10px; min-width: 0;
   }
+  summary.sm-feature-name { cursor: pointer; list-style: none; }
+  div.sm-feature-name { padding-left: 20px; }
+  summary.sm-feature-name::-webkit-details-marker { display: none; }
+  summary.sm-feature-name::before {
+    content: '▸'; color: var(--sm-mut); font-size: var(--type-label); transition: transform 0.12s;
+  }
+  details[open] > summary.sm-feature-name::before { transform: rotate(90deg); }
+  summary.sm-feature-name:hover { background: var(--sm-hover); }
+  summary.sm-feature-name:focus-visible { outline: 1px solid var(--sm-gold); outline-offset: 1px; }
+  .sm-feature-title { flex: none; }
+  .sm-feature-tag {
+    flex: none; font-size: var(--type-label); letter-spacing: 1px; text-transform: uppercase;
+    color: var(--sm-mut);
+  }
+  .sm-feature-peek {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    font-family:var(--font-app); font-size:var(--type-support); color: var(--sm-mut);
+  }
+  details[open] .sm-feature-peek { visibility: hidden; }
   .sm-feature-text {
-    font-size:var(--type-support); color: rgba(200,185,150,0.6); line-height: 1.55;
+    font-size:var(--type-support); color: var(--sm-soft); line-height: 1.55;
+    padding: 0 2px 8px 18px;
   }
+  .sm-feature-lookup {
+    font: inherit; font-size: var(--type-label); letter-spacing: 1px; text-transform: uppercase;
+    background: none; border: none; padding: 0 2px; cursor: pointer;
+    color: var(--sm-gold); text-decoration: underline dotted;
+  }
+  .sm-inv-table {
+    width: 100%; border-collapse: collapse; font-size:var(--type-support);
+  }
+  .sm-inv-cargo { margin-top: 14px; }
+  .sm-inv-caption {
+    caption-side: top; text-align: left; padding-bottom: 4px;
+    font-family:var(--font-heading); font-size:var(--type-label);
+    letter-spacing: 2px; text-transform: uppercase; color: var(--sm-gold);
+  }
+  .sm-inv-group th {
+    font-family:var(--font-heading); font-size:var(--type-label); font-weight: normal;
+    letter-spacing: 1.5px; text-transform: uppercase; text-align: left;
+    color: var(--sm-mut); padding: 10px 0 3px; border-bottom: 1px solid var(--sm-rule);
+  }
+  .sm-inv-table td {
+    padding: 4px 8px 4px 0; vertical-align: top; color: var(--sm-soft);
+    border-bottom: 1px solid var(--sm-rule);
+  }
+  .sm-inv-qty { width: 3em; white-space: nowrap; color: var(--sm-mut); font-variant-numeric: tabular-nums; }
+  .sm-inv-name { color: var(--sm-ink); }
+  .sm-inv-name [data-srd-name] { cursor: pointer; }
+  .sm-inv-name [data-srd-name]:hover { text-decoration: underline dotted; }
+  .sm-inv-equipped {
+    margin-left: 8px; font-family:var(--font-heading); font-size: var(--type-label);
+    letter-spacing: 1px; text-transform: uppercase; color: var(--sm-gold);
+    border: 1px solid var(--sm-rule); border-radius: 2px; padding: 0 4px; white-space: nowrap;
+  }
+  .sm-inv-notes { color: var(--sm-mut); font-style: italic; }
+  .sm-inv-empty { color: var(--sm-mut); font-style: italic; font-size:var(--type-support); }
   .sm-inventory-list {
     list-style: none; padding: 0; margin: 0;
   }
@@ -2804,6 +2868,12 @@
   :root[data-theme="light"] .sm-attacks-table th { border-bottom-color: rgba(140, 95, 20, 0.35); }
   :root[data-theme="light"] .sm-ab-cell-rollable:hover { background: rgba(140, 95, 20, 0.15); }
   :root[data-theme="light"] .sm-ab-cell-rollable.rolled { background: rgba(180, 140, 60, 0.30); }
+  :root[data-theme="light"] #sheet-panel {
+    --sm-ink: rgb(35, 22, 8); --sm-soft: rgb(60, 44, 22); --sm-mut: rgba(85, 62, 30, 0.85);
+    --sm-gold: rgb(115, 76, 18); --sm-rule: rgba(140, 95, 20, 0.22); --sm-hover: rgba(140, 95, 20, 0.10);
+  }
+  :root[data-theme="light"] .sm-coin-gp { color: rgb(150, 100, 10); }
+  :root[data-theme="light"] .sm-coin-sp { color: rgb(85, 95, 110); }
 
   /* SRD modal body */
   :root[data-theme="light"] #srd-body .srd-desc { color: rgb(40, 28, 14); }
@@ -3027,6 +3097,10 @@
       color: rgb(40, 28, 14);
     }
     :root:not([data-theme]) #srd-body .srd-desc { color: rgb(40, 28, 14); }
+    :root:not([data-theme]):not([data-skin="editorial"]) #sheet-panel {
+      --sm-ink: rgb(35, 22, 8); --sm-soft: rgb(60, 44, 22); --sm-mut: rgba(85, 62, 30, 0.85);
+      --sm-gold: rgb(115, 76, 18); --sm-rule: rgba(140, 95, 20, 0.22); --sm-hover: rgba(140, 95, 20, 0.10);
+    }
     :root:not([data-theme]) .composing-label { color: rgba(110, 75, 20, 0.85); }
     :root:not([data-theme]) #world-clock { color: rgba(110, 75, 20, 0.85); }
     :root:not([data-theme]) .audio-label { color: rgba(110, 75, 20, 0.92); }
@@ -3445,6 +3519,17 @@
   :root[data-skin="editorial"] #sheet-panel .sm-feature-name[data-srd-name]{ color:var(--e-accent); cursor:pointer; }
   :root[data-skin="editorial"] #sheet-panel .sm-feature-name[data-srd-name]:hover{ color:var(--e-accent-ink); }
   :root[data-skin="editorial"] #sheet-panel .sm-feature-text{ font-family:var(--font-app); color:var(--e-ink); opacity:.82; }
+  :root[data-skin="editorial"] #sheet-panel{
+    --sm-ink:var(--e-ink); --sm-soft:var(--e-ink); --sm-mut:var(--e-mut); --sm-gold:var(--e-accent);
+    --sm-rule:color-mix(in srgb, var(--e-ink), transparent 86%);
+    --sm-hover:color-mix(in srgb, var(--e-ink), transparent 94%); }
+  :root[data-skin="editorial"] #sheet-panel .sm-inv-group th,
+  :root[data-skin="editorial"] #sheet-panel .sm-inv-caption,
+  :root[data-skin="editorial"] #sheet-panel .sm-inv-equipped,
+  :root[data-skin="editorial"] #sheet-panel .sm-feature-tag{ font-family:var(--font-heading); }
+  :root[data-skin="editorial"] #sheet-panel .sm-inv-group th{ color:var(--e-mut); }
+  :root[data-skin="editorial"] #sheet-panel .sm-inv-notes{ color:var(--e-mut); }
+  :root[data-skin="editorial"] #sheet-panel .sm-feature-peek{ font-family:var(--font-app); color:var(--e-mut); }
   /* spell/cantrip labels + tags */
   :root[data-skin="editorial"] #sheet-panel .sm-sub-label{ font-family:var(--font-heading); color:var(--e-mut); }
   :root[data-skin="editorial"] #sheet-panel .sm-spell-meta{ font-family:var(--font-app); color:var(--e-mut); }
@@ -5947,6 +6032,119 @@ function _purseFromInventory(inv) {
   return out.length ? out : null;
 }
 
+// ── Structured inventory (inventory.py ledger) ─────────────────────────────
+const _COIN_ORDER = ['pp', 'gp', 'ep', 'sp', 'cp'];
+const _INV_CATEGORIES = [
+  ['weapons', 'Weapons'], ['armour', 'Armour'], ['gear', 'Adventuring Gear'], ['tools', 'Tools'],
+  ['consumables', 'Consumables'], ['trade goods', 'Trade Goods'], ['treasure', 'Treasure'],
+];
+function _sheetPurse(sheet) {
+  const led = sheet && sheet.ledger;
+  if (led && led.coins) {
+    const out = _COIN_ORDER.filter(c => Number(led.coins[c]) > 0).map(c => [String(led.coins[c]), c]);
+    return out.length ? out : [['0', 'gp']];
+  }
+  return _purseFromInventory(sheet && sheet.inventory);
+}
+function _invTable(items, caption, grouped = true) {
+  const table = document.createElement('table');
+  table.className = 'sm-inv-table';
+  if (caption) {
+    const cap = document.createElement('caption');
+    cap.className = 'sm-inv-caption'; cap.textContent = caption;
+    table.appendChild(cap);
+  }
+  const known = _INV_CATEGORIES.map(([id]) => id);
+  const groups = grouped
+    ? _INV_CATEGORIES.map(([id, label]) => [label, items.filter(i => i.category === id)])
+    : [['', items]];
+  const other = grouped ? items.filter(i => !known.includes(i.category)) : [];
+  if (other.length) groups.push(['Other', other]);
+  const body = document.createElement('tbody');
+  groups.filter(([, list]) => list.length).forEach(([label, list]) => {
+    if (label) {
+      const head = document.createElement('tr');
+      head.className = 'sm-inv-group';
+      const th = document.createElement('th');
+      th.colSpan = 3; th.scope = 'colgroup'; th.textContent = label;
+      head.appendChild(th);
+      body.appendChild(head);
+    }
+    list.forEach(item => {
+      const tr = document.createElement('tr');
+      if (item.equipped) tr.classList.add('equipped');
+      const qty = document.createElement('td');
+      qty.className = 'sm-inv-qty'; qty.textContent = item.qty > 1 ? `×${item.qty}` : '';
+      const nm = document.createElement('td');
+      nm.className = 'sm-inv-name';
+      const label = document.createElement('span');
+      label.textContent = item.name;
+      label.dataset.srdName = item.name; label.dataset.srdCategory = 'item';
+      nm.appendChild(label);
+      if (item.equipped) {
+        const eq = document.createElement('span');
+        eq.className = 'sm-inv-equipped'; eq.textContent = 'equipped';
+        nm.appendChild(eq);
+      }
+      const notes = document.createElement('td');
+      notes.className = 'sm-inv-notes';
+      const bits = [];
+      if (item.weight != null) bits.push(`${item.weight} lb`);
+      if (item.notes) bits.push(item.notes);
+      notes.textContent = bits.join(' · ');
+      tr.append(qty, nm, notes);
+      body.appendChild(tr);
+    });
+  });
+  table.appendChild(body);
+  return table;
+}
+
+// Features grouped by where they come from; the name opens the full text.
+function _featureGroups(features) {
+  const groups = [];
+  features.forEach(f => {
+    const key = (f.source || '') + '|' + (f.kind || '');
+    let g = groups.find(x => x.key === key);
+    if (!g) { g = { key, source: f.source || '', label: f.kind_label || '', items: [] }; groups.push(g); }
+    g.items.push(f);
+  });
+  return groups;
+}
+function _featureEl(f) {
+  const text = String(f.text || '').trim();
+  const el = document.createElement(text ? 'details' : 'div');
+  el.className = 'sm-feature';
+  const head = document.createElement(text ? 'summary' : 'div');
+  head.className = 'sm-feature-name';
+  const nm = document.createElement('span');
+  nm.className = 'sm-feature-title'; nm.textContent = f.name;
+  head.appendChild(nm);
+  if (f.tag) {
+    const tag = document.createElement('span');
+    tag.className = 'sm-feature-tag'; tag.textContent = f.tag;
+    head.appendChild(tag);
+  }
+  if (text) {
+    const peek = document.createElement('span');
+    peek.className = 'sm-feature-peek'; peek.textContent = text;
+    head.appendChild(peek);
+  }
+  el.appendChild(head);
+  if (text) {
+    const body = document.createElement('div');
+    body.className = 'sm-feature-text';
+    body.textContent = text + ' ';
+    const look = document.createElement('button');
+    look.type = 'button'; look.className = 'sm-feature-lookup';
+    look.textContent = 'Rules';
+    look.dataset.srdName = f.name; look.dataset.srdCategory = 'feature';
+    body.appendChild(look);
+    el.appendChild(body);
+  }
+  return el;
+}
+
 function openSheet(name) {
   _openSheetName = name;
   const p = _playerData[name];
@@ -6017,9 +6215,9 @@ function openSheet(name) {
     content.appendChild(xpEl);
   }
 
-  // Coin purse, read from the sheet's "Currency" inventory line.
+  // Coin purse: the ledger's coins, else the sheet's "Currency" inventory line.
   const sheet = p.sheet || {};
-  const purse = _purseFromInventory(sheet.inventory);
+  const purse = _sheetPurse(sheet);
   if (purse) {
     const pEl = document.createElement('div');
     pEl.className = 'sm-purse';
@@ -6159,7 +6357,25 @@ function openSheet(name) {
   // Hide only the one line that was read into the purse.
   const purseLine = purse ? (sheet.inventory || []).find(_isCurrencyLine) : null;
   const invLines = (sheet.inventory || []).filter(l => l !== purseLine);
-  if (invLines.length) {
+  const ledger = sheet.ledger && Array.isArray(sheet.ledger.items) ? sheet.ledger : null;
+  if (ledger) {
+    content.appendChild(_smDivider());
+    const title = document.createElement('div');
+    title.className = 'sm-section-title';
+    title.innerHTML = '<img src="/icons/pack.png" class="sheet-section-icon" alt="">Inventory';
+    content.appendChild(title);
+    if (ledger.items.length) content.appendChild(_invTable(ledger.items));
+    else {
+      const none = document.createElement('div');
+      none.className = 'sm-inv-empty'; none.textContent = 'Carrying nothing.';
+      content.appendChild(none);
+    }
+    if (Array.isArray(ledger.cargo) && ledger.cargo.length) {
+      const cargo = _invTable(ledger.cargo, 'Shared cargo', false);
+      cargo.classList.add('sm-inv-cargo');
+      content.appendChild(cargo);
+    }
+  } else if (invLines.length) {
     content.appendChild(_smDivider());
     const title = document.createElement('div');
     title.className = 'sm-section-title';
@@ -6192,19 +6408,17 @@ function openSheet(name) {
     title.className = 'sm-section-title';
     title.innerHTML = '<img src="/icons/scroll.png" class="sheet-section-icon" alt="">Features & Passives';
     content.appendChild(title);
-    sheet.features.forEach(f => {
-      const el = document.createElement('div');
-      el.className = 'sm-feature';
-      const nameEl = document.createElement('div');
-      nameEl.className = 'sm-feature-name';
-      nameEl.textContent = f.name;
-      nameEl.dataset.srdName = f.name; nameEl.dataset.srdCategory = 'feature';
-      const textEl = document.createElement('div');
-      textEl.className = 'sm-feature-text';
-      textEl.textContent = f.text;
-      el.appendChild(nameEl);
-      el.appendChild(textEl);
-      content.appendChild(el);
+    _featureGroups(sheet.features).forEach(g => {
+      const wrap = document.createElement('div');
+      wrap.className = 'sm-feature-group';
+      if (g.source || g.label) {
+        const head = document.createElement('div');
+        head.className = 'sm-sub-label sm-feature-source';
+        head.textContent = g.source && g.label ? `${g.source} · ${g.label}` : (g.source || g.label);
+        wrap.appendChild(head);
+      }
+      g.items.forEach(f => wrap.appendChild(_featureEl(f)));
+      content.appendChild(wrap);
     });
   }
 

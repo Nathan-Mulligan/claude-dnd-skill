@@ -57,6 +57,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - A routine trade fits in one message: the offer, what inspection shows, the DC and stake if anyone haggles, the roll, the result and the new purse.
 - Apply the `Trade policy:` line in `## Pinned Facts` without asking. It says the margin they aim for, whether to inspect and who haggles.
 - Slow down only when the deal carries the current beat or a relationship.
+- Every coin and item change goes through `inventory.py` (`buy`, `sell`, `spend`, `earn`, `add`, `remove`, `equip`, `cargo`). It does the sums and change, refuses what the purse cannot cover, and rewrites the sheet and the display. Narrate from its one-line result. Never edit `## Equipment & Inventory` by hand; trade history goes in the sheet's notes, not the inventory.
 - Sums, rule talk and ledgers are out of the fiction, and narration is read aloud. Put them in a `send.py --tutor` block, which shows as a collapsed "DM Hint" and is not spoken. One line.
 
 ## 6. NPCs
