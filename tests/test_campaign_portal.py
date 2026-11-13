@@ -23,6 +23,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime" / "portal-session.json")
     monkeypatch.setattr(portal, "prepare_display", lambda name, **kwargs: None)
     monkeypatch.setattr(portal, "notify_party_consumed", lambda *args: None)
+    monkeypatch.setattr(portal.lore_sync, "rt", lambda name: str(tmp_path / ".runtime" / name))
     app = portal.create_app()
     app.testing = True
     test_client = app.test_client()
@@ -558,7 +559,7 @@ def test_helper_choice_defaults_saves_and_is_read_by_lore_sync(client, monkeypat
         assert response.status_code == 200 and response.json["helper"] == key
         assert api(client, "/api/state").json["helper"] == key
     api(client, "/api/helper", method="post", data={"helper": "haiku"})
-    monkeypatch.setattr(portal.lore_sync, "rt", lambda name: str(portal.RUNTIME / name))
+    assert json.loads((portal.RUNTIME / "helper-settings.json").read_text(encoding="utf-8")) == {"helper": "haiku"}
     monkeypatch.delenv("DND_LORE_SYNC", raising=False)
     monkeypatch.delenv("DND_LORE_MODEL", raising=False)
     assert portal.lore_sync.choose_model() == ("claude", "haiku")
@@ -586,3 +587,10 @@ def test_page_offers_effort_and_helper_choices(client):
                        ("haiku", "Claude Haiku"), ("qwen", "Local Qwen")):
         assert f'<option value="{key}">{label}</option>' in page
     assert "Off turns it off" in page
+
+
+def test_helper_file_follows_runtime_dir_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("DND_RUNTIME_DIR", str(tmp_path / "rt"))
+    portal.save_helper("qwen")
+    assert json.loads((tmp_path / "rt" / "helper-settings.json").read_text(encoding="utf-8")) == {"helper": "qwen"}
+    assert portal.read_helper() == "qwen" and portal.lore_sync.saved_helper() == "qwen"

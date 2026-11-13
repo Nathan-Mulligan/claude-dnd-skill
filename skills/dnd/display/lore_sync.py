@@ -111,6 +111,7 @@ def save_helper(key: str) -> None:
     if key not in HELPERS:
         raise ValueError(f"unknown helper {key!r}")
     path = settings_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".helper-settings.")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump({"helper": key}, f)

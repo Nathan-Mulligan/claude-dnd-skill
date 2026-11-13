@@ -243,28 +243,15 @@ ONBOARDING_CHOICES = {
 CHARACTER_LIMITS = {"name": 100, "player": 100, "concept": 1500, "details": 1500, "pillar": 500}
 
 
-def helper_file() -> Path:
-    return RUNTIME / "helper-settings.json"
-
-
 def read_helper() -> str:
-    try:
-        key = json.loads(helper_file().read_text(encoding="utf-8")).get("helper")
-    except (OSError, ValueError, AttributeError):
-        key = None
-    return key if key in HELPER_CHOICES else lore_sync.DEFAULT_HELPER
+    return lore_sync.saved_helper()
 
 
 def save_helper(key: str) -> None:
+    """Save where lore_sync reads it (the shared runtime resolver, so DND_RUNTIME_DIR is honoured)."""
     if key not in HELPER_CHOICES:
         raise ValueError("Choose a notes helper from the list.")
-    path = helper_file()
-    if path.is_symlink():
-        raise ValueError("The helper settings file cannot be a symbolic link.")
-    RUNTIME.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".helper-settings.{secrets.token_hex(4)}")
-    temporary.write_text(json.dumps({"helper": key}), encoding="utf-8")
-    temporary.replace(path)
+    lore_sync.save_helper(key)
 
 
 def read_effort(data: dict) -> str:
