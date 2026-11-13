@@ -337,7 +337,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP init \
 
 # Time advancement
 python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP advance 8 hours
-python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP advance 2 days
+python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP advance 2 days            # travel: rolls 2 road days
+python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP advance 3 days --no-road  # time passes, no travel
 python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP rest short   # +1 hour
 python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP rest long    # +8 hours
 
@@ -349,6 +350,17 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP events
 ```
 
 **When to run:** after every rest; after significant travel or time skip; when manually updating `state.md` date — use `calendar.py set` to keep them in sync.
+
+**Road days.** In an improvised campaign (`type: dynamic` or `type: sandbox` in `## Campaign Arc`), `advance` also prints one road-day roll for each whole day that passes (`oracle.py road`, below), so travel events arrive without a separate call. Prebuilt (`structured`) campaigns get nothing extra. When days pass without travel (waiting in town, recovering, a week of downtime), add `--no-road`. Rests use `rest short` / `rest long`, which never roll the road. Example:
+
+```
+  +3 days → Moonday, 18 Duskfall 1247 — morning (hour 8)
+On the road: one roll per travel day (improvised campaign). Not travelling? Ignore these, and use --no-road for rests, waiting in town or downtime.
+Day 1 of 3 (16 Duskfall 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Investigating costs time; ignoring it may cost later.
+Day 2 of 3 (17 Duskfall 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it one vivid line and move on.
+Day 3 of 3 (18 Duskfall 1247): danger. Wolves circling the camp at dusk, bold with hunger. Telegraph the threat, and let talk, flight or a fight all work.
+    Encounter budget (medium for 2 characters of level 1): about 100 XP. Roughly 1 × CR 1/4 (wolf), 2 × CR 1/8 (bandit) or 4 × CR 0 (jackal).
+```
 
 ---
 
@@ -422,8 +434,10 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos set --campaign $CAMP --value
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos adjust --campaign $CAMP --pc-lost
 
 # Improvised campaigns only (Standard 16): a new NPC's temperament, and what each travel day brings.
-# road prints a skip notice for prebuilt (structured) campaigns.
-python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --trader
+# npc with --campaign and --name is seeded from the name (same name, same person) and saves to npcs.md.
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --campaign $CAMP --name "Bera Holt" --trader
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc note --campaign $CAMP --name "Bera Holt" "Sold 4 blankets at 18. Thinks they drive a hard bargain."
+# road prints a skip notice for prebuilt (structured) campaigns. calendar.py advance runs it for you.
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py road --campaign $CAMP --days 3
 
 # Yes/no oracle — likelihood + chaos modifier → verdict + d100
@@ -438,6 +452,14 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py scene
 ```
 
 Likelihoods: `sure-thing`, `likely`, `50/50`, `unlikely`, `no-way`. Verdict suffixes: `-and` (extreme, on doubles), `-but` (qualified, near threshold).
+
+**`npc`.** Rolls a temperament tier (about 60% ordinary, 30% colourful, 6% memorable, 4% troubled), a current want (about half ask something of the party, marked "an ask") and, with `--trader`, a trading style. With `--campaign` and `--name` it writes `- **Temperament:**`, `- **Wants now:**` and `- **Trades:**` lines into that NPC's entry in `npcs.md` (a `###` heading starting with the name), adding the entry if it is missing; running it again rewrites the same values. `npc note` appends `- Party note (<in-world date>): <line>` to the end of the entry: one line after a scene, on how it went and what the NPC now thinks of the party.
+
+**`road`.** One roll per travel day: quiet, traveller, obstacle, discovery, danger or story, each with several examples. With `--campaign` it reads `state.md`:
+- `pacing` in `## Session Flags` weights the table: `adventure` has about half the quiet days and over three times the story days of `mixed`; `downtime` has more quiet days and travellers, and less danger.
+- Story days use `## Next Hooks` bullets and `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) when present; about half of traveller days bring a clock's news or a hook.
+- `road_log.json` in the campaign folder keeps the last 10 days, so an example, hook or clock is not reused while it is in the log (a hook used on a story day is not repeated by a traveller either), and the same eventful kind never comes twice in a row.
+- Danger days add an encounter budget for the party (size and average level from `party_stats.json`, else `characters/*.md`), at the tier set by the `difficulty` dial (`standard` = medium).
 
 ---
 
