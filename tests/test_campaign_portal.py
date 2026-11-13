@@ -235,9 +235,61 @@ def test_party_input_is_sent_to_active_model(client, monkeypatch):
     assert not queue.exists()
     assert any("My name is Enther" in " ".join(args) for args in calls)
     assert any("setup question" in " ".join(args) for args in calls)
-    assert any(portal.SCENE_PROTOCOL in " ".join(args) for args in calls)
+    assert not any(portal.SCENE_PROTOCOL in " ".join(args) for args in calls)
     assert calls[-1] == ("consumed",)
     assert portal.deliver_party_input() is False
+
+
+def play_turn(monkeypatch, mode="resume", campaign="Enderal"):
+    import shutil
+    portal.RUNTIME.mkdir(parents=True, exist_ok=True)
+    folder = portal.DATA_ROOT / "campaigns" / campaign
+    if not folder.exists():
+        shutil.copytree(REPO / "tests/fixtures/enderal", folder)
+    portal.META_FILE.write_text(json.dumps({"campaign": campaign, "mode": mode}), encoding="utf-8")
+    (portal.RUNTIME / ".input_queue").write_text("[Elbane III]: We ask Meren about cargo.", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(portal, "running", lambda: True)
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: (calls.append(args), subprocess.CompletedProcess(args, 0, "", ""))[1])
+    delivered = portal.deliver_party_input()
+    typed = [args[-1] for args in calls if "-l" in args]
+    return delivered, typed[0] if typed else "", folder
+
+
+def test_play_turn_carries_the_turn_card_instead_of_scene_protocol(client, monkeypatch):
+    delivered, prompt, _ = play_turn(monkeypatch)
+    assert delivered
+    assert prompt.startswith("[[Turn card, hidden from players: Where: Saltmere")
+    assert 'Beat 1b "Broken Ledgers"' in prompt and "Trade policy" in prompt
+    assert portal.SCENE_PROTOCOL not in prompt and "--scene-key" not in prompt
+    assert "setup question" not in prompt
+    assert "\n" not in prompt
+    assert prompt.endswith('Input: "[Elbane III]: We ask Meren about cargo."')
+
+
+def test_broken_state_still_delivers_the_reply(client, monkeypatch):
+    folder = portal.DATA_ROOT / "campaigns" / "Enderal"
+    folder.mkdir(parents=True)
+    (folder / "state.md").write_bytes(b"\xff\xfe\x00 not utf-8 ## Campaign Arc ```yaml [")
+    delivered, prompt, _ = play_turn(monkeypatch)
+    assert delivered and "We ask Meren about cargo" in prompt
+
+
+def test_card_failure_still_delivers_the_reply(client, monkeypatch):
+    monkeypatch.setattr(portal.turn_card, "prepare", lambda *args: 1 / 0)
+    delivered, prompt, _ = play_turn(monkeypatch)
+    assert delivered and prompt.startswith("Party Input") and "We ask Meren about cargo" in prompt
+
+
+def test_setup_note_stops_once_a_new_campaign_has_characters(client, monkeypatch):
+    folder = portal.DATA_ROOT / "campaigns" / "Fresh"
+    (folder / "characters").mkdir(parents=True)
+    (folder / "state.md").write_text("# Campaign: Fresh\n", encoding="utf-8")
+    _, prompt, _ = play_turn(monkeypatch, mode="new", campaign="Fresh")
+    assert "send.py --setup-question" in prompt
+    (folder / "characters" / "elbane.md").write_text("# Elbane\n", encoding="utf-8")
+    _, prompt, _ = play_turn(monkeypatch, mode="new", campaign="Fresh")
+    assert "setup question" not in prompt
 
 
 def test_party_input_waits_for_matching_campaign(client, monkeypatch):
@@ -385,8 +437,8 @@ def test_large_questionnaire_is_rejected_before_model_operations(client, monkeyp
 def test_scene_protocol_prefix_reaches_each_launch_mode(mode, onboarding):
     prompt = portal.initial_prompt(mode, "adventure", "A strange new world", onboarding)
     assert prompt.startswith(portal.SCENE_PROTOCOL)
-    assert "--scene-key" in prompt
-    assert "/health" in prompt
+    assert "scene cue in SKILL-scripts.md" in prompt
+    assert len(portal.SCENE_PROTOCOL) < 200
     if onboarding is not None:
         assert json.loads(prompt.split("Completed questionnaire JSON: ", 1)[1]) == onboarding
 

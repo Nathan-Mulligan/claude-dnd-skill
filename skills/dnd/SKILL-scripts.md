@@ -463,6 +463,27 @@ Likelihoods: `sure-thing`, `likely`, `50/50`, `unlikely`, `no-way`. Verdict suff
 
 ---
 
+## Turn card and arc — `scripts/arc.py`
+
+**The turn card.** In portal play every party reply arrives with one block in front of it: `[[Turn card, hidden from players: … ]]`. The portal builds it from the campaign files (`scripts/turn_card.py` at the repository root), so it is as current as `state.md`. It holds, when the files have them: where and when the party is; the current arc beat and its `steering_notes` (or a structured campaign's chapter and next key beat); the top two `## Next Hooks`; any `## Clocks` entry due within two in-world days or overdue; the `Trade policy:` pinned fact; the people present, from `npcs.md`; the table's narration length and roll settings (the portal does not run `check_input.py`, so these arrive here); and three standing rules. Read it, act on it, and never show it to the players. Keep `## Next Hooks`, `## Clocks`, the trade policy and the arc current, because the card is only as good as `state.md`.
+
+When the story has sat on one beat for too long (`steer_after: N` in Session Flags, otherwise 4, 6 or 10 turns for `spotlight: dm_led`, `balanced` or `player_led`; `steer_after: 0` turns it off), the beat line becomes **DM steering, mandatory this turn**. The first nudge says what to bring into the scene now. The second nudge for the same beat asks whether the beat has already landed: if it has, run `arc.py advance`; if not, run `arc.py revise` with a pressure that fits where the party is. Turns during active combat, dice-only replies and out-of-character notes (`OOC`, `((…))`, `//`) do not count. The count restarts when the beat, its pressure or the steering notes change.
+
+```bash
+# What is the arc doing now?
+python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py status  --campaign <name>
+# The current beat's change has landed: mark it complete, move to the next beat and act
+python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py advance --campaign <name> [--beat 1b]
+# The beat no longer fits where the party is: give it a new pressure, change or steering
+python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b --pressure "Piers panics as the auditor arrives on 18 Duskfall" [--what-changes "..."] [--steering "..."]
+```
+
+`advance` clears `steering_notes`, so write fresh steering for the new beat with `revise --steering`. For a structured campaign, `advance` ticks the chapter's next key beat off `outstanding_beats`; moving to a new chapter still means reading `arc.md`. `revise` refuses completed beats and logs each change in `revision_log`. Both rewrite only the YAML block under `## Campaign Arc` (comments inside it are dropped) and leave the rest of `state.md` as it was.
+
+**`## Clocks`** in `state.md`: one bullet per dated event, `- 18 Duskfall 1247: <what happens> (seen by: <how the party could notice>)`. Dates use the campaign calendar's month names (`calendar.json`); a clock whose date can't be read is left off the card. Remove a clock once it has played out.
+
+---
+
 ## Deterministic Graph Extraction — `scripts/graph_extract_deterministic.py`
 
 Zero-LLM relationship extractor. Pattern-matches session-log sentences against the bundled verb-table seed (`data/graph/verb_table_seed.yaml`) and emits typed edge proposals in the exact shape `campaign_graph.py` consumes. ~50% recall (clean subject-verb-object only), ~95% precision, no Claude API call. Usually driven through `campaign_graph.py extract --deterministic` rather than directly:

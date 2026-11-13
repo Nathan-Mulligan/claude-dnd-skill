@@ -10,6 +10,7 @@
 ## Pinned Facts
 *Soft facts the DM always keeps — canon the table never wants forgotten. Read at every /dnd load alongside DM Style Notes and kept hot all session. Unlike Live State Flags (which track shifting state and are rewritten each save), pinned facts are stable and are only added or removed on request. Pin a promise made, a dead sibling's name, a running in-joke, a table house rule, a detail the player has said matters. Add/list/remove with `/dm:dnd pin`.*
 *(none pinned yet)*
+*(trading parties: one line the DM applies without asking, e.g. `- Trade policy: aim for 20% margin; inspect before buying; Elbane haggles, Nella helps.`)*
 
 ## World State
 - **In-world date:** <Day, Month, Year — canonical source; keep in sync above>
@@ -26,6 +27,9 @@
 
 ## Next Hooks
 *(improvised campaigns: 2-3 prepared situations on the party's route, refreshed on each arrival and departure; see SKILL.md Standard 16)*
+
+## Clocks
+*Things that happen on a date whether or not the party acts; the turn card shows each one from two days before it is due. One bullet each: `- 18 Duskfall 1247: the Wardens impound unregistered wagons at Brackenford (seen by: carters turning back on the road)`*
 
 ## Faction Moves
 *Updated at the end of each session — what each active faction did while the party was occupied.*

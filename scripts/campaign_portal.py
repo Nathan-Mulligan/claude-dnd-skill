@@ -23,6 +23,7 @@ from flask import Flask, jsonify, render_template, request, send_file
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_pulse  # noqa: E402
+import turn_card  # noqa: E402
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -58,22 +59,12 @@ HANDOFF_TIMEOUT = 180
 _handoff_lock = threading.Lock()
 _handoff = {"status": "idle", "message": ""}
 SCENE_PROTOCOL = (
-    "Scene media: before narrating, read http://127.0.0.1:5001/health and its scene identity. "
-    "When the actual place, activity or atmosphere changes meaningfully, bundle a scene cue with narration: "
-    "send.py --music-event scene --music-setting <broad-setting> --music-mood <fitting-mood> "
-    "--scene-key <stable-slug> --scene-label <short-name> --scene-description <specific-scenery-and-activity>. "
-    "Use a new key even within the same broad setting; keep the existing key during continuation. "
-    "Describe the actual view and musical atmosphere, including darkness where appropriate. "
-    "Use --scene-era for the saved campaign world era, such as medieval, renaissance, ancient, modern, "
-    "futuristic or a specific custom era. It guides image clothing, architecture and technology, not place mood. "
-    "Omitted era inherits between authored scenes; undeclared fantasy defaults to medieval. Save the "
-    "established era in existing world notes and keep explicitly established clockwork or magical constructs. "
-    "Place tone is inherited through --scene-theme JSON: an outer place with mood, then child names "
-    "with optional local mood overrides. Copy the current scene.theme path from health, append a child "
-    "to enter it, or pop it on leaving; supply a new path for a new region. Omitted theme inherits; [] clears. "
-    "Omit --music-mood to inherit. A cue mood temporarily overrides that scene; put lasting creepy-place "
-    "overrides on the child theme node. Record stable place themes in existing world notes for revisits. "
-    "Do not change scenes for a suggested destination, casual mention or every paragraph. "
+    "Scene media: when the place or mood truly changes, send the scene cue in SKILL-scripts.md with that "
+    "narration; otherwise keep the current scene. "
+)
+SETUP_NOTE = (
+    "During campaign or character setup, treat it as the answer to your latest question. "
+    "Send your next setup question to the cinematic display with send.py --setup-question before waiting. "
 )
 
 
@@ -149,6 +140,16 @@ def deliver_party_input() -> bool:
         return _deliver_party_input()
 
 
+def in_setup(meta: dict, campaign_dir: Path | None) -> bool:
+    """A new campaign is in setup until its first character sheet is saved."""
+    if meta.get("mode") != "new":
+        return False
+    try:
+        return campaign_dir is None or not any((campaign_dir / "characters").glob("*.md"))
+    except OSError:
+        return True
+
+
 def _deliver_party_input() -> bool:
     if not running():
         return False
@@ -175,18 +176,16 @@ def _deliver_party_input() -> bool:
     if not content:
         claim.unlink(missing_ok=True)
         return False
+    campaign_dir, card, pulse = None, "", None
     try:
         campaign_dir = campaign_path(str(meta.get("campaign", "")))
-        pulse = arc_pulse.plan(campaign_dir)
-    except Exception:  # steering is optional; a bad state.md must never block the party's reply
-        pulse = None
+        card, pulse = turn_card.prepare(campaign_dir, content, RUNTIME)
+    except Exception:  # the card is optional; a bad state.md must never block the party's reply
+        card, pulse = "", None
     prompt = (
-        SCENE_PROTOCOL +
-        "Party Input for the current DM turn. During campaign or character setup, treat it as "
-        "the answer to your latest question; during play, treat it as the party's action. "
-        "Send your next setup question to the cinematic display with send.py --setup-question before waiting. "
-        "Input: " + json.dumps(content, ensure_ascii=True) +
-        (" " + pulse.directive if pulse and pulse.directive else "")
+        card + "Party Input for the current DM turn. " +
+        (SETUP_NOTE if in_setup(meta, campaign_dir) else "Treat it as the party's action. ") +
+        "Input: " + json.dumps(content, ensure_ascii=True)
     )
     literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", prompt)
     if literal.returncode:

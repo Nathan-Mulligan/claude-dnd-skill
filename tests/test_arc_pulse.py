@@ -57,16 +57,18 @@ def play_turns(folder, count):
 
 
 def test_reads_the_current_beat_from_flow_style_yaml(tmp_path):
-    beat = arc_pulse.current_beat((campaign(tmp_path) / "state.md").read_text(encoding="utf-8"))
-    assert beat.id == "1a" and beat.label == "The Cost of Passage"
-    assert "Mara enforces" in beat.world_pressure
+    beat = arc_pulse.arc.current(arc_pulse.arc.read((campaign(tmp_path) / "state.md").read_text(encoding="utf-8")))
+    assert beat["id"] == "1a" and beat["label"] == "The Cost of Passage"
+    assert "Mara enforces" in beat["world_pressure"]
 
 
 def test_nudges_on_the_sixth_turn_by_default_then_counts_again(tmp_path):
     directives = play_turns(campaign(tmp_path), 12)
     assert [i for i, d in enumerate(directives, 1) if d] == [6, 12]
     assert "Mara enforces the posted rate" in directives[5]
-    assert "/dm:dnd arc advance" in directives[5]
+    assert "Has this beat already landed?" in directives[11]
+    assert "arc.py advance --campaign Enderal" in directives[11]
+    assert "arc.py revise --campaign Enderal --beat 1a" in directives[11]
 
 
 def test_dm_led_spotlight_nudges_sooner(tmp_path):
@@ -85,7 +87,8 @@ def test_advancing_the_beat_resets_the_count(tmp_path):
     campaign(tmp_path, beat="1b")
     directives = play_turns(folder, 5)
     assert not any(directives)
-    assert json.loads((folder / "arc_pulse.json").read_text(encoding="utf-8")) == {"beat": "1b", "turns": 5}
+    saved = json.loads((folder / "arc_pulse.json").read_text(encoding="utf-8"))
+    assert saved["beat"] == "1b" and saved["turns"] == 5 and saved["nudges"] == 0
 
 
 def test_sandbox_or_missing_arc_never_steers(tmp_path):
@@ -147,6 +150,86 @@ def test_malformed_arc_never_blocks_steering(tmp_path, arc):
 
 def test_reply_still_reaches_the_dm_when_steering_breaks(delivery, monkeypatch):
     folder, sent, _ = delivery
-    monkeypatch.setattr(portal.arc_pulse, "plan", lambda folder: 1 / 0)
+    monkeypatch.setattr(portal.turn_card.arc_pulse, "plan", lambda folder, text="": 1 / 0)
     assert reply()
     assert "We haggle over the flour" in sent[-2]
+
+
+def test_steering_notes_location_and_hooks_lead_the_directive(tmp_path):
+    folder = campaign(tmp_path, flags="steer_after: 1")
+    state = folder / "state.md"
+    text = state.read_text(encoding="utf-8").replace(
+        "current_act: 1\n", "current_act: 1\nsteering_notes: A clerk asks them to carry a sealed ledger.\n")
+    text = ("## Current Situation\n- **Location:** Saltmere market\n\n## Next Hooks\n- A courier with a lame horse\n\n"
+            + text)
+    state.write_text(text, encoding="utf-8")
+    directive = arc_pulse.plan(folder).directive
+    assert "A clerk asks them to carry a sealed ledger" in directive
+    assert "at Saltmere market" in directive and "A courier with a lame horse" in directive
+    assert "Mara enforces" not in directive
+
+
+def test_world_pressure_is_the_fallback(tmp_path):
+    directive = arc_pulse.plan(campaign(tmp_path, flags="steer_after: 1")).directive
+    assert "Mara enforces the posted rate" in directive and "entangled in the shortage" in directive
+
+
+def test_flag_lines_written_as_list_items_are_read(tmp_path):
+    directives = play_turns(campaign(tmp_path, flags="- spotlight: dm_led"), 4)
+    assert directives[-1] and not any(directives[:-1])
+    assert arc_pulse.turn_limit("## Session Flags\n- steer_after: 2\n") == 2
+
+
+def test_active_combat_turns_are_not_counted(tmp_path):
+    folder = campaign(tmp_path, flags="steer_after: 2")
+    state = folder / "state.md"
+    clean_text = state.read_text(encoding="utf-8")
+    state.write_text(clean_text + "\n## Active Combat\nRound 2: Elbane vs bandit (HP 4/7)\n", encoding="utf-8")
+    assert arc_pulse.plan(folder) is None
+    for ended in ("None.", "*(none)*", ""):
+        state.write_text(clean_text + f"\n## Active Combat\n{ended}\n", encoding="utf-8")
+        assert arc_pulse.plan(folder) is not None
+
+
+@pytest.mark.parametrize("text", [
+    "[Elbane III]: 14", "[Elbane III]: I rolled a 17 for Perception", "[Nella Reed]: 8 and 9",
+    "[Nella Reed]: nat 20", "[Elbane III]: d20: 12 + 4 = 16",
+    "Elbane III rolls 1d20+4: [13] +4 = 17 — Inspect rope: Perception",
+    "[Everybody]: OOC: back in five minutes", "[Nella Reed]: (ooc) can we stop at nine?",
+    "[Elbane III]: ((pausing for tea))", "[Elbane III]: // what time is it",
+    "[Elbane III]: 15\n[Nella Reed]: OOC: nice roll",
+])
+def test_dice_only_and_out_of_character_inputs_do_not_count(tmp_path, text):
+    assert not arc_pulse.counts_as_story(text)
+    assert arc_pulse.plan(campaign(tmp_path), text) is None
+
+
+@pytest.mark.parametrize("text", [
+    "[Elbane III]: We haggle over the flour.", "[Elbane III]: I rolled a 14\n[Nella Reed]: I grab the ledger",
+    "[Elbane III]: I offer 20 silver for the wagon", "",
+])
+def test_story_inputs_count(text):
+    assert arc_pulse.counts_as_story(text)
+
+
+def test_revising_the_beat_restarts_the_count_and_the_nudge_ladder(tmp_path):
+    folder = campaign(tmp_path, flags="steer_after: 2")
+    assert play_turns(folder, 4)[3].startswith("DM steering, mandatory this turn: beat 1a")
+    state = folder / "state.md"
+    state.write_text(state.read_text(encoding="utf-8").replace("Mara enforces the posted rate", "Mara seizes a wagon"),
+                     encoding="utf-8")
+    directives = play_turns(folder, 2)
+    assert directives[0] is None
+    assert "Mara seizes a wagon" in directives[1] and "already landed" not in directives[1]
+
+
+def test_structured_arc_gets_a_nudge_naming_the_key_beat_and_source(tmp_path):
+    folder = tmp_path / "campaigns" / "Keep"
+    folder.mkdir(parents=True)
+    (folder / "state.md").write_text(
+        "## Campaign Arc\n```yaml\ntype: structured\ncurrent_chapter: '1.1'\ncurrent_chapter_detail:\n  id: '1.1'\n"
+        "  title: The Gate\n  source_ref: source/1.1.md\n  key_beats: [Find the map, Meet the hermit]\n"
+        "outstanding_beats: [Find the map, Meet the hermit]\n```\n\n## Session Flags\nsteer_after: 2\n", encoding="utf-8")
+    directives = play_turns(folder, 4)
+    assert directives[1] and '"Find the map"' in directives[1] and "source/1.1.md" in directives[1]
+    assert "arc.py advance --campaign Keep" in directives[3]
