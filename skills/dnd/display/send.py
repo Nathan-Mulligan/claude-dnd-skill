@@ -303,6 +303,25 @@ def _split_paragraphs(text: str, limit: int = CHUNK_LIMIT) -> list:
     return chunks
 
 
+_BARE_QUESTION = re.compile(
+    r"(?:[A-Z][\w'-]*(?:\s+(?:and\s+)?[A-Z][\w'-]*){0,3},\s*)*"
+    r"(?i:(?:so|and|now|well|then),?\s+)?"
+    r"(?i:what (?:would|will|do|should) you(?: all| two)? (?:(?:like|want|wish|care) to )?do"
+    r"|where (?:would|do|will) you(?: all| two)? (?:(?:like|want|wish|care) to )?go"
+    r"|where to|where next|what next|what now|what's your next move)"
+    r"(?i:,? (?:now|next|first|then))?\s*[?.!]*"
+)
+
+
+def bare_question_ending(text: str) -> "str | None":
+    """Return the final sentence when it is only a 'what do you do' prompt."""
+    body = text.strip().strip("\"'“”‘’ ")
+    if not body:
+        return None
+    last = re.split(r"(?<=[.!?])\s+|(?<=[.!?][\"'”’])\s+", body)[-1].strip("\"'“”‘’ ")
+    return last if _BARE_QUESTION.fullmatch(last) else None
+
+
 def _build_stats_payload(args) -> "dict | None":
     """Build a push_stats-compatible payload from --stat-* flags."""
     players: "dict[str, dict]" = {}
@@ -516,7 +535,8 @@ def main() -> None:
         help='Optional DC; displayed informationally on the phone.')
     parser.add_argument("--wait", action="store_true",
         help='With --dice-request: block until every prescribed character has rolled '
-             '(polls /dice-request/<id>). Exits non-zero on timeout.')
+             '(polls /dice-request/<id>), then print each roll line on stdout. '
+             'Exits non-zero on timeout.')
     parser.add_argument("--wait-timeout", type=int, default=120, metavar="SECONDS",
         help='Timeout for --wait (default 120s). On timeout, prints still-pending '
              'characters to stderr and exits 2.')
@@ -676,6 +696,8 @@ def main() -> None:
                         continue
                     if st.get("complete"):
                         print(f"send.py: all rolls received.", file=sys.stderr)
+                        for line in st.get("results") or []:
+                            print(line, flush=True)
                         break
                     remaining = st.get("pending") or []
                     if remaining != last_pending:
@@ -774,6 +796,13 @@ def main() -> None:
         print(f"send.py: ABORT — {flag} requires a text body but stdin was empty.",
               file=sys.stderr)
         sys.exit(2)
+
+    if not (_has_content_flag or args.opener):
+        ending = bare_question_ending(text)
+        if ending:
+            print(f"send.py: warning: the narration ends on a bare question ({ending!r}). "
+                  "End the turn on something in motion: a person who wants something now, "
+                  "a deadline, a cost or a discovery. Sent anyway.", file=sys.stderr)
 
     # ── Text send ─────────────────────────────────────────────────────────────
     chunks_sent = 0

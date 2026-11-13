@@ -285,10 +285,15 @@ def read_onboarding(data: dict, mode: str) -> dict | None:
 
 
 def initial_prompt(mode: str, name: str, description: str, onboarding: dict | None = None) -> str:
+    boot = (
+        "The campaign portal launched you, so you are the DM. Per AGENTS.md, skip the Houston pre-prompt "
+        "and first read skills/dnd/DM-CORE.md in full, in chunks of at most 200 lines. Read other skill "
+        "files only by the section you need. "
+    )
     if mode == "new" and onboarding is not None:
         return (
-            SCENE_PROTOCOL +
-            f"Read this repository's D&D skill and complete /dm:dnd new for campaign {name}. "
+            SCENE_PROTOCOL + boot +
+            f"Then complete /dm:dnd new for campaign {name}, ending with its opening scene. "
             "The completed questionnaire below is the authoritative campaign and character setup. "
             "Submitting it authorises you to create all listed characters with legal, concept-fitting defaults "
             "for blank choices, balanced point-buy abilities, equipment and spells. Do not ask routine setup "
@@ -307,8 +312,8 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
         )
     if mode == "new":
         return (
-            SCENE_PROTOCOL +
-            f"Read this repository's D&D skill and begin the /dm:dnd new procedure for campaign {name}. "
+            SCENE_PROTOCOL + boot +
+            f"Then begin the /dm:dnd new procedure for campaign {name}. "
             "The local cinematic display is already running at http://127.0.0.1:5001; reuse it without "
             "restarting the display or opening another tab. Ask each setup question in this interactive "
             "session and wait for my answer. Once the campaign is selected, send player-facing narration "
@@ -318,10 +323,13 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
             f"My initial campaign idea is: {description or 'Start a new campaign with me.'}"
         )
     return (
-        SCENE_PROTOCOL +
-        f"Read this repository's D&D skill and follow the /dm:dnd load procedure for campaign {name}. "
+        SCENE_PROTOCOL + boot +
+        f"Then follow the /dm:dnd load procedure for campaign {name}. "
         "Reconstruct state from the saved campaign files before narrating. The local browser display "
         "is already running at http://127.0.0.1:5001; reuse it without restarting or opening a tab. "
+        "Skip the display and dice questions: the display is running and the saved roll_mode stands. "
+        "Open as the load procedure says: three sentences of last time, then a scene already moving, "
+        "drawn from Next Hooks or a clock that has fired. "
         "If the display already contains narration for this campaign, keep it and its current scene without clearing or replaying it. "
         "If the display is empty, restore the saved scene. "
         "Send any setup question to the display with send.py --setup-question before waiting; Party Input Everybody "

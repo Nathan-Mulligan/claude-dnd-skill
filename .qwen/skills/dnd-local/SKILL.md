@@ -5,7 +5,7 @@ description: Run or manage a persistent D&D campaign in this repository with loc
 
 # Local D&D DM
 
-This is the Qwen Code entry point for the existing D&D campaign. The canonical game rules and command procedures remain in `skills/dnd/SKILL.md`, `skills/dnd/SKILL-commands.md`, and `skills/dnd/SKILL-scripts.md`. Read the core rules, the procedure for the requested command, and the relevant script syntax. Resolve the literal `${CLAUDE_SKILL_DIR}` in those files to this repository's `skills/dnd` directory when running scripts.
+This is the Qwen Code entry point for the existing D&D campaign. Read `skills/dnd/DM-CORE.md` in full first, in chunks of 200 lines at most; it holds the rules that shape play. The canonical reference and command procedures remain in `skills/dnd/SKILL.md`, `skills/dnd/SKILL-commands.md`, and `skills/dnd/SKILL-scripts.md`. Read those only by the section you need (`grep -n '^#'`, then `sed -n`), never several files in one command. Resolve the literal `${CLAUDE_SKILL_DIR}` in those files to this repository's `skills/dnd` directory when running scripts.
 
 Use `DND_CAMPAIGN_ROOT` when set; otherwise campaign data is in `~/.claude/dnd`. Before every campaign read or write, run `python3 skills/dnd/scripts/paths.py campaign-path <name>` and use that absolute path. Do not hand-build a path from the default shown in the Claude procedures. Claude, Codex and Qwen read the same campaign files. Do not copy, migrate, or reset a campaign to change models. Read its current state and session tail before narration. Save state and session logs at the same cadence required by the canonical skill. Finish and save one DM session before another environment opens the same campaign; never run two DMs against it at once.
 
