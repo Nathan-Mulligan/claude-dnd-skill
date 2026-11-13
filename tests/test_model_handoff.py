@@ -120,7 +120,8 @@ def test_verified_checkpoint_precedes_exact_session_stop_and_restart(setup, monk
         actions.append("save")
         save_and_acknowledge(old, token)
 
-    def start(provider, mode, name, description, onboarding=None):
+    def start(provider, mode, name, description, onboarding=None, effort="medium"):
+        assert effort == "medium"
         assert not alive["value"]
         assert (provider, mode, name) == ("codex", "resume", "old")
         actions.append("start")
@@ -412,7 +413,8 @@ def test_new_campaign_questionnaire_survives_saved_handoff(setup, monkeypatch):
         token = next((portal.RUNTIME / "handoffs").glob("*.request.json")).name.split(".")[0]
         save_and_acknowledge(old, token)
 
-    def start(provider, mode, name, description, onboarding=None):
+    def start(provider, mode, name, description, onboarding=None, effort="medium"):
+        assert effort == "medium"
         assert alive["value"] is False
         assert (provider, mode, name) == ("codex", "new", "dragon-road")
         assert onboarding == expected
