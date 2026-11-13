@@ -2466,8 +2466,9 @@ def cast_set():
         if source == _cast_voices.DM:
             # The DM may set or change its own and automatic picks, never a hand pick.
             name = _cast_voices.cast_key(data, name)
-            if name in data and data[name] != voice and src.get(name) not in (
-                    _cast_voices.DM, _cast_voices.AUTO):
+            if name in data and src.get(name) not in (_cast_voices.DM, _cast_voices.AUTO):
+                if data[name] == voice:
+                    return jsonify({"name": name, "voice": voice}), 200
                 return jsonify({"error": "chosen by hand", "name": name,
                                 "voice": data[name]}), 409
             src[name] = _cast_voices.DM

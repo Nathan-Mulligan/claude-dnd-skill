@@ -211,6 +211,10 @@ def test_dm_voice_never_replaces_a_hand_pick(cast_display):
     assert client.get('/cast').json == {'nella reed': 'bf_emma'}
     r = client.post('/cast', json={'name': 'Nella', 'voice': 'af_sky', 'source': 'dm'})
     assert r.status_code == 409 and r.json['voice'] == 'bf_emma'
+    # The DM naming the same voice leaves it a hand pick.
+    assert client.post('/cast', json={'name': 'Nella', 'voice': 'bf_emma', 'source': 'dm'}).status_code == 200
+    assert client.post('/cast', json={'name': 'Nella', 'voice': 'af_sky', 'source': 'dm'}).status_code == 409
+    assert client.get('/cast').json == {'nella reed': 'bf_emma'}
     # The menu itself may always change it, and that makes an auto pick manual.
     _npc(client, 'Oren')
     client.post('/cast', json={'name': 'oren', 'voice': 'am_fenrir'})
