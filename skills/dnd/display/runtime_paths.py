@@ -21,21 +21,23 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, os.pardir, "scripts"))
 try:
     from paths import runtime_dir as _runtime_dir
-    RT = str(_runtime_dir())
-except Exception:
-    _raw = os.environ.get("DND_RUNTIME_DIR", "").strip()
-    if _raw:
-        _base = pathlib.Path(_raw).expanduser()
-    else:
-        _data_root = os.environ.get("DND_CAMPAIGN_ROOT", "").strip() or "~/.claude/dnd"
-        _base = pathlib.Path(_data_root).expanduser() / ".runtime"
-    try:
-        _base.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-    RT = str(_base)
+except ImportError:
+    def _runtime_dir():
+        raw = os.environ.get("DND_RUNTIME_DIR", "").strip()
+        root = os.environ.get("DND_CAMPAIGN_ROOT", "").strip() or "~/.claude/dnd"
+        base = pathlib.Path(raw).expanduser() if raw else pathlib.Path(root).expanduser() / ".runtime"
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        return base
+
+
+RT = str(_runtime_dir())
+_INITIAL_RT = RT
 
 
 def rt(name: str) -> str:
-    """Absolute path to a runtime-state file by name (e.g. rt('.token'))."""
-    return os.path.join(RT, name)
+    """Resolve current environment overrides, retaining explicit RT overrides."""
+    base = RT if RT != _INITIAL_RT else str(_runtime_dir())
+    return os.path.join(base, name)
