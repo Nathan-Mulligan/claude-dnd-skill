@@ -122,14 +122,17 @@ def save_cache(data: dict) -> None:
     os.replace(tmp, path)
 
 
-def apply_cached(payload: dict, cache: "dict | None" = None) -> dict:
+def apply_cached(payload: dict, campaign: "str | None", cache: "dict | None" = None) -> dict:
     """Fill a missing `detail` on pushed factions/quests from saved notes.
 
-    A detail the DM supplies itself always wins. Used by push_stats.py so a DM
-    push without notes does not wipe the helper's notes from the screen.
+    Notes are used only when `campaign` (the campaign this push is for) is
+    known and matches the campaign they were written for. A detail the DM
+    supplies itself always wins. Used by push_stats.py so a DM push without
+    notes does not wipe the helper's notes from the screen.
     """
     cache = load_cache() if cache is None else cache
-    campaign = cache.get("campaign")
+    if not campaign or cache.get("campaign") != campaign:
+        return payload
     for key in ("factions", "quests"):
         notes = cache.get(key) or {}
         items = payload.get(key)
@@ -138,7 +141,7 @@ def apply_cached(payload: dict, cache: "dict | None" = None) -> dict:
         for item in items:
             if isinstance(item, dict) and not item.get("detail"):
                 note = notes.get(str(item.get("name", "")))
-                if note and (not campaign or not payload.get("campaign") or payload["campaign"] == campaign):
+                if note:
                     item["detail"] = note
     return payload
 
@@ -151,14 +154,14 @@ def _display():
     return push_stats.FLASK_URL.rsplit("/", 1)[0], push_stats._SSL_CTX, push_stats._read_token()
 
 
-def _request(path: str, data: "bytes | None" = None) -> "dict | None":
+def _request(path: str, data: "bytes | None" = None, timeout: float = 5) -> "dict | None":
     base, ctx, token = _display()
     headers = {"Content-Type": "application/json"}
     if token:
         headers["X-DND-Token"] = token
     req = urllib.request.Request(base + path, data=data, headers=headers,
                                  method="POST" if data is not None else "GET")
-    with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
         body = resp.read().decode("utf-8") or "{}"
     try:
         return json.loads(body)
@@ -166,13 +169,29 @@ def _request(path: str, data: "bytes | None" = None) -> "dict | None":
         return {}
 
 
-def _current_stats() -> dict:
+def _current_stats(tries: int = 5) -> "dict | None":
+    """Read the display's saved stats. None means it could not be read cleanly
+    (the display rewrites the file on every update), never an empty snapshot."""
+    for i in range(tries):
+        try:
+            with open(rt("stats.json"), encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.25 * (i + 1))
+    return None
+
+
+def active_campaign() -> "str | None":
+    """The campaign the display is showing now, or None if it can't be told."""
     try:
-        with open(rt("stats.json"), encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+        return (_request("/health", timeout=2) or {}).get("campaign") or None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 # ── model ────────────────────────────────────────────────────────────────────
@@ -243,54 +262,92 @@ def _acquire_lock() -> "int | None":
         return None
 
 
-def run(settle_s: float = 2.0) -> str:
-    """One sync pass. Returns a short outcome word (for the log and tests)."""
+def _pending_path() -> str:
+    return rt("lore_sync.pending")
+
+
+def _take_pending() -> bool:
+    try:
+        os.unlink(_pending_path())
+        return True
+    except OSError:
+        return False
+
+
+def _release(fd: int) -> None:
+    os.close(fd)
+    try:
+        os.unlink(rt("lore_sync.lock"))
+    except OSError:
+        pass
+
+
+def sync_once() -> str:
+    """One pass: regenerate and publish notes if the inputs changed."""
+    health = _request("/health") or {}
+    campaign, root = health.get("campaign"), health.get("data_root")
+    if not campaign or not root:
+        return "no-campaign"
+    state = Path(root, "campaigns", campaign, "state.md")
+    public = public_text(state.read_text(encoding="utf-8")) if state.is_file() else ""
+    stats = _current_stats()
+    if stats is None:
+        return "unreadable"
+    factions, quests = stats.get("factions") or [], stats.get("quests") or []
+    if not factions and not quests:
+        return "empty"
+    fp = fingerprint(public, factions, quests)
+    old = load_cache()
+    if old.get("fingerprint") == fp and old.get("campaign") == campaign:
+        return "unchanged"
+
+    result = ask_model(build_prompt(public, factions, quests))
+    new = {
+        "campaign": campaign,
+        "fingerprint": fp,
+        "factions": clean_notes(result.get("factions"), [f.get("name") for f in factions if isinstance(f, dict)]),
+        "quests": clean_notes(result.get("quests"), [q.get("name") for q in quests if isinstance(q, dict)]),
+    }
+
+    # Publish onto the latest lists, and only to the campaign the notes were written for.
+    if active_campaign() != campaign:
+        return "campaign-changed"
+    latest = _current_stats()
+    if latest is None:
+        return "unreadable"
+    payload = {k: [dict(x) for x in (latest.get(k) or []) if isinstance(x, dict)] for k in ("factions", "quests")}
+    mine = old if old.get("campaign") == campaign else {}
+    for k in ("factions", "quests"):  # drop only notes this helper wrote earlier
+        for x in payload[k]:
+            if x.get("detail") and (mine.get(k) or {}).get(str(x.get("name", ""))) == x["detail"]:
+                x.pop("detail")
+    apply_cached(payload, campaign, new)  # no "campaign" key: on /stats it switches campaigns
+    _request("/stats", json.dumps(payload).encode("utf-8"))  # raises on failure
+    save_cache(new)  # only after the display has the notes, so a failed post is retried
+    return "updated"
+
+
+def run(settle_s: float = 2.0, max_passes: int = 3) -> str:
+    """Sync until inputs stop changing. A run started while another is busy
+    leaves a pending flag, so its refresh is never dropped."""
     fd = _acquire_lock()
     if fd is None:
-        return "busy"
-    try:
-        time.sleep(settle_s)  # let the DM's push land first
-        health = _request("/health") or {}
-        campaign, root = health.get("campaign"), health.get("data_root")
-        if not campaign or not root:
-            return "no-campaign"
-        state = Path(root, "campaigns", campaign, "state.md")
-        public = public_text(state.read_text(encoding="utf-8")) if state.is_file() else ""
-        stats = _current_stats()
-        factions, quests = stats.get("factions") or [], stats.get("quests") or []
-        if not factions and not quests:
-            return "empty"
-        fp = fingerprint(public, factions, quests)
-        cache = load_cache()
-        if cache.get("fingerprint") == fp and cache.get("campaign") == campaign:
-            return "unchanged"
-        result = ask_model(build_prompt(public, factions, quests))
-        old = cache
-        cache = {
-            "campaign": campaign,
-            "fingerprint": fp,
-            "factions": clean_notes(result.get("factions"), [f.get("name") for f in factions if isinstance(f, dict)]),
-            "quests": clean_notes(result.get("quests"), [q.get("name") for q in quests if isinstance(q, dict)]),
-        }
-        save_cache(cache)
-        # Re-read the latest lists so a DM push made meanwhile is kept as sent.
-        latest = _current_stats()
-        payload = {k: [dict(x) for x in (latest.get(k) or []) if isinstance(x, dict)] for k in ("factions", "quests")}
-        # Drop only notes this helper wrote earlier; a DM-written detail stays.
-        for k in ("factions", "quests"):
-            mine = old.get(k) or {}
-            for x in payload[k]:
-                if x.get("detail") and mine.get(str(x.get("name", ""))) == x["detail"]:
-                    x.pop("detail")
-        apply_cached(payload, cache)
-        _request("/stats", json.dumps(payload).encode("utf-8"))
-        return "updated"
-    finally:
-        os.close(fd)
         try:
-            os.unlink(rt("lore_sync.lock"))
+            Path(_pending_path()).touch()
         except OSError:
             pass
+        return "busy"
+    outcomes = []
+    try:
+        _take_pending()
+        time.sleep(settle_s)  # let the DM's push land first
+        for _ in range(max_passes):
+            outcomes.append(sync_once())
+            if not _take_pending():  # nothing new was pushed while this pass ran
+                break
+        return ",".join(outcomes)
+    finally:
+        _release(fd)
 
 
 def kick() -> None:

@@ -377,7 +377,8 @@ def main() -> None:
     if lore:
         try:  # keep the background notes on screen when the DM re-pushes without them
             import lore_sync
-            lore_sync.apply_cached(payload)
+            campaign = payload.get("campaign") or lore_sync.active_campaign()
+            lore_sync.apply_cached(payload, campaign)
         except Exception:
             lore = False
 
