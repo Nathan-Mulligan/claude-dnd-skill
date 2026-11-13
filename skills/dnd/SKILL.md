@@ -464,6 +464,7 @@ python3 ${CLAUDE_SKILL_DIR}/display/send.py --npc "Septemous" << 'DNDEND'
 DNDEND
 ```
 Brief NPC interjections within narration don't need a separate block.
+The first time a new NPC speaks, add `--npc-voice <id>` (for example `--npc-voice bf_alice`) chosen for their gender, age and manner; the voice is saved in the campaign's `cast.json`. If you forget, the display picks a free voice by itself. Neither replaces a voice picked by hand in the voice menu.
 
 *Opener first.* The table hears nothing until a send lands, and writing a full paragraph takes several seconds. So once the outcome of the turn is decided (after any rolls), send the scene's first sentence or two on their own with `--opener`, in their own Bash call, before writing the rest. Keep it to roughly 15-30 words of plain narration, consistent with what follows, no stat flags. The display speaks it at once and holds the paragraph open, so the full narration sent next continues it. Then send the rest exactly as below, starting after the opener (don't repeat it):
 ```bash

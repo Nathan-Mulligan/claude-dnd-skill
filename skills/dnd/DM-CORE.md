@@ -63,6 +63,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - Skip the name-and-price greeting. Open on what the person is doing or worried about.
 - A person who is asked gives a usable answer, with a price, a name or a condition. Don't pass the party from person to person.
 - For a new named NPC in an improvised campaign, run `oracle.py npc --campaign X --name "Full Name"` (add `--trader` for anyone buying or selling). It saves them to `npcs.md`, and the same name always gives the same person. Play their one trait lightly, every time they appear. When their want is marked as an ask, they put it to the party.
+- The first time a new NPC speaks, add `--npc-voice <id>` to their `send.py --npc` call, chosen for their gender, age and manner from `bm_george`, `bm_lewis`, `am_fenrir`, `am_onyx` (men), `af_heart`, `af_bella`, `bf_alice`, `bf_emma`, `af_sky` (women); `b` is British, `a` American. Not the narrator's voice, and not one another person in the scene already has. A voice picked in the menu is kept.
 - Before voicing an NPC who matters, read their entry (`npcs.md`, and `npcs-full.md` if it exists).
 - After a scene with an NPC, run `oracle.py npc note --campaign X --name "Full Name" "<one line>"`, for example `"Sold 4 blankets at 18. Thinks they drive a hard bargain."`
 
