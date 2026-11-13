@@ -1854,6 +1854,7 @@ def stats():
     if "campaign" in data:
         try:
             _set_campaign(str(data["campaign"]).strip())
+            _broadcast({"cast": _read_cast(_cast_file()), "narrator_voice": _read_narrator_voice()})
         except Exception:
             pass
         # Resolve and stash the ruleset for this campaign so the sidebar badge
@@ -2160,6 +2161,8 @@ def tts_synthesize():
     if not _rate_ok("tts:" + (request.remote_addr or "?"), limit=240):
         return "Rate limited", 429
     data = request.get_json(silent=True) or {}
+    if data.get("local_only") and _tts.active_backend() != "local":
+        return "Local speech is unavailable", 503
     text = (data.get("text") or "").strip()
     voice = (data.get("voice") or _tts.DEFAULT_VOICE).strip()
     if not text:
@@ -2171,7 +2174,10 @@ def tts_synthesize():
     if _tts.key_source() == "unset":
         return "TTS not configured (see docs/SKILL-tts.md)", 503
     try:
-        pcm = _tts.synthesize_strict(text, voice)
+        if data.get("local_only"):
+            pcm = _tts.synthesize_strict(text, voice, local_only=True)
+        else:
+            pcm = _tts.synthesize_strict(text, voice)
     except _tts.TtsError as e:
         return f"TTS upstream: {e}", 502
     return Response(
@@ -2185,9 +2191,28 @@ def tts_synthesize():
     )
 
 
-# Per-character voice map. DND_CAST_FILE wins; otherwise <data-root>/cast.json.
-CAST_FILE = os.path.expanduser(os.environ.get("DND_CAST_FILE", "").strip()
-                               or os.path.join(os.path.dirname(os.path.dirname(rt("x"))), "cast.json"))
+_cast_lock = threading.Lock()
+
+
+def _cast_file():
+    override = os.environ.get("DND_CAST_FILE", "").strip()
+    if override:
+        return Path(override).expanduser()
+    name = _active_campaign_name()
+    if name:
+        return _find_campaign(name) / "cast.json"
+    return Path(rt("cast.json"))
+
+
+def _read_cast(path):
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {k.lower(): v for k, v in data.items()
+                if isinstance(v, str) and k != "_comment"}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
 CLIENTLOG_FILE = rt("client-errors.log")
 
 
@@ -2215,28 +2240,15 @@ def clientlog():
 
 @app.route("/cast", methods=["GET"])
 def cast_map():
-    """Per-character voice map (local patch).
-
-    Upstream narrates every block in one global voice. The kit keeps a
-    speaker -> voice map in voice/cast.json; serving it here lets the
-    browser pick the right voice per NPC block instead.
-    """
-    try:
-        with open(CAST_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-        return jsonify({k.lower(): v for k, v in data.items()
-                        if isinstance(v, str) and k != "_comment"})
-    except Exception:
-        return jsonify({})
+    """Return the active campaign's saved speaker voices."""
+    if not _token_ok():
+        return "Forbidden", 403
+    return jsonify(_read_cast(_cast_file()))
 
 
 @app.route("/cast", methods=["POST"])
 def cast_set():
-    """Set one character's voice: {"name": "Haldryck", "voice": "bm_daniel"}.
-
-    Written straight into cast.json so the choice survives restarts, and
-    broadcast so every open page switches that character at once.
-    """
+    """Save one speaker's voice in the active campaign."""
     if _tts is None:
         return "TTS module unavailable", 503
     if not _token_ok():
@@ -2246,23 +2258,21 @@ def cast_set():
     d = request.get_json(silent=True) or {}
     name = str(d.get("name") or "").strip().lower()
     voice = str(d.get("voice") or "").strip()
-    if not name or len(name) > 40 or name.startswith("_") or not _voice_ok(voice):
+    if not name or len(name) > 80 or name.startswith("_") or not _voice_ok(voice):
         return jsonify({"error": "bad name or voice"}), 400
-    try:
-        with open(CAST_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        data = {}
-    key = next((k for k in data if k.lower() == name), name)
-    data[key] = voice
-    tmp = CAST_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.write("\n")
-    os.replace(tmp, CAST_FILE)
-    cast = {k.lower(): v for k, v in data.items() if isinstance(v, str) and k != "_comment"}
-    _broadcast({"cast": cast})
-    return jsonify({"name": key, "voice": voice}), 200
+    with _cast_lock:
+        path = _cast_file()
+        data = _read_cast(path)
+        data[name] = voice
+        tmp = path.with_suffix(".json.tmp")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError:
+            return jsonify({"error": "Could not save voice"}), 500
+    _broadcast({"cast": data})
+    return jsonify({"name": name, "voice": voice}), 200
 
 
 @app.route("/tts/voices", methods=["GET"])

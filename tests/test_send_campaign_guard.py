@@ -78,6 +78,7 @@ def test_named_scene_cli_sends_context_only_with_first_narration_chunk(monkeypat
 
 @pytest.mark.parametrize("args", [
     ["--scene-key", "clockwork-room"],
+    ["--music-event", "scene", "--music-setting", "unsupported-setting"],
     ["--music-event", "combat-start", "--scene-key", "room"],
     ["--music-event", "scene", "--music-setting", "city", "--scene-key", "partial"],
 ])

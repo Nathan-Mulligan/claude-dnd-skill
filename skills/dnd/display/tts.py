@@ -214,6 +214,8 @@ def synthesize_strict(
     text: str,
     voice: Optional[str] = None,
     timeout: float = DEFAULT_TIMEOUT,
+    *,
+    local_only: bool = False,
 ) -> bytes:
     """Synthesize via the active backend, returning raw L16 PCM (24 kHz mono).
 
@@ -229,7 +231,7 @@ def synthesize_strict(
     if len(text) > MAX_TEXT_CHARS:
         text = text[:MAX_TEXT_CHARS]
 
-    backend = active_backend()
+    backend = "local" if local_only else active_backend()
     if backend is None:
         raise TtsError("no backend available (no local server, no api key)")
 

@@ -79,7 +79,7 @@ _DISPLAY_DIR = os.path.dirname(os.path.abspath(__file__))
 if _DISPLAY_DIR not in sys.path:
     sys.path.insert(0, _DISPLAY_DIR)
 from runtime_paths import rt          # writable runtime dir (update-safe)
-from music import SceneContext
+from music import SceneContext, SETTINGS, SETTING_ALIASES
 _SCHEME_FILE = os.path.join(_DISPLAY_DIR, ".scheme")   # launch marker → code dir
 _SCHEME = open(_SCHEME_FILE, encoding="utf-8").read().strip() if os.path.exists(_SCHEME_FILE) else "http"
 BASE_URL    = f"{_SCHEME}://localhost:5001"
@@ -436,8 +436,8 @@ def main() -> None:
     )
     parser.add_argument("--music-event", choices=["scene", "combat-start", "combat-end"],
         help="Scene-entry, combat-start or combat-end music cue bundled with DM narration")
-    parser.add_argument("--music-setting", metavar="SETTING",
-        help="Setting for --music-event scene, such as cave, forest or tavern")
+    parser.add_argument("--music-setting", metavar="SETTING", choices=sorted(SETTINGS.union(SETTING_ALIASES)),
+        help="Setting for --music-event scene, such as cave, forest or tavern; tower uses arcane")
     parser.add_argument("--music-mood", choices=["calm", "curious", "ominous", "tense", "warm"],
         default=None, help="Optional mood for a scene cue")
     parser.add_argument("--scene-key", help="Stable scene identity, reused while this place or activity continues")

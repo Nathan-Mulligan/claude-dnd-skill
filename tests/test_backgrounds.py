@@ -296,3 +296,19 @@ class LocalConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_background_figures_require_an_explicit_current_interaction():
+    descriptions = [
+        'A quiet woodland path beneath tall trees.',
+        'A village square with deer visible near the forest.',
+        'The party is currently interacting with a friendly dragon beside an old bridge.',
+    ]
+    for description in descriptions:
+        scene = music.SceneContext.parse({'key': 'test-place', 'label': 'Test Place', 'description': description})
+        prompt = backgrounds.prompt_for('forest', 'warm', scene=scene)
+        assert description in prompt
+        assert 'If no such active interaction is described, show scenery only.' in prompt
+        assert 'A mere mention of a person or animal in the setting is not an interaction.' in prompt
+        assert 'No bystanders, background people, crowds, unrelated wildlife or extra monsters.' in prompt
+        assert 'at most two' not in prompt

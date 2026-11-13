@@ -15,16 +15,20 @@ import secrets
 import subprocess
 import threading
 import uuid
+import wave
 from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
+
+from music_filter import lowpass_wav
 
 SETTINGS = frozenset({
     "arcane", "castle", "cave", "city", "crypt", "desert", "dungeon",
     "fire", "forest", "mine", "mountain", "night", "ocean", "prison",
     "ruins", "swamp", "tavern", "temple",
 })
+SETTING_ALIASES = {"tower": "arcane"}
 MOODS = frozenset({"calm", "curious", "ominous", "tense", "warm"})
 
 
@@ -128,28 +132,6 @@ class SceneContext:
             return ""
         return "Place ancestry: " + " > ".join(level.name for level in self.theme) + ". The resolved atmosphere below takes precedence over ancestor tones. "
 
-INSTRUMENTS = {
-    "arcane": "bowed strings, hand bells and hollow wooden flute",
-    "castle": "natural horns, bowed strings and plucked harp",
-    "cave": "low bowed strings, hollow wooden flute and distant hand bells",
-    "city": "fiddle, lute and soft hand drum",
-    "crypt": "low cello, distant hand bells and wooden flute",
-    "desert": "wooden flute, hand drum and sparse plucked strings",
-    "dungeon": "low bowed strings, hand bells and hollow wooden flute",
-    "fire": "bowed low strings, natural horns and quiet hand drum",
-    "forest": "wooden flute, plucked harp and gentle bowed strings",
-    "mine": "low cello, distant hand bells and sparse hand drum",
-    "mountain": "natural horns, bowed strings and airy wooden flute",
-    "night": "soft bowed strings, wooden flute and sparse harp",
-    "ocean": "bowed strings, wooden flute and low hand drum",
-    "prison": "haunting cello, distant hand bells and low bowed strings",
-    "ruins": "low bowed strings, plucked harp and wooden flute",
-    "swamp": "low cello, hollow wooden flute and hand bells",
-    "tavern": "fiddle, plucked lute, warm bowed bass and hand drum",
-    "temple": "bowed strings, hand bells and wooden flute",
-}
-
-
 @dataclass(frozen=True)
 class Job:
     revision: int
@@ -162,59 +144,63 @@ class Job:
     path: Path
 
 
-INTRO_PROMPTS = {
-    "forest": "A ten-second instrumental fantasy forest scene introduction. A memorable rising wood flute melody answered by plucked harp, gentle strings and light hand percussion. Curious woodland exploration, bright but mysterious. One coherent musical phrase that grows and resolves on a clear final chord. No vocals, no speech, no sound effects.",
-    "tavern": "A ten-second instrumental fantasy tavern scene introduction. A catchy fiddle melody answered by lute over hand drum and warm bass. A bustling roadside inn, inviting and slightly mischievous. One coherent folk dance phrase that grows and resolves on a clear final chord. No vocals, no speech, no sound effects.",
-    "prison": "A ten-second instrumental dark fantasy prison dungeon scene introduction. A haunting, memorable cello melody answered by a distant bell over low strings and a restrained pulse. Captives behind iron bars deep underground. One coherent minor-key phrase that develops and resolves softly. No vocals, no speech, no sound effects.",
-    "cave": "A ten-second dark fantasy instrumental scene-opening cue for adventurers entering a cave occupied by cultists and goblins. A memorable four-note melody in D minor played by low strings, answered by a wooden flute; an ominous brass swell and restrained frame drum build to a clear final cadence. Coherent musical phrase with a beginning, development, and resolved ending. Cinematic orchestral dungeon music, no vocals, no speech, no sound effects.",
+# Each setting supplies a default tone; an explicit/inherited mood overrides it.
+SCENE_MUSIC = {
+    "arcane": ("Arcane tower", "curious", "Measured, intricate and subtly strange."),
+    "castle": ("Castle", "calm", "Measured, steady and dignified."),
+    "cave": ("Gloomy cavern", "ominous", "Low, hollow and shadowed, with slow movement."),
+    "city": ("City", "warm", "Everyday activity and a steady pace."),
+    "crypt": ("Ancient crypt", "ominous", "Still, shadowed and restrained."),
+    "desert": ("Desert journey", "calm", "Open, dry and unhurried."),
+    "dungeon": ("Dungeon", "ominous", "Low, shadowed and restrained."),
+    "fire": ("Firelit", "tense", "A steady pulse and a sense of approaching danger."),
+    "forest": ("Calm woodland", "calm", "Grounded, spacious and gently flowing."),
+    "mine": ("Old mine", "ominous", "Deep stone passages and distant activity."),
+    "mountain": ("Mountain journey", "calm", "Open, steady and dignified, with a sense of distance."),
+    "night": ("Night journey", "calm", "Quiet, measured and unhurried."),
+    "ocean": ("Ocean journey", "calm", "Broad, gently flowing and steady."),
+    "prison": ("Prison", "ominous", "Confined, subdued and watchful."),
+    "ruins": ("Ancient ruins", "curious", "Weathered stone, forgotten history and quiet mystery."),
+    "swamp": ("Swamp", "ominous", "Low, murky and slow-moving."),
+    "tavern": ("Medieval tavern", "warm", "A friendly but aged roadside inn."),
+    "temple": ("Sacred sanctuary", "calm", "Still, reverent and softly resonant."),
 }
+MUSIC_MOODS = {
+    "calm": "Grounded, spacious and gently flowing.",
+    "curious": "Measured and quietly mysterious.",
+    "ominous": "Low, shadowed and restrained.",
+    "tense": "Restrained unease, a steady pulse and a sense of approaching danger.",
+    "warm": "Understated warmth and an easygoing pace.",
+}
+NEGATIVE_PROMPT = "Vocals, distortion, guitar, lute, drone."
+BATTLE_PROMPT = (
+    "Medieval fantasy battle music with frame drum. Driving rhythm, "
+    "forceful bowed string phrases. Urgent and determined."
+)
 
 
 def prompt_for(setting: str, mood: str, kind: str, scene: SceneContext | None = None) -> str:
-    instruments = INSTRUMENTS[setting]
-    if scene is not None:
-        genre = "dark fantasy" if mood in {"ominous", "tense"} else "fantasy"
-        context = f"The current scene is {scene.label}: {scene.description}. " + scene.place_guidance()
-        profile = MOOD_PROFILES[mood]
-        guidance = profile["atmosphere"] + " " + profile["music"]
-        if kind == "intro":
-            return (
-                f"A ten-second instrumental {genre} scene introduction. {context} {guidance} "
-                f"Express the scene's activity, pace and mood through {instruments}. {mood.capitalize()} atmosphere. "
-                "A distinctive melodic phrase with a beginning, development and resolved ending. "
-                "No vocals, speech or sound effects."
-            )
-        if kind == "bed":
-            return (
-                f"Two minutes of sparse instrumental {genre} background music. {context} {guidance} "
-                f"Quiet {instruments}, shaped by this scene's activity and atmosphere. {mood.capitalize()} mood. "
-                "A scene-specific musical texture, unobtrusive beneath narration, with gentle variation, "
-                "long quiet stretches and smooth edges for repeating. No vocals, speech or sound effects."
-            )
-    if kind == "intro":
-        if setting in INTRO_PROMPTS:
-            return INTRO_PROMPTS[setting]
-        return (
-            f"A ten-second instrumental dark fantasy {setting} scene introduction. "
-            f"A memorable melody played by {instruments}. {mood.capitalize()} atmosphere. "
-            "One coherent musical phrase that grows and resolves on a clear final chord. "
-            "No vocals, no speech, no sound effects."
-        )
+    era = scene.era if scene and scene.era else "medieval"
     if kind == "combat":
-        return (
-            "A ten-second instrumental fantasy battle scene introduction. "
-            "A bold natural brass horn melody answered by urgent bowed strings "
-            "over driving skin drums. One coherent musical phrase with a decisive "
-            "final hit. No vocals, no speech, no sound effects."
-        )
-    return (
-        f"Two minutes of sparse dark fantasy {setting} background ambience. "
-        f"Quiet {instruments}, with long near-still stretches between brief gestures. "
-        f"{mood.capitalize()} and spacious, unobtrusive under narration. "
-        "Slow variation, minimal notes, no strong beat or climax. Soft airy pads "
-        "may sit far behind the acoustic instruments. Gentle start and end for "
-        "background repeat. No guitar, vocals or speech."
-    )
+        return BATTLE_PROMPT.replace("Medieval", era.capitalize(), 1)
+    title, default_mood, tone = SCENE_MUSIC[setting]
+    if mood != default_mood:
+        title = title.removeprefix("Calm ").removeprefix("Gloomy ")
+        tone = MUSIC_MOODS[mood]
+    if era != "medieval":
+        title = title.removeprefix("Medieval ")
+    prefix = f"{title} fantasy music. {tone}"
+    if kind == "bed":
+        purpose = (f"Atmospheric {era} instrumental background music with sparse frame drum. "
+                   "Spacious and understated, long spaces between melodies.")
+    else:
+        purpose = f"{era.capitalize()} instrumental music with frame drum."
+    context = ""
+    if scene:
+        context = f" Scene: {scene.label}. {scene.description}"
+        if scene.theme:
+            context += " Place ancestry: " + " > ".join(level.name for level in scene.theme) + "."
+    return f"{prefix} {purpose}{context}".strip()
 
 
 def runtime_config(config_path: Path) -> tuple[Path | None, Path | None]:
@@ -245,19 +231,22 @@ def render_cli(job: Job, cli: Path, hf_home: Path | None) -> None:
         "--seed", str(job.seed), "--cfg", str(job.cfg),
         "--prompt", job.prompt, "--out", str(temp_path),
     ]
-    if job.kind == "bed":
-        cmd.extend(["--negative-prompt", "busy melody, frequent notes, "
-                    "constant arpeggios, drums, battle music, guitar, "
-                    "electric instruments, modern pop, vocals, speech"])
+    cmd.extend(["--negative-prompt", NEGATIVE_PROMPT])
+    filtered_path = job.path.with_suffix(".filtered.wav")
     try:
         subprocess.run(cmd, cwd=cli.parent, env=env, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                        timeout=120)
         if not temp_path.is_file() or temp_path.stat().st_size < 44:
             raise RuntimeError("renderer did not write a WAV")
-        temp_path.replace(job.path)
+        try:
+            lowpass_wav(temp_path, filtered_path)
+        except (wave.Error, EOFError, ValueError, ImportError) as exc:
+            raise RuntimeError(f"music filtering failed: {type(exc).__name__}") from exc
+        filtered_path.replace(job.path)
     finally:
         temp_path.unlink(missing_ok=True)
+        filtered_path.unlink(missing_ok=True)
 
 
 class MusicDirector:
@@ -375,7 +364,7 @@ class MusicDirector:
         return Job(self.revision, self.entry, kind,
                    prompt_for(self.setting or "cave", self.mood, kind, self.scene),
                    seconds, secrets.randbelow(2**31),
-                   3.0 if kind == "bed" else 1.0,
+                   2.0,
                    self.directory / f"{self.entry}-{kind}.wav")
 
     def set_broadcast(self, callback: Callable[[dict], None]) -> None:
@@ -419,6 +408,8 @@ class MusicDirector:
 
     def transition(self, event: str, event_id: str, setting: str | None = None,
                    mood: str | None = None, scene: dict | SceneContext | None = None) -> dict:
+        if event == "scene":
+            setting = SETTING_ALIASES.get(setting, setting)
         if event not in {"scene", "combat_start", "combat_end"}:
             raise ValueError("invalid music event")
         if event == "scene" and setting not in SETTINGS:

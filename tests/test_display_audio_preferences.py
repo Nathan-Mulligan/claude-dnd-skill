@@ -61,3 +61,69 @@ console.log(JSON.stringify({requests, states}));
 """)
     assert actual["states"] == [True, False, True]
     assert actual["requests"] == [{"sfx": True}]
+
+
+def test_narration_volume_controls_existing_and_future_playback():
+    source = HTML.read_text(encoding='utf-8')
+    state = source[source.index('let _ttsCtx = null;'):source.index('// Free fallback:')]
+    context = source[source.index('function _getTtsCtx()'):source.index('const _SVG_SPEAKER')]
+    schedule = source[source.index('function _ttsSchedule('):source.index('function _ttsWaitForQueue(')]
+    actual = run_browser_code('''
+const saved = new Map();
+const localStorage = {setItem: (key, value) => saved.set(key, value)};
+const _storedVolume = () => 0.6;
+const connections = [], levels = [];
+class AudioContext {
+  constructor() {this.state = 'running'; this.currentTime = 2; this.destination = {};}
+  createGain() {return {gain:{value:1, setTargetAtTime(value) {levels.push(value);}}, connect() {}};}
+  createBuffer() {return {getChannelData: () => new Float32Array(2), duration:0.01};}
+  createBufferSource() {return {connect(target) {connections.push(target);}, start() {}};}
+}
+const window = {AudioContext};
+let _ttsNextAt = 0;
+const _ttsSources = new Set(), _TTS_LINE_PAUSE = 0.1;
+''' + state + context + schedule + '''
+_setNarrationVolume(0.25);
+const ctx = _getTtsCtx();
+const initial = _ttsGain.gain.value;
+_ttsSchedule(ctx, new Int16Array([1, 2]).buffer, null, true, true, 0);
+_setNarrationVolume(0);
+const routedThroughVolume = connections[0] === _ttsGain;
+ctx.state = 'closed';
+_getTtsCtx();
+console.log(JSON.stringify({initial, levels, routedThroughVolume, recreated:_ttsGain.gain.value, saved:Object.fromEntries(saved)}));
+''')
+    assert actual == {'initial': 0.25, 'levels': [0], 'routedThroughVolume': True,
+                      'recreated': 0, 'saved': {'dnd_narration_volume': '0'}}
+
+
+def test_browser_speech_fallback_uses_narration_volume():
+    source = HTML.read_text(encoding='utf-8')
+    speak = source[source.index('function _ttsBrowserSay('):source.index('let _ttsUnlockHinted')]
+    actual = run_browser_code('''
+const _TTS_HAS_BROWSER = true, _ttsVolume = 0.37;
+const _ttsPickBrowserVoice = () => null;
+const _ttsChunkText = () => ['First sentence.', 'Second sentence.'];
+const volumes = [];
+class SpeechSynthesisUtterance {constructor(text) {this.text = text;}}
+const speechSynthesis = {speak(u) {volumes.push(u.volume); if(u.onend) u.onend();}};
+''' + speak + '''
+await _ttsBrowserSay('Two sentences.');
+console.log(JSON.stringify(volumes));
+''')
+    assert actual == [0.37, 0.37]
+
+
+@pytest.mark.parametrize('state, resumes', [('suspended', 1), ('interrupted', 1), ('running', 0)])
+def test_music_context_resumes_safari_interruption(state, resumes):
+    source = HTML.read_text(encoding='utf-8')
+    context = source[source.index('function _audioCtx()'):source.index('async function _playSfx(')]
+    actual = run_browser_code('''
+let _actx = {state:''' + json.dumps(state) + ''', resumes:0,
+  resume() {this.resumes++; this.state = 'running'; return Promise.resolve();}};
+''' + context + '''
+const original = _actx;
+const returned = _audioCtx();
+console.log(JSON.stringify({sameContext:original === returned, resumes:_actx.resumes, state:_actx.state}));
+''')
+    assert actual == {'sameContext': True, 'resumes': resumes, 'state': 'running'}

@@ -181,12 +181,16 @@
     position: fixed; inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 72px max(340px, 18vw) 80px 230px;  /* left: sidebar+gap; right: clears the settings column */
+    padding: 72px max(456px, 18vw) 80px 230px;  /* left: sidebar+gap; right: clears the settings column */
     z-index: 4;
     scroll-behavior: smooth;
     transition: padding 0.4s ease;
     /* Hide scrollbar but keep scroll */
     scrollbar-width: none;
+  }
+  #text-scroll.scrolled {
+    -webkit-mask-image:linear-gradient(to bottom, transparent, #000 64px);
+    mask-image:linear-gradient(to bottom, transparent, #000 64px);
   }
   #text-scroll::-webkit-scrollbar { display: none; }
   #text-scroll.sidebar-hidden { padding-left: 60px; }
@@ -273,6 +277,7 @@
   .tutor-block:hover .block-badge { opacity: 0.55; }
 
   .dm-block, .npc-block, .dice-block, .tutor-block { position: relative; }
+  :is(.dm-block, .npc-block, .tutor-block):has(> .block-badge) { padding-right:38px; }
 
   @media (prefers-reduced-motion: reduce) {
     .block-badge { transition: none; }
@@ -294,7 +299,7 @@
     width: 100%;
     border-collapse: collapse;
     margin: 0.8em 0 1em;
-    font-size: 0.92em;
+    font-size:var(--type-body);
     color: #d4c4a0;
     text-shadow: 0 1px 6px rgba(0,0,0,0.8);
   }
@@ -338,7 +343,7 @@
 
   .player-block p {
     color: #94b8cc;
-    font-size: 0.92em;
+    font-size:var(--type-narration);
     text-shadow: 0 1px 6px rgba(0,0,0,0.8);
   }
 
@@ -369,7 +374,7 @@
 
   .action-block p {
     color: rgba(148, 184, 204, 0.65);
-    font-size: 0.82em;
+    font-size:var(--type-body);
     font-style: italic;
     text-shadow: 0 1px 4px rgba(0,0,0,0.8);
     margin: 0;
@@ -399,7 +404,7 @@
   .npc-block p {
     color: #ffffff;
     font-style: normal;
-    font-size: 0.95em;
+    font-size:var(--type-narration);
     text-shadow: 0 1px 6px rgba(0,0,0,0.8);
   }
   .npc-block p em {
@@ -453,7 +458,7 @@
   }
 
   .tutor-icon {
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(130, 190, 130, 0.75);
     flex-shrink: 0;
   }
@@ -468,7 +473,7 @@
   }
 
   .tutor-chevron {
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(130, 190, 130, 0.45);
     transition: transform 0.2s ease;
   }
@@ -488,7 +493,7 @@
   }
 
   .tutor-body p {
-    font-size: 0.88em;
+    font-size:var(--type-body);
     color: rgba(180, 220, 180, 0.82);
     font-style: italic;
     line-height: 1.7;
@@ -534,16 +539,17 @@
 
   /* Session divider */
   .divider {
+    display:flex; justify-content:center; align-items:center; gap:12px;
     text-align: center;
     color: rgba(180, 140, 60, 0.4);
     font-family:var(--font-heading);
     font-size:var(--type-label);
-    letter-spacing: 4px;
+    letter-spacing: 0;
     margin: 2em 0;
     user-select: none;
   }
   .divider::before, .divider::after {
-    content: '— ';
+    content: '—';
   }
 
   /* Cursor blink */
@@ -592,7 +598,7 @@
     letter-spacing: 2px;
     text-transform: uppercase;
     color: rgba(180,140,60,0.4);
-    padding: 2px 6px;
+    padding: 8px 6px;
     transition: color 0.3s ease;
     display: none;  /* shown only when sidebar has data */
   }
@@ -611,7 +617,7 @@
     scrollbar-width: none;
     background: linear-gradient(to right, rgba(0,0,0,0.6) 70%, transparent);
     border-right: 1px solid rgba(180,140,60,0.15);
-    padding: 114px 12px 28px 28px;
+    padding: 136px 12px 28px 28px;
     opacity: 0;
     transition: opacity 0.7s ease, transform 0.4s ease;
     transform: translateX(0);
@@ -626,7 +632,7 @@
 
   /* ── Player card ── */
   .sb-player {
-    margin-bottom: 14px;
+    margin-bottom: 0;
     padding-bottom: 14px;
     border-bottom: 1px solid rgba(180,140,60,0.1);
   }
@@ -642,7 +648,7 @@
     padding-right: 34px;
   }
   .sb-identity {
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(200,185,150,0.5);
     line-height: 1.4;
     margin-bottom: 8px;
@@ -682,7 +688,7 @@
     transition: width 0.6s ease, background-color 0.6s ease;
   }
   .sb-hp-temp-row {
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(120,180,230,0.6);
     margin-bottom: 3px;
   }
@@ -756,7 +762,7 @@
   /* Concentration tag */
   .sb-concentrate {
     margin-top: 4px;
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(160,120,220,0.75);
     font-style: italic;
     white-space: nowrap;
@@ -772,7 +778,7 @@
     margin-top: 4px;
   }
   .sb-effect-pill {
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     padding: 2px 5px;
     border-radius: 3px;
     background: rgba(60,110,60,0.2);
@@ -819,7 +825,7 @@
   /* ── Features (Second Wind etc) ── */
   .sb-features {
     margin-top: 4px;
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(200,185,150,0.4);
     line-height: 1.6;
   }
@@ -829,9 +835,10 @@
     cursor: pointer;
     pointer-events: auto;
     transition: background 0.18s ease;
-    border-radius: 3px;
-    margin-left: -4px;
-    padding-left: 4px;
+    border-radius: 0;
+    margin-left: -28px;
+    margin-right: -12px;
+    padding: 16px 12px 16px 28px;
   }
   .sb-player:hover { background: rgba(180,140,60,0.06); }
 
@@ -878,7 +885,7 @@
     color: rgba(200,165,80,0.95); margin-bottom: 3px;
   }
   .sm-identity {
-    font-size:var(--type-label); color: rgba(200,185,150,0.45);
+    font-size:var(--type-support); color: rgba(200,185,150,0.45);
     margin-bottom: 16px; letter-spacing: 1px;
   }
   .sm-divider {
@@ -922,7 +929,7 @@
   }
   .sm-ab-mod { font-size:var(--type-label); color: rgba(180,140,60,0.65); }
   .sm-attacks-table {
-    width: 100%; border-collapse: collapse; font-size:var(--type-label);
+    width: 100%; border-collapse: collapse; font-size:var(--type-support);
   }
   .sm-attacks-table th {
     font-family:var(--font-heading); font-size:var(--type-label); letter-spacing: 1px;
@@ -936,10 +943,10 @@
   }
   .sm-attacks-table td.atk-name { color: rgba(220,200,160,0.95); }
   .sm-attacks-table td.atk-notes {
-    color: rgba(200,185,150,0.45); font-style: italic; font-size:var(--type-label);
+    color: rgba(200,185,150,0.45); font-style: italic; font-size:var(--type-support);
   }
   .sm-spell-meta {
-    font-size:var(--type-label); color: rgba(200,185,150,0.45);
+    font-size:var(--type-support); color: rgba(200,185,150,0.45);
     margin-bottom: 10px; font-style: italic;
   }
   .sm-sub-label {
@@ -950,7 +957,7 @@
   .sm-sub-label.prepared-label { color: rgba(180,140,60,0.4); }
   .sm-spell-grid { display: flex; flex-wrap: wrap; gap: 5px; }
   .sm-spell-tag {
-    font-size:var(--type-label); color: rgba(200,185,150,0.8);
+    font-size:var(--type-support); color: rgba(200,185,150,0.8);
     background: rgba(180,140,60,0.06);
     border: 1px solid rgba(180,140,60,0.15);
     border-radius: 2px; padding: 3px 8px;
@@ -1018,7 +1025,7 @@
     color: rgba(180,140,60,0.38); margin-bottom: 4px;
   }
   #srd-body {
-    font-size:var(--type-label); line-height: 1.7;
+    font-size:var(--type-support); line-height: 1.7;
     color: rgba(200,185,150,0.82);
     white-space: pre-wrap; word-break: break-word;
   }
@@ -1028,7 +1035,7 @@
     margin-bottom: 10px; line-height: 1.3;
   }
   #srd-body .srd-meta {
-    font-size:var(--type-label); color: rgba(180,140,60,0.55);
+    font-size:var(--type-support); color: rgba(180,140,60,0.55);
     margin-bottom: 12px; font-style: italic;
   }
   #srd-body .srd-desc { white-space: pre-wrap; }
@@ -1066,7 +1073,7 @@
     text-align: center;
   }
   #srd-not-found {
-    font-size:var(--type-label); color: rgba(200,185,150,0.3);
+    font-size:var(--type-support); color: rgba(200,185,150,0.3);
     font-style: italic; padding: 16px 0;
   }
   .sm-feature { margin-bottom: 10px; }
@@ -1075,20 +1082,20 @@
     color: rgba(200,165,80,0.75); margin-bottom: 2px;
   }
   .sm-feature-text {
-    font-size:var(--type-label); color: rgba(200,185,150,0.6); line-height: 1.55;
+    font-size:var(--type-support); color: rgba(200,185,150,0.6); line-height: 1.55;
   }
   .sm-inventory-list {
     list-style: none; column-count: 2; column-gap: 24px;
   }
   .sm-inventory-list li {
-    font-size:var(--type-label); color: rgba(200,185,150,0.7);
+    font-size:var(--type-support); color: rgba(200,185,150,0.7);
     padding: 2px 0; break-inside: avoid;
   }
   .sm-inventory-list li::before {
     content: '·  '; color: rgba(180,140,60,0.35);
   }
   .sm-no-data {
-    font-size:var(--type-label); color: rgba(200,185,150,0.25);
+    font-size:var(--type-support); color: rgba(200,185,150,0.25);
     font-style: italic; text-align: center; padding: 22px 0;
   }
 
@@ -1122,11 +1129,11 @@
     text-transform: uppercase; color: rgba(220,190,60,0.92);
   }
   .inspiration-sub {
-    font-size:var(--type-label); font-style: italic;
+    font-size:var(--type-support); font-style: italic;
     color: rgba(220,190,60,0.55); margin-top: 3px;
   }
   .inspiration-detail {
-    font-size:var(--type-label); font-style: italic;
+    font-size:var(--type-support); font-style: italic;
     color: rgba(220,190,60,0.42); margin-top: 6px;
     line-height: 1.4;
   }
@@ -1144,7 +1151,7 @@
     letter-spacing: 1px; color: rgba(140,200,120,0.7);
   }
   .xp-detail {
-    font-size:var(--type-label); color: rgba(140,200,120,0.4);
+    font-size:var(--type-support); color: rgba(140,200,120,0.4);
     font-style: italic; margin-top: 2px;
   }
 
@@ -1195,13 +1202,13 @@
   .milestone-icon { margin-right: 0.4em; opacity: 0.85; }
   .milestone-name { font-size:var(--type-body); }
   .milestone-label {
-    font-size:var(--type-label); opacity: 0.75; margin-left: 0.6em;
+    font-size:var(--type-support); opacity: 0.75; margin-left: 0.6em;
     text-transform: uppercase; letter-spacing: 2px;
   }
   .milestone-detail {
     margin-top: 0.45em;
     font-style: italic;
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: #d2b76a;
     opacity: 0.85;
   }
@@ -1234,7 +1241,7 @@
     gap: 6px; padding: 2px 0;
   }
   .sb-faction-name {
-    font-size:var(--type-label); color: rgba(200,185,150,0.6);
+    font-size:var(--type-support); color: rgba(200,185,150,0.6);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
   }
   .sb-faction-standing {
@@ -1263,7 +1270,7 @@
     gap: 6px; padding: 2px 0;
   }
   .sb-quest-name {
-    font-size:var(--type-label); color: rgba(200,185,150,0.6);
+    font-size:var(--type-support); color: rgba(200,185,150,0.6);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
   }
   .sb-quest-status {
@@ -1283,10 +1290,10 @@
     color: rgba(200,165,80,0.75); min-width: 90px; flex-shrink: 0;
   }
   .sm-rel-role {
-    font-size:var(--type-label); font-style: italic;
+    font-size:var(--type-support); font-style: italic;
     color: rgba(160,120,220,0.6); min-width: 60px; flex-shrink: 0;
   }
-  .sm-rel-note { font-size:var(--type-label); color: rgba(200,185,150,0.5); line-height: 1.45; }
+  .sm-rel-note { font-size:var(--type-support); color: rgba(200,185,150,0.5); line-height: 1.45; }
 
   /* ── Clickable sheet items ── */
   .sm-clickable { cursor: default; }
@@ -1306,7 +1313,7 @@
     margin-bottom: 6px;
   }
   .sb-turn-item {
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(200,185,150,0.4);
     padding: 2px 0 2px 14px;
     line-height: 1.5;
@@ -1324,7 +1331,7 @@
     content: '▶';
     position: absolute;
     left: 0;
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: rgba(180,140,60,0.8);
     top: 4px;
   }
@@ -1574,7 +1581,9 @@
     border: 1px solid rgba(180, 140, 60, 0.45);
     border-radius: 6px;
     padding: 4px 0;
-    min-width: 120px;
+    min-width: 230px;
+    max-height: 55vh;
+    overflow-y: auto;
     z-index: 50;
     box-shadow: 0 6px 28px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0,0,0,0.6);
   }
@@ -1596,7 +1605,7 @@
     padding: 5px 13px;
     text-align: left;
     font-family:var(--font-heading);
-    font-size: 0.77rem;
+    font-size:var(--type-label);
     letter-spacing: 0.05em;
     color: rgba(220, 196, 148, 0.9);
     transition: background 0.1s, color 0.1s;
@@ -1607,14 +1616,15 @@
   /* ── Player input panel ── */
   #input-panel {
     position: fixed;
-    bottom: 22px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 6;
-    width: min(540px, 80vw);
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 28;
+    width: 100%;
+    box-sizing: border-box;
     background: rgba(10, 7, 3, 0.92);
     border: 1px solid rgba(180,140,60,0.28);
-    border-radius: 6px;
+    border-radius: 0;
     backdrop-filter: blur(10px);
     transition: border-color 0.2s ease;
   }
@@ -1635,7 +1645,7 @@
     border-radius: 10px; padding: 1px 8px;
   }
   #input-toggle-arrow {
-    font-size:var(--type-label); color: rgba(180,140,60,0.45);
+    font-size:var(--type-support); color: rgba(180,140,60,0.45);
   }
   #input-body {
     padding: 0 14px 14px;
@@ -1675,10 +1685,11 @@
   #dm-activity { color:var(--e-text, #eadfc6); font-size:var(--type-body); line-height:1.5; }
   #dm-activity::before { content:''; display:inline-block; width:7px; height:7px; margin-right:8px; border-radius:50%; background:currentColor; opacity:.6; }
   #dm-activity[data-state="working"]::before { animation:dm-working 1.4s ease-in-out infinite; }
-  #party-response-history { max-height:140px; overflow-y:auto; overscroll-behavior:contain; border-top:1px solid rgba(180,140,60,.25); padding-top:8px; color:var(--e-text, #eadfc6); }
+  #party-response-history { border-top:1px solid rgba(180,140,60,.25); padding-top:6px; color:var(--e-text, #eadfc6); }
+  #party-response-history summary { cursor:pointer; font-size:var(--type-body); padding:4px 0; color:var(--e-accent, rgb(220,185,100)); }
+  #party-responses { color:#f3efe4; max-height:120px; overflow-y:auto; overscroll-behavior:contain; padding-top:6px; }
   #party-response-history[hidden] { display:none; }
-  #party-response-history h3 { font-size:var(--type-label); font-weight:normal; margin:0 0 8px; }
-  .party-response { margin:0 0 10px; font-size:var(--type-body); line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .party-response { margin:0 0 8px; font-size:var(--type-body); line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere; }
   .party-response small { display:block; font-size:var(--type-label); opacity:.7; margin-bottom:2px; }
   @keyframes dm-working { 50% { opacity:.2; } }
   @media (prefers-reduced-motion:reduce) { #dm-activity::before { animation:none !important; } }
@@ -1727,7 +1738,7 @@
     margin-bottom: 2px;
   }
   .staged-text {
-    font-family:var(--font-app); font-size:var(--type-label);
+    font-family:var(--font-app); font-size:var(--type-support);
     color: rgba(200,175,120,0.82); word-break: break-word;
   }
   .staged-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-top: 2px; }
@@ -1744,7 +1755,7 @@
     background: rgba(20,35,10,0.6);
   }
   .unstage-btn {
-    font-size:var(--type-label); color: rgba(180,140,60,0.3); background: transparent;
+    font-size:var(--type-support); color: rgba(180,140,60,0.3); background: transparent;
     border: none; cursor: pointer; padding: 1px 3px; line-height: 1;
     transition: color 0.15s ease;
   }
@@ -1764,10 +1775,10 @@
     display: none; flex-direction: column; gap: 3px;
   }
   #waiting-indicator .queue-label {
-    color: rgba(180,140,60,0.5); font-size:var(--type-label); letter-spacing: 1.5px;
+    color: rgba(180,140,60,0.5); font-size:var(--type-support); letter-spacing: 1.5px;
   }
   #waiting-indicator .queue-check {
-    color: rgba(140,200,120,0.75); font-size:var(--type-label); letter-spacing: 1px;
+    color: rgba(140,200,120,0.75); font-size:var(--type-support); letter-spacing: 1px;
   }
 
   /* ── Autorun cycle indicator (lives inside party input panel header) ── */
@@ -1824,7 +1835,7 @@
     color: rgba(220,150,100,0.9); flex: 1;
   }
   .device-card-ip {
-    font-family:var(--font-app); font-size:var(--type-label);
+    font-family:var(--font-app); font-size:var(--type-support);
     color: rgba(200,160,120,0.7); margin-right: 4px;
   }
   .device-approve-btn, .device-deny-btn {
@@ -1956,7 +1967,7 @@
   .sb-player { position: relative; }
   .sb-class-icon {
     position: absolute;
-    top: 0; right: 0;
+    top: 16px; right: 12px;
     width: 30px; height: 30px;
     opacity: 0.3;
     filter: drop-shadow(0 0 6px rgba(177,77,255,0.5));
@@ -2394,7 +2405,7 @@
   #dice-pending-badge .dpb-label {
     display: block;
     font-weight:400;
-    font-size:var(--type-label);
+    font-size:var(--type-support);
     color: #b8a26a;
     letter-spacing: 0.02em;
     margin-top: 2px;
@@ -2410,14 +2421,11 @@
      click on it brings the tray back. */
   #dice-pending-badge { top: 64px; transform: translateX(-50%); pointer-events: auto; cursor: pointer; }
 
-  /* Vellum has no rail, so its dice launcher is a lone button bottom right. */
-  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice{
-    display:flex; align-items:center; gap:6px; position:fixed; right:28px; bottom:28px; z-index:31;
-    padding:9px 12px; border-radius:3px; cursor:pointer;
-    background:rgba(8,6,4,.8); color:#d4c4a0; border:1px solid rgba(180,140,60,.35);
-    font:400 var(--type-label)/1.4 var(--font-heading); letter-spacing:1px; text-transform:uppercase; }
-  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice .ed-ic{ font-size:var(--type-h4); }
-  :root:not([data-skin="editorial"]) body:not(.input-only).ed-drawer-open #ed-launch-dice{ display:none; }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #ed-launch-dice {
+    display:flex; position:fixed; top:28px; right:28px; bottom:auto; z-index:36;
+    min-width:6em; cursor:pointer;
+  }
+  :root:not([data-skin="editorial"]) #ed-launch-dice .ed-ic { display:none; }
   #dice-drawer .dd-close{
     position:absolute; top:10px; right:12px; width:32px; height:32px; border-radius:3px;
     background:transparent; color:inherit; border:1px solid currentColor; opacity:.6;
@@ -2427,10 +2435,19 @@
   /* ── Mode switcher (full-view button + input-view "back to full" button) ── */
   body:not(.input-only) #audio-controls { top:96px; }
 
-  /* Settings-column hide toggle (mirrors the left sidebar's toggle). Collapsed
-     folds every row away except the toggle row itself, so the narration
-     reclaims the right side. */
-  #audio-controls.collapsed .audio-row:not(#controls-toggle-row) { display: none; }
+  #settings-content {
+    display:flex; flex-direction:column; gap:7px; min-height:0; flex-shrink:0;
+    opacity:1; transform:translateX(0);
+    transition:opacity .7s ease, transform .4s ease;
+  }
+  :root[data-skin="editorial"] #settings-content { gap:0; }
+  #audio-controls { overflow-x:hidden; }
+  #audio-controls.collapsed { pointer-events:none; overflow-y:hidden; }
+  #audio-controls.collapsed #settings-content { transform:translateX(calc(100% + 28px)); opacity:0; pointer-events:none; }
+  #controls-toggle-row { pointer-events:auto; }
+  @media (prefers-reduced-motion:reduce) {
+    #sidebar, #settings-content { transition:none; }
+  }
   #controls-toggle-row { cursor: pointer; justify-content: flex-end; }
   #controls-toggle-row .audio-label { color: rgba(180,140,60,0.5); }
   #controls-toggle-row:hover .audio-label { color: rgba(180,140,60,0.9); }
@@ -2467,7 +2484,7 @@
     cursor: pointer;
     padding: 6px 13px;
     font-family:var(--font-heading);
-    font-size: 0.82rem;
+    font-size:var(--type-label);
     letter-spacing: 0.04em;
     color: rgba(220, 196, 148, 0.92);
     transition: background 0.1s, color 0.1s;
@@ -2479,7 +2496,7 @@
   #phone-mode-menu .pm-empty {
     padding: 8px 13px;
     color: rgba(180, 140, 60, 0.6);
-    font-size: 0.75rem;
+    font-size:var(--type-support);
     font-style: italic;
   }
 
@@ -3090,17 +3107,17 @@
     max-width:1180px; margin:0 auto 0 0;
     background:none !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; padding:0 !important; }
   :root[data-skin="editorial"] .dm-block p{
-    color:var(--e-ink); text-shadow:none; font-family:var(--font-app); font-size:1.02em; line-height:1.6; }
+    color:var(--e-ink); text-shadow:none; font-family:var(--font-app); font-size:var(--type-narration); line-height:1.6; }
   :root[data-skin="editorial"] .dm-block p em{ color:var(--e-accent-ink); font-style:italic; }
 
-  /* NPC dialogue — the hero pull-quote, large & legible */
+  /* NPC dialogue */
   :root[data-skin="editorial"] .npc-block{ border-left:4px solid var(--e-accent); padding-left:1.1em; }
   :root[data-skin="editorial"] .npc-name{
     font-family:var(--font-heading); font-weight:600; font-size:var(--type-label); letter-spacing:.18em; color:var(--e-accent); }
   :root[data-skin="editorial"] .npc-block p,
   :root[data-skin="editorial"] .npc-block p em{
     color:var(--e-ink); font-family:var(--font-app); font-style:italic; font-weight:400;
-    font-size:1.2em; line-height:1.42; text-shadow:none; }
+    font-size:var(--type-narration); line-height:1.42; text-shadow:none; }
 
   /* player action */
   :root[data-skin="editorial"] .player-block{ border-left:4px solid color-mix(in srgb, var(--e-accent) 45%, transparent); padding-left:1.1em; }
@@ -3169,8 +3186,6 @@
     font-family:var(--font-heading); font-weight:600; font-size:var(--type-body); letter-spacing:.14em;
     color:var(--e-dice-text); background:var(--e-accent);
     border:1px solid var(--e-accent); border-radius:3px; padding:13px 32px; }
-  /* in the TV drawer give Stage real presence */
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #stage-btn{ font-size:var(--type-body); padding:16px 40px; }
   :root[data-skin="editorial"] #stage-btn:hover{ background:var(--e-accent-ink); border-color:var(--e-accent-ink); color:var(--e-dice-text); }
   :root[data-skin="editorial"] #skip-turn-btn{
     font-family:var(--font-heading); font-weight:600; font-size:var(--type-label); letter-spacing:.12em;
@@ -3231,6 +3246,7 @@
   :root[data-skin="editorial"] body.input-only .dp-tab:active{ background:color-mix(in srgb, var(--e-strong), #000 14%); }
 
   /* ══ Layer 3: right-edge rail + sliding drawers (editorial, TV view only) ══ */
+  :root{ --dice-drawer-w:min(280px, calc(100vw - 56px)); }
   :root[data-skin="editorial"]{ --ed-drawer-w: min(400px, 92vw); }
 
   /* Off in vellum: rail is layout-neutral (its fixed children keep their own
@@ -3265,21 +3281,13 @@
   :root[data-skin="editorial"] body:not(.input-only) #ed-scrim{ position:fixed; inset:0; z-index:29; background:rgba(0,0,0,.2); display:none; }
   :root[data-skin="editorial"] body:not(.input-only) #ed-scrim.on{ display:block; }
 
-  /* PARTY INPUT drawer — override layer-2 bottom-center placement on the TV */
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel{
-    top:0; bottom:0; left:auto; right:0; transform:translateX(102%);
-    width:var(--ed-drawer-w); height:100vh; max-height:100vh;
-    border:0; border-left:1px solid var(--e-hair-strong); border-radius:0;
-    display:flex; flex-direction:column; z-index:32; backdrop-filter:none;
-    box-shadow:-2px 0 50px rgba(0,0,0,.4);
-    transition:transform .32s cubic-bezier(.4,0,.1,1); }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel.ed-open{ transform:translateX(0); }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-body{
-    display:flex !important; flex:1 1 auto; overflow-y:auto; padding:14px 18px 20px; }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-panel-header{
-    padding:18px 18px 13px; border-bottom:1px solid var(--e-hair-strong); cursor:default; }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-panel-label{ font-size:var(--type-label); letter-spacing:.28em; }
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #input-toggle-arrow{ display:none; }
+  :root[data-skin="editorial"] body:not(.input-only) #input-panel {
+    top:auto; bottom:0; left:0; right:0; transform:none;
+    width:100%; height:auto; max-height:55dvh;
+    border:0; border-top:1px solid var(--e-hair-strong); border-radius:0;
+    z-index:28; backdrop-filter:none;
+    box-shadow:0 -8px 30px rgba(0,0,0,.2);
+  }
 
   /* SETTINGS drawer (audio-controls) */
   :root[data-skin="editorial"] body:not(.input-only) #audio-controls{
@@ -3300,16 +3308,16 @@
   body:not(.input-only) #dice-drawer{
     display:flex; position:fixed; top:0; bottom:0; right:0; left:auto;
     transform:translateX(102%);
-    width:var(--ed-drawer-w, min(400px, 92vw)); height:100vh; z-index:32;
+    width:var(--dice-drawer-w); height:100vh; z-index:32;
     flex-direction:column;
-    background:var(--e-strong, rgba(8,6,4,.97)); color:var(--e-on-strong, #d4c4a0);
+    background:rgba(8,6,4,.2); color:var(--e-on-strong, #d4c4a0);
     border-left:1px solid var(--e-hair-strong, rgba(180,140,90,.45));
     box-shadow:-2px 0 50px rgba(0,0,0,.5);
     transition:transform .32s cubic-bezier(.4,0,.1,1); }
   body:not(.input-only) #dice-drawer.ed-open{ transform:translateX(0); }
   body:not(.input-only) #dice-drawer::before{
     content:"Dice"; display:block; padding:18px 18px 13px;
-    font-weight:600; font-size:var(--type-label); letter-spacing:.28em; text-transform:uppercase;
+    font-weight:600; font-size:var(--type-support); letter-spacing:.28em; text-transform:uppercase;
     color:var(--e-accent, #c8a45c);
     border-bottom:1px solid var(--e-hair-strong, rgba(180,140,90,.45)); }
   body:not(.input-only) #dice-drawer #dice-pad{
@@ -3317,8 +3325,8 @@
     border-top:0; background:transparent; flex:1 1 auto; overflow-y:auto; }
   :root[data-skin="editorial"] body:not(.input-only) #dice-drawer{
     display:flex; position:fixed; top:0; bottom:0; right:0; left:auto; transform:translateX(102%);
-    width:var(--ed-drawer-w); height:100vh; z-index:32; flex-direction:column;
-    background:var(--e-strong); color:var(--e-on-strong);
+    width:var(--dice-drawer-w); height:100vh; z-index:32; flex-direction:column;
+    background:color-mix(in srgb, var(--e-strong) 20%, transparent); color:var(--e-on-strong);
     border-left:1px solid var(--e-hair-strong); box-shadow:-2px 0 50px rgba(0,0,0,.4);
     transition:transform .32s cubic-bezier(.4,0,.1,1); }
   :root[data-skin="editorial"] body:not(.input-only) #dice-drawer.ed-open{ transform:translateX(0); }
@@ -3437,10 +3445,6 @@
      icons are removed via onerror in JS, so no clumsy placeholder box) */
   :root[data-skin="editorial"] #sheet-panel .sm-header-icon{ filter:none; opacity:.85; }
 
-  /* F — Party Input drawer composer fills the abundant vertical space */
-  :root[data-skin="editorial"] body:not(.input-only) #input-panel #player-input-text{
-    min-height:240px; padding:18px; font-size:var(--type-body); line-height:1.5; }
-
   /* SRD lookup modal themed (mirrors the sheet modal) */
   :root[data-skin="editorial"] #srd-modal{ background:rgba(0,0,0,.55); }
   :root[data-skin="editorial"] #srd-panel{
@@ -3497,7 +3501,7 @@
     color:#CFC7B5; font-family:var(--font-heading); font-weight:600; font-size:var(--type-label); letter-spacing:.12em; text-transform:uppercase;
     padding:15px 16px; cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
   .ph-set-opt:last-child{ border-bottom:0; }
-  .ph-set-opt strong{ color:#FF7A2D; font-weight:600; font-size:var(--type-label); }
+  .ph-set-opt strong{ color:#FF7A2D; font-weight:600; font-size:var(--type-support); }
   .ph-set-opt:active{ background:rgba(255,255,255,.06); }
   /* Phone-side <select> chip — matches the strong-text color of the cycle
      buttons it replaces, surfaces the native iOS picker wheel on tap. */
@@ -3645,7 +3649,7 @@
     font-weight:400; box-shadow:none;
   }
   #audio-controls :is(.theme-label, .speed-label, .narrate-label) { justify-self:start; padding:6px 10px; }
-  #audio-controls #skin-select {
+  #audio-controls select.theme-select {
     max-width:100%; width:100%; min-width:0; padding-right:28px; text-align:left;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23d4c4a0' stroke-width='1.5'/%3E%3C/svg%3E");
     background-position:right 12px center; background-size:10px 6px; background-repeat:no-repeat;
@@ -3670,16 +3674,80 @@
     #audio-controls .audio-row { grid-template-columns:98px minmax(0, 1fr); gap:8px; }
   }
   :root:not([data-skin="editorial"]) body:not(.input-only) #controls-toggle-row {
-    position:fixed; top:28px; right:28px; width:auto; min-height:0; padding:0; z-index:8;
+    position:fixed; top:auto; bottom:28px; right:28px; width:auto; min-height:0; padding:0; z-index:36;
   }
   :root:not([data-skin="editorial"]) body:not(.input-only) #audio-controls {
     top:84px; max-height:calc(100dvh - 112px);
   }
   #dice-pad #dp-die-row { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); width:100%; gap:8px; }
+  #dice-pad #dp-adv-row[hidden] { display:none; }
   #dice-pad #dp-adv-row { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); width:100%; gap:8px; }
   #dice-pad :is(#dp-die-row, #dp-adv-row) button { width:100%; min-width:0; padding:12px 4px; }
   #dice-pad #dp-mod-row { justify-content:center; width:100%; }
   #dice-pad #dp-mod-row > span:first-of-type { margin-left:8px; }
+  #sidebar-toggle { min-width:6em; text-align:left; }
+  #controls-toggle {
+    border:0; background:none; box-shadow:none; padding:8px 6px;
+  }
+  #controls-toggle:hover { background:none; }
+  #controls-toggle-row { transition:right .32s cubic-bezier(.4,0,.1,1); }
+  #controls-toggle-row, #controls-toggle-row:hover,
+  #audio-controls .audio-row:has(.display-action):hover { background:none; box-shadow:none; }
+  body.input-only #controls-toggle-row { display:none; }
+
+  :root[data-skin="editorial"] body:not(.input-only):has(#dice-drawer.ed-open) #ed-rail { right:var(--dice-drawer-w); }
+  body:not(.input-only):has(#dice-drawer.ed-open) #text-scroll {
+    padding-right:calc(var(--dice-drawer-w) + 56px);
+  }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer {
+    top:84px; bottom:84px; right:28px; height:auto;
+    border:0; box-shadow:none;
+    background:linear-gradient(to left, rgba(8,6,4,.2) 70%, transparent);
+    opacity:0; pointer-events:none; transform:translateX(calc(100% + 28px));
+    transition:opacity .7s ease, transform .4s ease;
+  }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer.ed-open { opacity:1; pointer-events:auto; transform:translateX(0); }
+  :root:not([data-skin="editorial"]) #dice-drawer::before,
+  :root:not([data-skin="editorial"]) #dice-drawer .dd-close { display:none; }
+  :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer #dice-pad { padding:0; }
+  @media (prefers-reduced-motion:reduce) {
+    :root:not([data-skin="editorial"]) body:not(.input-only) #dice-drawer { transition:none; }
+  }
+
+
+  :root body:not(.input-only) #input-panel,
+  :root[data-skin="editorial"] body:not(.input-only) #input-panel {
+    background:none; border:0; box-shadow:none; backdrop-filter:none;
+  }
+  body:not(.input-only) #input-panel #input-panel-header {
+    box-sizing:border-box; width:100%; margin:auto; padding:9px 0;
+    min-height:40px; cursor:pointer; border-bottom:0;
+  }
+  body:not(.input-only) #input-panel #input-panel-label { font-size:var(--type-body); letter-spacing:.12em; }
+  body:not(.input-only) #input-panel #input-toggle-arrow { display:inline; font-size:var(--type-body); }
+  body:not(.input-only) #input-panel #input-body {
+    box-sizing:border-box; width:100%; margin:auto;
+    display:grid; grid-template-columns:minmax(0,1fr); gap:8px 12px;
+    padding:0 0 calc(48px + env(safe-area-inset-bottom));
+    max-height:calc(55dvh - 40px); overflow-y:auto;
+  }
+  body:not(.input-only) #input-panel.collapsed #input-body { display:none; }
+  body:not(.input-only) #input-panel #input-body > * { grid-column:1 / -1; }
+  body:not(.input-only) #input-panel #player-input-text {
+    grid-column:1 / -1; min-height:64px; max-height:120px; padding:8px 10px;
+    font-size:var(--type-body); line-height:1.4;
+  }
+  body:not(.input-only) #input-panel #input-footer { grid-column:1 / -1; align-self:end; justify-content:flex-start; }
+  body:not(.input-only) #input-panel #skip-turn-btn { margin-right:0; }
+  body:not(.input-only) #input-panel #stage-btn,
+  body:not(.input-only) #input-panel #skip-turn-btn { font-size:var(--type-body); padding:9px 16px; }
+  body:not(.input-only) #input-panel .char-tab { font-size:var(--type-label); padding:4px 9px; }
+  body:not(.input-only) #input-panel #dm-activity { font-size:var(--type-label); line-height:1.3; opacity:.55; }
+  #input-panel-header:focus-visible { outline:2px solid currentColor; outline-offset:-3px; }
+  @media (max-width:540px) {
+    body:not(.input-only) #input-panel #player-input-text { grid-column:1 / -1; }
+    body:not(.input-only) #input-panel #input-footer { grid-column:1 / -1; }
+  }
 </style>
 {% include "typography.html" %}
 </head>
@@ -3723,8 +3791,9 @@
 <!-- Audio toggle controls — SFX triggered by narration text -->
 <div id="audio-controls">
   <div class="audio-row" id="controls-toggle-row" title="Hide the settings column">
-    <button class="display-action" id="controls-toggle" type="button" aria-controls="audio-controls" aria-expanded="true">Hide ▶</button>
+    <button class="display-action" id="controls-toggle" type="button" aria-controls="audio-controls" aria-expanded="true">Settings</button>
   </div>
+  <div id="settings-content">
   <div class="audio-row" id="campaign-settings-row" hidden>
     <button id="campaign-settings-btn" class="display-action" type="button" aria-haspopup="dialog">Campaign &amp; model</button>
   </div>
@@ -3753,23 +3822,26 @@
       <input id="intro-volume" class="settings-slider" type="range" min="0" max="100" value="18" aria-label="Intro music volume">
     </span>
   </div>
-  <div class="audio-row" id="verbosity-row" title="Narration length the DM targets each turn — shorter = faster turns">
+  <div class="audio-row" id="narrate-row" title="Automatically read new narration in this browser" hidden>
     <span class="audio-label">Narration</span>
+    <span class="settings-control-group">
+      <button class="toggle-track" id="narrate-track" type="button" role="switch" aria-label="Auto narrate" aria-checked="false"><span class="toggle-thumb"></span></button>
+      <input id="narration-volume" class="settings-slider" type="range" min="0" max="100" value="100" aria-label="Narration volume">
+    </span>
+  </div>
+  <div class="audio-row" id="verbosity-row" title="Narration length the DM targets each turn — shorter = faster turns">
+    <span class="audio-label">Narration Speed</span>
     <span class="vb-wrap settings-control-group">
       <input id="vb-slider" class="settings-slider" type="range" min="250" max="2500" step="250" value="500" aria-label="Narration length target in words">
     </span>
   </div>
-  <div class="audio-row" id="speed-row" title="Typing speed — click to cycle">
+  <div class="audio-row" id="speed-row" title="Typing speed">
     <span class="audio-label">Type Speed</span>
-    <span id="speed-label" class="speed-label">Normal</span>
-  </div>
-  <div class="audio-row" id="narrate-row" title="Auto-narrate new blocks in this browser only" hidden>
-    <span class="audio-label">Auto Narrate</span>
-    <span id="narrate-label" class="narrate-label">Off</span>
+    <select id="speed-label" class="speed-label theme-select" aria-label="Type speed"><option value="36">Normal</option><option value="18">Fast</option><option value="0">Instant</option></select>
   </div>
   <div class="audio-row" id="theme-row" title="Display theme — Dark / Light / Auto (system)">
     <span class="audio-label">Theme</span>
-    <span id="theme-label" class="theme-label">Dark</span>
+    <select id="theme-label" class="theme-label theme-select" aria-label="Theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select>
   </div>
   <div class="audio-row" id="skin-row" title="Display style">
     <span class="audio-label">Style</span>
@@ -3791,6 +3863,7 @@
       <button id="ts-inc" class="ts-btn" type="button" aria-label="Bigger text">A+</button>
     </span>
   </div>
+  </div>
 </div>
 
 <div id="ed-scrim"></div>
@@ -3798,7 +3871,7 @@
   <button class="ed-launch" id="ed-launch-input" type="button" data-drawer="input-panel" title="Party input">
     <span class="ed-ic">✎</span><span>Party</span>
   </button>
-  <button class="ed-launch display-action" id="ed-launch-dice" type="button" data-drawer="dice-drawer" title="Dice roller">
+  <button class="ed-launch display-action" id="ed-launch-dice" type="button" data-drawer="dice-drawer" title="Show dice" aria-controls="dice-drawer" aria-expanded="false">
     <span class="ed-ic">⚄</span><span>Dice</span>
   </button>
   <button class="ed-launch" id="ed-launch-settings" type="button" data-drawer="audio-controls" title="Display settings">
@@ -3831,7 +3904,7 @@
 <div id="phone-settings">
   <button id="ph-set-toggle" type="button" title="Display settings" aria-label="Display settings">⚙</button>
   <div id="ph-set-menu" role="menu">
-    <button class="ph-set-opt" id="ph-theme-opt" type="button"><span>Theme</span><strong id="ph-theme-val">Dark</strong></button>
+    <label class="ph-set-opt ph-set-row" id="ph-theme-opt"><span>Theme</span><select id="ph-theme-select" class="ph-set-select" aria-label="Phone theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select></label>
     <label class="ph-set-opt ph-set-row" id="ph-skin-opt"><span>Style</span><select id="ph-skin-select" class="ph-set-select" aria-label="Display style"><option value="vellum">Vellum</option><option value="editorial">Editorial</option></select></label>
     <button class="ph-set-opt" id="ph-roll-opt" type="button" hidden><span>Rolls</span><strong id="ph-roll-val">Players</strong></button>
   </div>
@@ -3845,7 +3918,7 @@
 
 <!-- Player input panel — submit actions from the display companion -->
 <div id="input-panel" class="collapsed">
-  <div id="input-panel-header">
+  <div id="input-panel-header" role="button" tabindex="0" aria-controls="input-body" aria-expanded="false">
     <span id="input-panel-label">Party Input</span>
     <span id="input-badge"></span>
     <div id="autorun-indicator">
@@ -3869,7 +3942,6 @@
       <button class="dp-tab"        data-tab="character" type="button">Sheet</button>
     </div>
     <div id="phone-status" data-tab-section="move"></div>
-    <div id="dm-activity" data-tab-section="move" data-state="idle" role="status" aria-live="polite">Ready for a new adventure</div>
     <div id="setup-question" data-tab-section="move" role="status" hidden></div>
     <div id="staged-queue" data-tab-section="move"></div>
     <div id="waiting-indicator" data-tab-section="move"></div>
@@ -3882,9 +3954,10 @@
       <button id="skip-turn-btn" style="display:none" title="Skip this character's turn">Skip Turn</button>
       <button id="stage-btn">Stage</button>
     </div>
-    <section id="party-response-history" data-tab-section="move" aria-label="Your submitted replies" hidden>
-      <h3>Your replies</h3><div id="party-responses"></div>
-    </section>
+    <details id="party-response-history" data-tab-section="move" aria-label="Your submitted replies" hidden>
+      <summary id="party-response-summary">Your replies</summary><div id="party-responses"></div>
+    </details>
+    <div id="dm-activity" data-tab-section="move" data-state="idle" role="status" aria-live="polite" hidden>Ready for a new adventure</div>
     <!-- Phone-only dice pad (shown by ?view=input) -->
     <div id="dice-pad" data-tab-section="roll">
       <div id="dp-bound" style="display:none"></div>
@@ -3909,7 +3982,6 @@
         <button class="dp-adv"        data-adv="advantage"    title="Roll two d20s, keep higher">Adv ▲</button>
         <button class="dp-adv"        data-adv="disadvantage" title="Roll two d20s, keep lower">Dis ▼</button>
       </div>
-      <div id="dp-hint">Advantage / disadvantage applies only to d20 rolls.</div>
       <div class="dp-row" id="dp-mod-row">
         <button class="dp-mod" data-delta="-1" aria-label="decrease modifier">−</button>
         <span style="opacity:.7">Mod</span>
@@ -4704,6 +4776,7 @@ const _newPill = document.getElementById('new-content-pill');
 function _showNewPill() { if (_newPill) _newPill.classList.add('visible'); }
 function _hideNewPill() { if (_newPill) _newPill.classList.remove('visible'); }
 textScroll.addEventListener('scroll', () => {
+  textScroll.classList.toggle('scrolled', textScroll.scrollTop > 1);
   const distFromBottom = textScroll.scrollHeight - textScroll.scrollTop - textScroll.clientHeight;
   userScrolledUp = distFromBottom > 80;
   // Back near the bottom — the reader has caught up, so retire the pill.
@@ -6647,7 +6720,7 @@ function _setTrack(el, on) {
 
 function _audioCtx() {
   if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
-  if (_actx.state === 'suspended') _actx.resume().catch(() => {});
+  if (_actx.state === 'suspended' || _actx.state === 'interrupted') _actx.resume().catch(() => {});
   return _actx;
 }
 
@@ -6753,7 +6826,7 @@ async function _startMusic(kind, url) {
     source.start();
     gain.gain.setTargetAtTime(_musicLevel(kind), ctx.currentTime, 0.18);
     setTimeout(() => {
-      if (_musicEnabled(kind) && _musicSource === source && ctx.state === 'suspended')
+      if (_musicEnabled(kind) && _musicSource === source && (ctx.state === 'suspended' || ctx.state === 'interrupted'))
         _showToast('Click inside the display to enable music');
     }, 700);
   } catch (_) {
@@ -6884,18 +6957,9 @@ document.getElementById('sfx-row').addEventListener('click', () => {
 });
 
 // ── Typing speed toggle ──────────────────────────────────────────────
-const _speedSteps = [
-  { label: 'Normal',  ms: 36 },
-  { label: 'Fast',    ms: 18 },
-  { label: 'Instant', ms: 0  },
-];
-let _speedIdx = 0;
-const _speedLabel = document.getElementById('speed-label');
-document.getElementById('speed-row').addEventListener('click', () => {
-  _speedIdx = (_speedIdx + 1) % _speedSteps.length;
-  const step = _speedSteps[_speedIdx];
-  charDelay = step.ms;
-  _speedLabel.textContent = step.label;
+const _speedSelect = document.getElementById('speed-label');
+_speedSelect.addEventListener('change', () => {
+  charDelay = Number(_speedSelect.value);
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6955,16 +7019,18 @@ fetch('/cast', { headers: _authHeaders() })
 
 function _narratorVoice() {
   // A voice picked in the dropdown wins; otherwise cast.json's narrator.
-  return (!localStorage.getItem('dnd_tts_voice') && _CAST._narrator) || _ttsVoice;
+  return _ttsVoice;
+}
+
+function _castKey(name) {
+  const raw = String(name || '').trim().toLowerCase();
+  if (Object.hasOwn(_CAST, raw)) return raw;
+  const matches = Object.keys(_CAST).filter(k => k[0] !== '_' && k.split(' ')[0] === raw);
+  return matches.length === 1 ? matches[0] : raw;
 }
 
 function _voiceForName(name) {
-  const raw = String(name || '').trim().toLowerCase();
-  if (!raw) return _narratorVoice();
-  if (_CAST[raw]) return _CAST[raw];
-  // Loose match so 'Cultist Sentry' finds 'cultist', as dm-speak.py does.
-  const hit = Object.keys(_CAST).filter(k => k[0] !== '_').find(k => raw.includes(k));
-  return hit ? _CAST[hit] : _narratorVoice();
+  return _CAST[_castKey(name)] || _narratorVoice();
 }
 
 function _voiceForBlock(blockEl) {
@@ -6973,6 +7039,14 @@ function _voiceForBlock(blockEl) {
 }
 
 let _ttsCtx = null;
+let _ttsGain = null;
+let _ttsVolume = _storedVolume('dnd_narration_volume', 1);
+
+function _setNarrationVolume(volume) {
+  _ttsVolume = volume;
+  if (_ttsGain) _ttsGain.gain.setTargetAtTime(volume, _ttsCtx.currentTime, 0.05);
+  try { localStorage.setItem('dnd_narration_volume', String(volume)); } catch (_) {}
+}
 
 // Free fallback: the browser's own speech synthesis, no API key needed.
 // Used when /tts has no key configured (503) or fails. Without this, a
@@ -7047,6 +7121,9 @@ function _ttsChunkText(text) {
 function _getTtsCtx() {
   if (!_ttsCtx || _ttsCtx.state === 'closed') {
     _ttsCtx = new (window.AudioContext || window.webkitAudioContext)();
+    _ttsGain = _ttsCtx.createGain();
+    _ttsGain.gain.value = _ttsVolume;
+    _ttsGain.connect(_ttsCtx.destination);
   }
   return _ttsCtx;
 }
@@ -7149,6 +7226,7 @@ function _ttsBrowserSay(text) {
       const u = new SpeechSynthesisUtterance(chunk);
       if (voice) { u.voice = voice; u.lang = voice.lang; }
       u.rate = 0.95;
+      u.volume = _ttsVolume;
       if (i === chunks.length - 1) { u.onend = resolve; u.onerror = resolve; }
       speechSynthesis.speak(u);
     });
@@ -7179,7 +7257,7 @@ function _ttsSchedule(ctx, pcm, btn, first, last, gen) {
   for (let i = 0; i < int16.length; i++) ch[i] = int16[i] / 32768;
   const src = ctx.createBufferSource();
   src.buffer = buf;
-  src.connect(ctx.destination);
+  src.connect(_ttsGain);
   const now = ctx.currentTime;
   let at = Math.max(now + 0.03, _ttsNextAt + (first && _ttsNextAt > now ? _TTS_LINE_PAUSE : 0));
   _ttsNextAt = at + buf.duration;
@@ -7280,14 +7358,28 @@ function _ttsFillVoiceMenu(menu) {
       const opt = document.createElement('button');
       opt.className = 'tts-voice-opt';
       opt.dataset.voice = v;
-      opt.textContent = v;
+      opt.textContent = v.replace(/^[ab][mf]_/, '').replace(/^./, c => c.toUpperCase());
       if (v === current) opt.classList.add('tts-voice-active');
       opt.addEventListener('click', e => {
         e.stopPropagation();
         if (speaker) _ttsSaveCastVoice(speaker, v); else _ttsSaveVoice(v);
         menu.hidden = true;
       });
-      menu.appendChild(opt);
+      const row = document.createElement('div');
+      row.style.display = 'flex';
+      row.appendChild(opt);
+      menu.appendChild(row);
+      if (_ttsSampleBackend === 'local') {
+        const preview = document.createElement('button');
+        preview.className = 'tts-voice-opt';
+        preview.textContent = 'Preview';
+        preview.setAttribute('aria-label', 'Preview ' + v);
+        preview.addEventListener('click', e => {
+          e.stopPropagation();
+          _ttsPreviewVoice(v, preview);
+        });
+        row.appendChild(preview);
+      }
     });
   }
   if (current && !_TTS_VOICES_MALE.includes(current) && !_TTS_VOICES_FEMALE.includes(current)) {
@@ -7297,12 +7389,56 @@ function _ttsFillVoiceMenu(menu) {
   _addGroup('Female', _TTS_VOICES_FEMALE);
 }
 
-function _ttsSaveCastVoice(name, voice) {
-  _CAST[String(name).trim().toLowerCase()] = voice;
-  fetch('/cast', {
-    method: 'POST', headers: _authHeaders(), body: JSON.stringify({ name, voice }),
-  }).catch(() => {});
-  document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+async function _ttsSaveCastVoice(name, voice) {
+  name = _castKey(name);
+  try {
+    const response = await fetch('/cast', {
+      method: 'POST', headers: _authHeaders(), body: JSON.stringify({ name, voice }),
+    });
+    if (!response.ok) throw new Error('Could not save voice');
+    _CAST[String(name).trim().toLowerCase()] = voice;
+    document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+  } catch (_) { alert('The voice could not be saved. Please try again.'); }
+}
+
+const _ttsSamples = new Map();
+let _ttsSampleBackend = '';
+const _ttsSampleText = 'The road is long. Shall we make a deal?';
+
+function _ttsSample(voice) {
+  if (!_ttsSamples.has(voice)) {
+    const sample = fetch('/tts', {
+      method: 'POST', headers: _authHeaders(),
+      body: JSON.stringify({text:_ttsSampleText, voice, local_only:true}),
+    }).then(async response => {
+      if (!response.ok) throw new Error('Voice sample unavailable');
+      const pcm = await response.arrayBuffer();
+      if (pcm.byteLength < 2) throw new Error('Empty voice sample');
+      return pcm;
+    }).catch(error => { _ttsSamples.delete(voice); throw error; });
+    _ttsSamples.set(voice, sample);
+  }
+  return _ttsSamples.get(voice);
+}
+
+async function _ttsPreviewVoice(voice, button) {
+  _ttsStopAll();
+  const gen = _ttsGen;
+  const ctx = _getTtsCtx();
+  _ttsEnsureRunning(ctx);
+  button.textContent = 'Loading…';
+  try {
+    const pcm = await _ttsSample(voice);
+    if (gen === _ttsGen) _ttsSchedule(ctx, pcm, null, true, true, gen);
+    button.textContent = 'Preview';
+  } catch (_) { button.textContent = 'Retry preview'; }
+}
+
+async function _ttsPreloadSamples() {
+  if (_ttsSampleBackend !== 'local') return;
+  for (const voice of _TTS_VOICES_MALE.concat(_TTS_VOICES_FEMALE)) {
+    try { await _ttsSample(voice); } catch (_) { break; }
+  }
 }
 
 function _ttsBuildVoiceMenu(speaker) {
@@ -7326,6 +7462,7 @@ async function _ttsLoadVoiceCatalog() {
     if (!Array.isArray(cat.male) || !Array.isArray(cat.female)) return;
     if (!cat.male.length && !cat.female.length) return;
 
+    _ttsSampleBackend = cat.backend;
     _TTS_VOICES_MALE   = cat.male;
     _TTS_VOICES_FEMALE = cat.female;
 
@@ -7337,6 +7474,7 @@ async function _ttsLoadVoiceCatalog() {
       localStorage.setItem('dnd_tts_voice', _ttsVoice);
     }
     document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
+    _ttsPreloadSamples();
   } catch (_) { /* keep the built-in fallback */ }
 }
 
@@ -7359,7 +7497,7 @@ function _addTtsBar(blockEl) {
   const voiceBtn = document.createElement('button');
   voiceBtn.className = 'tts-voice-btn';
   voiceBtn.innerHTML = '<span class="tts-voice-label">Voices</span>' + _SVG_CHEVRON;
-  voiceBtn.setAttribute('aria-label', 'Select narrator voice');
+  voiceBtn.setAttribute('aria-label', blockEl.querySelector('.npc-name') ? 'Select character voice' : 'Select narrator voice');
   bar.appendChild(voiceBtn);
 
   const npcName = blockEl.querySelector('.npc-name');
@@ -7383,23 +7521,32 @@ document.addEventListener('click', () => {
 // Auto-narrate row — only shown if the server reports TTS available.
 if (_TTS_AVAILABLE) {
   const narrateRow = document.getElementById('narrate-row');
-  const narrateLabel = document.getElementById('narrate-label');
-  if (narrateRow && narrateLabel) {
+  const narrateTrack = document.getElementById('narrate-track');
+  const volumeControl = document.getElementById('narration-volume');
+  if (narrateRow && narrateTrack && volumeControl) {
     narrateRow.hidden = false;
     const refresh = () => {
-      narrateLabel.textContent = _ttsAutoNarrate ? 'On' : 'Off';
-      narrateLabel.classList.toggle('on', _ttsAutoNarrate);
+      _setTrack(narrateTrack, _ttsAutoNarrate);
+      narrateTrack.setAttribute('aria-checked', String(_ttsAutoNarrate));
     };
     refresh();
+    volumeControl.value = String(Math.round(_ttsVolume * 100));
+    volumeControl.addEventListener('click', event => event.stopPropagation());
+    volumeControl.addEventListener('input', event => {
+      event.stopPropagation();
+      _setNarrationVolume(Number(volumeControl.value) / 100);
+    });
     narrateRow.addEventListener('click', () => {
       _ttsAutoNarrate = !_ttsAutoNarrate;
-      localStorage.setItem('dnd_tts_auto', _ttsAutoNarrate ? '1' : '0');
+      try { localStorage.setItem('dnd_tts_auto', _ttsAutoNarrate ? '1' : '0'); } catch (_) {}
       refresh();
       if (_ttsAutoNarrate) {
         // Prime the AudioContext from this click so auto-narrate works on the next
         // block without needing a per-block gesture (iOS Safari).
         const ctx = _getTtsCtx();
         if (ctx.state !== 'running') ctx.resume().catch(() => {});
+      } else {
+        _ttsStopAll();
       }
     });
   }
@@ -7412,7 +7559,6 @@ if (_TTS_AVAILABLE) {
 // flash on load; this module handles runtime toggling.
 // ═══════════════════════════════════════════════════════════════════
 
-const _THEME_CYCLE = ['dark', 'light', 'auto'];
 const _THEME_LABEL = { dark: 'Dark', light: 'Light', auto: 'Auto' };
 
 function _readStoredTheme() {
@@ -7448,30 +7594,34 @@ function _effectiveTheme(theme) {
 (function _initThemePicker() {
   const row = document.getElementById('theme-row');
   const label = document.getElementById('theme-label');
+  const phoneSelect = document.getElementById('ph-theme-select');
   if (!row || !label) return;
 
   let current = _readStoredTheme();
   _applyTheme(current);
 
   function refresh() {
-    label.textContent = _THEME_LABEL[current] || 'Dark';
+    label.value = current;
+    if (phoneSelect) phoneSelect.value = current;
     label.classList.toggle('on', current !== 'dark');
+    window.DndSelect?.refresh();
     // Surface the effective theme for "auto" via the tooltip
     if (current === 'auto') {
       row.title = `Display theme — Auto (system: ${_effectiveTheme(current)})`;
     } else {
-      row.title = `Display theme — ${_THEME_LABEL[current]}. Click to cycle.`;
+      row.title = `Display theme — ${_THEME_LABEL[current]}`;
     }
   }
   refresh();
 
-  row.addEventListener('click', () => {
-    const idx = _THEME_CYCLE.indexOf(current);
-    current = _THEME_CYCLE[(idx + 1) % _THEME_CYCLE.length];
+  function chooseTheme(event) {
+    current = event.target.value;
     try { localStorage.setItem('dnd-theme', current); } catch (_) {}
     _applyTheme(current);
     refresh();
-  });
+  }
+  label.addEventListener('change', chooseTheme);
+  if (phoneSelect) phoneSelect.addEventListener('change', chooseTheme);
 
   // ── Skin picker — native <select> on both desktop and phone surfaces ──
   // window._SKINS is defined in the anti-FOUC <script> at the top of <head> so
@@ -7495,6 +7645,7 @@ function _effectiveTheme(theme) {
       else root.setAttribute('data-skin', base);
       if (s.variant) root.setAttribute('data-variant', s.variant);
       else root.removeAttribute('data-variant');
+      _placeControlsToggle();
       try { localStorage.setItem('dnd-skin', s.id); } catch (_) {}
     }
 
@@ -7522,6 +7673,7 @@ function _effectiveTheme(theme) {
       // while changing on phone, or vice versa.
       if (desktop && desktop !== e.target) desktop.value = skin;
       if (phone   && phone   !== e.target) phone.value   = skin;
+      window.DndSelect?.refresh();
     }
 
     if (desktop) desktop.addEventListener('change', _onChange);
@@ -7612,10 +7764,24 @@ let _lastSetupQuestion = '';
 let _autorunThreshold = null; // null = use player count; int = explicit threshold
 
 // ── Toggle open/closed ────────────────────────────────────────────
-_inputPanelHdr.addEventListener('click', () => {
-  _inputPanel.classList.toggle('collapsed');
-  _inputArrow.textContent = _inputPanel.classList.contains('collapsed') ? '▲' : '▼';
+function _setInputExpanded(expanded) {
+  _inputPanel.classList.toggle('collapsed', !expanded);
+  _inputPanelHdr.setAttribute('aria-expanded', String(expanded));
+  _inputArrow.textContent = expanded ? '▼' : '▲';
+  try { localStorage.setItem('dnd_input_expanded', expanded ? '1' : '0'); } catch (_) {}
+  _reserveInputSpace();
+}
+function _toggleInputTray() {
+  _setInputExpanded(_inputPanel.classList.contains('collapsed'));
+}
+_inputPanelHdr.addEventListener('click', _toggleInputTray);
+_inputPanelHdr.addEventListener('keydown', event => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    _toggleInputTray();
+  }
 });
+try { _setInputExpanded(localStorage.getItem('dnd_input_expanded') !== '0'); } catch (_) {}
 
 // ── Build character tabs from stats players array ─────────────────
 function _buildCharTabs(players) {
@@ -7663,7 +7829,7 @@ function _renderPartyFeedback(state) {
     list.appendChild(row);
   }
   history.hidden = !list.childElementCount;
-  history.scrollTop = history.scrollHeight;
+  document.getElementById('party-response-summary').textContent = 'Your replies (' + list.childElementCount + ')';
 }
 
 // ── Render staged queue ───────────────────────────────────────────
@@ -7983,26 +8149,66 @@ _inputText.addEventListener('keydown', e => {
 
 // ── Keep the reading column clear of the fixed PARTY INPUT panel ──────
 // #input-panel is position:fixed at the bottom; when it expands (or the
-// editorial drawer slides open, or the mobile keyboard raises the viewport)
-// it overlaps the last lines of narration. Reserve #text-scroll bottom padding
-// equal to the panel's live on-screen footprint so the text always clears it.
+// mobile keyboard raises the viewport) it reduces the reading area. End the
+// reading viewport above the transparent tray so prose cannot show behind it.
 function _reserveInputSpace() {
   const panel  = document.getElementById('input-panel');
   const scroll = document.getElementById('text-scroll');
   if (!panel || !scroll) return;
   // Phone input-only mode: #text-scroll isn't the reading surface there.
-  if (document.body.classList.contains('input-only')) { scroll.style.paddingBottom = ''; return; }
+  if (document.body.classList.contains('input-only')) {
+    scroll.style.paddingBottom = ''; scroll.style.bottom = '';
+    panel.style.left = ''; panel.style.width = ''; panel.style.right = '';
+    return;
+  }
+  const content = document.getElementById('text-content');
+  if (content) {
+    const column = content.getBoundingClientRect();
+    panel.style.left = column.left + 'px';
+    panel.style.width = column.width + 'px';
+    panel.style.right = 'auto';
+  }
   // Panel hidden (display:none → 0 rect) or fully below the fold (closed drawer) → CSS baseline stands.
   // NB: don't use offsetParent for visibility here — it is always null for position:fixed elements.
   const rect = panel.getBoundingClientRect();
-  if (rect.height === 0 || rect.top >= window.innerHeight) { scroll.style.paddingBottom = ''; return; }
+  if (rect.height === 0 || rect.top >= window.innerHeight) { scroll.style.paddingBottom = ''; scroll.style.bottom = ''; return; }
   const reserve = Math.round(window.innerHeight - rect.top) + 16;
-  scroll.style.paddingBottom = Math.max(40, reserve) + 'px';
+  scroll.style.bottom = reserve + 'px';
+  scroll.style.paddingBottom = '24px';
 }
 
 (function _initReserveInputSpace() {
   const panel = document.getElementById('input-panel');
-  if (window.ResizeObserver && panel) new ResizeObserver(_reserveInputSpace).observe(panel);
+  if (window.ResizeObserver && panel) {
+    const observer = new ResizeObserver(_reserveInputSpace);
+    observer.observe(panel);
+    const content = document.getElementById('text-content');
+    if (content) observer.observe(content);
+  }
+  const scroll = document.getElementById('text-scroll');
+  if (scroll) {
+    const moving = new Set();
+    let frame = 0;
+    function followColumn() {
+      frame = 0;
+      _reserveInputSpace();
+      if (moving.size) frame = requestAnimationFrame(followColumn);
+    }
+    scroll.addEventListener('transitionrun', event => {
+      if (event.target !== scroll || !['padding-left', 'padding-right'].includes(event.propertyName)) return;
+      moving.add(event.propertyName);
+      if (!frame) frame = requestAnimationFrame(followColumn);
+    });
+    function finishTransition(event) {
+      if (event.target !== scroll) return;
+      moving.delete(event.propertyName);
+      if (!moving.size && frame) { cancelAnimationFrame(frame); frame = 0; }
+      _reserveInputSpace();
+    }
+    scroll.addEventListener('transitionend', finishTransition);
+    scroll.addEventListener('transitioncancel', finishTransition);
+    new MutationObserver(_reserveInputSpace).observe(scroll, {attributes:true, attributeFilter:['class']});
+  }
   if (panel) panel.addEventListener('transitionend', _reserveInputSpace); // drawer slide / collapse
   window.addEventListener('resize', _reserveInputSpace);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', _reserveInputSpace);
@@ -8236,22 +8442,36 @@ _sidebarBtn.addEventListener('click', () => _setSidebarVisible(!_sidebarVisible)
 const _audioControls = document.getElementById('audio-controls');
 const _controlsBtn   = document.getElementById('controls-toggle');
 let _controlsVisible = true;
+function _placeControlsToggle() {
+  const row = document.getElementById('controls-toggle-row');
+  const panel = document.getElementById('audio-controls');
+  if (document.documentElement.dataset.skin === 'editorial') panel.prepend(row);
+  else panel.before(row);
+}
+
 function _setControlsVisible(visible) {
   _controlsVisible = visible;
   if (_controlsBtn) _controlsBtn.setAttribute('aria-expanded', String(visible));
+  document.getElementById('settings-content').inert = !visible;
+  window.DndSelect?.refresh();
   if (visible) {
     _audioControls.classList.remove('collapsed');
     _textScroll.classList.remove('controls-hidden');
-    if (_controlsBtn) _controlsBtn.textContent = 'Hide ▶';
+    if (_controlsBtn) _controlsBtn.textContent = 'Settings';
   } else {
     _audioControls.classList.add('collapsed');
     _textScroll.classList.add('controls-hidden');
-    if (_controlsBtn) _controlsBtn.textContent = '◀ Settings';
+    if (_controlsBtn) _controlsBtn.textContent = 'Settings';
   }
   try { localStorage.setItem('dnd-controls-visible', visible ? '1' : '0'); } catch (e) {}
 }
 if (_controlsBtn) {
-  _controlsBtn.addEventListener('click', () => _setControlsVisible(!_controlsVisible));
+  _controlsBtn.addEventListener('click', () => {
+    if (document.getElementById('dice-drawer').classList.contains('ed-open')) {
+      window._edCloseDrawer('dice-drawer');
+      _setControlsVisible(true);
+    } else _setControlsVisible(!_controlsVisible);
+  });
   try { if (localStorage.getItem('dnd-controls-visible') === '0') _setControlsVisible(false); } catch (e) {}
 }
 
@@ -8399,6 +8619,7 @@ function connect() {
       _musicIntroPlayed = false;
       _musicCombatPlayed = false;
     }
+    if (payload.narrator_voice) _ttsVoice = payload.narrator_voice;
     if (payload.cast && typeof payload.cast === 'object') {
       _CAST = payload.cast;
       document.querySelectorAll('.tts-voice-menu').forEach(_ttsFillVoiceMenu);
@@ -8550,7 +8771,16 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
   const scrim = document.getElementById('ed-scrim');
   if (rail && scrim) {
     const launchers = Array.from(rail.querySelectorAll('.ed-launch'));
-    const drawerIds = ['input-panel', 'audio-controls', 'dice-drawer'];
+    const drawerIds = ['audio-controls', 'dice-drawer'];
+    function syncDiceToggle(visible) {
+      const button = document.getElementById('ed-launch-dice');
+      button.querySelector('span:last-child').textContent = visible ? 'Hide' : 'Dice';
+      button.setAttribute('aria-expanded', String(visible));
+      button.title = visible ? 'Hide dice' : 'Show dice';
+      document.getElementById('dice-drawer').inert = !visible;
+    }
+    syncDiceToggle(false);
+
 
     function closeAll() {
       drawerIds.forEach(id => {
@@ -8560,13 +8790,19 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
       launchers.forEach(b => b.classList.remove('active'));
       document.body.classList.remove('ed-drawer-open');
       scrim.classList.remove('on');
+      syncDiceToggle(false);
     }
     function toggle(id) {
+      if (id === 'input-panel') { _toggleInputTray(); return; }
       const el = document.getElementById(id);
       if (!el) return;
       const willOpen = !el.classList.contains('ed-open');
       closeAll();
       if (willOpen) {
+        if (id === 'dice-drawer') {
+          if (document.documentElement.dataset.skin !== 'editorial') _setControlsVisible(false);
+          syncDiceToggle(true);
+        }
         if (id === 'input-panel') el.classList.remove('collapsed');
         el.classList.add('ed-open');
         const b = rail.querySelector('.ed-launch[data-drawer="' + id + '"]');
@@ -8583,10 +8819,12 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
     // Let other code (e.g. an incoming DM dice-request) slide a drawer open.
     window._edOpenDrawer = (id) => {
+      if (id === 'input-panel') { _setInputExpanded(true); return; }
       const el = document.getElementById(id);
       if (el && !el.classList.contains('ed-open')) toggle(id);
     };
     window._edCloseDrawer = (id) => {
+      if (id === 'input-panel') { _setInputExpanded(false); return; }
       const el = document.getElementById(id);
       if (el && el.classList.contains('ed-open')) closeAll();
     };
@@ -8600,25 +8838,14 @@ function _onscreenDiceOn() { try { return localStorage.getItem('dnd-onscreen-dic
     }
   }
 
-  // Phone-only display settings — reuse the hidden Theme / Style pickers so each
-  // phone chooses its own look (their click handlers fire even while display:none).
   (function _initPhoneSettings() {
     const wrap = document.getElementById('phone-settings');
     if (!wrap || !document.body.classList.contains('input-only')) return;
     const tog    = document.getElementById('ph-set-toggle');
     const menu   = document.getElementById('ph-set-menu');
-    // Theme stays click-to-cycle (3 values: dark/light/auto — cycle's fine at 3).
-    // Style is its own <select id="ph-skin-select"> wired in _initSkinPicker.
-    const tVal   = document.getElementById('ph-theme-val');
-    const tRow   = document.getElementById('theme-row');
-    const tLabel = document.getElementById('theme-label');
-    function refreshTheme() {
-      if (tLabel && tVal) tVal.textContent = tLabel.textContent;
-    }
-    refreshTheme();
     if (tog) tog.addEventListener('click', e => { e.stopPropagation(); menu.classList.toggle('open'); });
-    const tOpt = document.getElementById('ph-theme-opt');
-    if (tOpt) tOpt.addEventListener('click', e => { e.stopPropagation(); if (tRow) tRow.click(); refreshTheme(); });
+    const themeOption = document.getElementById('ph-theme-opt');
+    if (themeOption) themeOption.addEventListener('click', e => e.stopPropagation());
     // Phone Style select lives inside the menu — stop click bubbling so opening
     // the native picker doesn't close the menu via the document-click listener.
     const sOpt = document.getElementById('ph-skin-opt');
@@ -9004,8 +9231,7 @@ function _initDicePad() {
       const n = document.querySelector('.dp-adv[data-adv="normal"]');
       if (n) n.classList.add('active');
     }
-    const hint = document.getElementById('dp-hint');
-    if (hint) hint.style.opacity = isD20 ? '1' : '0.4';
+    document.getElementById('dp-adv-row').hidden = !isD20;
   }
 
   document.querySelectorAll('#dp-die-row .dp-die').forEach(btn => {
@@ -9275,5 +9501,6 @@ function _initDicePad() {
   window._onDiceRequestCancelled = _onDiceRequestCancelled;
 }
 </script>
+{% include "custom_select.html" %}
 </body>
 </html>

@@ -76,9 +76,10 @@ def test_shared_render_profile_and_frozen_inherited_path(tmp_path):
     image = backgrounds.prompt_for('tavern', state['mood'], scene=context)
     audio = list(director.jobs.queue)[0].prompt
     profile = music.MOOD_PROFILES['warm']
-    assert profile['atmosphere'] in image and profile['atmosphere'] in audio
+    assert profile['atmosphere'] in image
+    assert 'A friendly but aged roadside inn.' in audio
+    assert profile['atmosphere'] not in audio
     assert profile['visual'] in image
-    assert profile['music'] in audio
     assert 'dark reading area' in image
     assert 'Greenwood' in image and 'Greenwood' in audio
 
