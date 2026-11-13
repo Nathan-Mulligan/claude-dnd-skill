@@ -254,7 +254,7 @@ _ROAD_DAYS = (
     (15, "obstacle", "The road makes them choose: washed-out ford, fallen tree, toll bridge, fog or a lame mule. Offer two real options with different costs."),
     (10, "discovery", "Something off the road: an abandoned cart, a roadside shrine, fresh tracks, smoke on the horizon. Investigating costs time; ignoring it may cost later."),
     (10, "danger", "Trouble scaled to the difficulty dial: bandits demanding a toll, wolves at dusk, a rival who followed them. Let talk, flight or a fight all work."),
-    (5, "story", "The current arc beat's world_pressure catches up with them on the road. Run it as a concrete event that demands a response."),
+    (5, "story", "The story catches up with them: the current arc beat's world_pressure, or with no arc an open thread or faction move from state.md. Run it as a concrete event that demands a response."),
 )
 
 
@@ -347,6 +347,13 @@ def cmd_scene(args) -> int:
     return 0
 
 
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be 1 or more")
+    return number
+
+
 def cmd_npc(args) -> int:
     rng = random.Random(args.seed) if args.seed is not None else random.Random()
     npc = npc_temperament(rng=rng, trader=args.trader)
@@ -361,7 +368,10 @@ def cmd_npc(args) -> int:
 def cmd_road(args) -> int:
     if args.campaign:
         state_path = _resolve_state(args.campaign)
-        if state_path.exists() and is_prebuilt(state_path.read_text(encoding="utf-8")):
+        if not state_path.is_file():
+            print(f"error: no state.md for campaign {args.campaign!r}", file=sys.stderr)
+            return 2
+        if is_prebuilt(state_path.read_text(encoding="utf-8")):
             print("Prebuilt campaign: use the module's own travel and wandering-encounter rules, not this table.")
             return 0
     rng = random.Random(args.seed) if args.seed is not None else random.Random()
@@ -408,7 +418,7 @@ def main() -> int:
     sp.set_defaults(func=cmd_npc)
 
     sp = sub.add_parser("road", help="what each travel day brings (improvised campaigns)")
-    sp.add_argument("--days", type=int, default=1)
+    sp.add_argument("--days", type=_positive_int, default=1)
     sp.add_argument("--campaign", help="skip the table for prebuilt (structured) campaigns")
     sp.add_argument("--seed", type=int)
     sp.set_defaults(func=cmd_road)

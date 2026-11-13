@@ -136,5 +136,21 @@ class ImprovVarietyTests(unittest.TestCase):
         self.assertFalse(oracle.is_prebuilt("```yaml\ntype: dynamic\n```"))
 
 
+class RoadCliTests(unittest.TestCase):
+    def run_road(self, *args):
+        import subprocess
+        return subprocess.run([sys.executable, str(SKILL / "scripts" / "oracle.py"), "road", *args],
+                              capture_output=True, text=True, encoding="utf-8")
+
+    def test_days_must_be_positive(self):
+        for days in ("0", "-3"):
+            self.assertNotEqual(self.run_road("--days", days).returncode, 0)
+
+    def test_unknown_campaign_is_an_error(self):
+        result = self.run_road("--campaign", "no-such-campaign-for-oracle-tests", "--seed", "1")
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("day 1", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
