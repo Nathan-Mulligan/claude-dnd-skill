@@ -40,6 +40,7 @@ def edit_state(folder, old, new):
 def test_enderal_card_carries_the_scene_beat_hooks_clock_trade_and_people(enderal):
     text = card(enderal)
     assert text.startswith("[[Turn card, hidden from players: ") and text.endswith("]] ")
+    assert "roll mode" not in text
     assert "\n" not in text
     assert "Where: Saltmere, Meren Vale’s bakery, 16 Duskfall 1247, morning" in text
     assert 'Beat 1b "Broken Ledgers": Bring the couple back toward Brackenford' in text
@@ -63,7 +64,7 @@ def test_table_settings_from_the_display_reach_the_dm(enderal):
     (runtime / "roll_prefs.json").write_text(json.dumps({"Nella Reed": "auto", "Ghost": "weird"}), encoding="utf-8")
     text = card(enderal)
     assert "narration about 120 words" in text
-    assert "except Nella Reed: you roll openly" in text
+    assert text.endswith("]] [[Nella Reed roll mode: auto]] ")
     assert "Ghost" not in text
 
 

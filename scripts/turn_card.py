@@ -204,15 +204,20 @@ def _table(state: str, runtime_dir: Path | None) -> str:
     rolls = []
     if mode and mode.group(1) in ROLL_MODES:
         rolls.append(ROLL_MODES[mode.group(1)])
-    try:
-        prefs = json.loads(_read(runtime_dir / "roll_prefs.json") or "{}") if runtime_dir else {}
-    except ValueError:
-        prefs = {}
-    if isinstance(prefs, dict):
-        rolls += [f"except {clean(who)}: {ROLL_MODES[how]}" for who, how in prefs.items() if how in ROLL_MODES]
     if rolls:
         parts.append("rolls: " + ", ".join(rolls))
     return "Table: " + "; ".join(parts) if parts else ""
+
+
+def _roll_overrides(runtime_dir: Path | None) -> str:
+    """Per-character overrides from the display's Rolls toggle, in check_input.py's format."""
+    try:
+        prefs = json.loads(_read(runtime_dir / "roll_prefs.json") or "{}") if runtime_dir else {}
+    except ValueError:
+        return ""
+    if not isinstance(prefs, dict):
+        return ""
+    return "".join(f"[[{_clip(who, 60)} roll mode: {how}]] " for who, how in prefs.items() if how in ROLL_MODES)
 
 
 def _lines(campaign_dir: Path, party_input: str, runtime_dir: Path | None, pulse) -> list[str]:
@@ -240,11 +245,10 @@ def _lines(campaign_dir: Path, party_input: str, runtime_dir: Path | None, pulse
     return lines + [f"Rule: {rule}." for rule in RULES]
 
 
-def render(lines: list[str]) -> str:
-    if not lines:
-        return ""
+def render(lines: list[str], overrides: str = "") -> str:
+    card = "[[Turn card, hidden from players: " + " | ".join(lines) + "]] " if lines else ""
     # Control characters (a NUL makes subprocess refuse the tmux call) never reach the terminal.
-    return re.sub(r"[\x00-\x1f\x7f]", " ", "[[Turn card, hidden from players: " + " | ".join(lines) + "]] ")
+    return re.sub(r"[\x00-\x1f\x7f]", " ", card + overrides)
 
 
 def prepare(campaign_dir: Path, party_input: str = "", runtime_dir: Path | None = None):
@@ -257,7 +261,7 @@ def prepare(campaign_dir: Path, party_input: str = "", runtime_dir: Path | None 
     except Exception:  # steering is optional
         pulse = None
     try:
-        return render(_lines(campaign_dir, party_input, runtime_dir, pulse)), pulse
+        return render(_lines(campaign_dir, party_input, runtime_dir, pulse), _roll_overrides(runtime_dir)), pulse
     except Exception:  # the card is optional; the party's reply must still reach the DM
         return "", pulse
 
