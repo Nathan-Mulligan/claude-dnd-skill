@@ -309,8 +309,9 @@ def _json_paths(line: str) -> list[tuple[PlaceTheme, ...]]:
     root_match = _JSON_ROOT.search(line)
     if not root_match:
         return []
-    root = tuple(PlaceTheme(level["name"].strip(), level.get("mood")) for level in json.loads(root_match.group())
-                 if isinstance(level, dict) and isinstance(level.get("name"), str))
+    root = tuple(PlaceTheme(level["name"].strip(), level.get("mood")) for level in json.loads(root_match.group()))
+    if len(root) > 8:
+        return []
     paths = [root]
     for child in _JSON_CHILD.findall(line[root_match.end():]):
         level = json.loads(child)
@@ -336,7 +337,7 @@ class WorldNotes:
             try:
                 found += _json_paths(line)
                 found += [_arrow_path(m.group(1)) for m in _ARROW_THEME.finditer(line)]
-            except (ValueError, TypeError, AttributeError):
+            except (ValueError, TypeError, AttributeError, KeyError):
                 continue
             for path in found:
                 for depth in range(1, len(path) + 1):
@@ -400,11 +401,12 @@ def _slug(text: str) -> str:
 
 def _key(parts: list[str]) -> str:
     slugs = [_slug(part) for part in parts]
-    if not all(slugs):
-        return "scene-" + hashlib.sha1("\0".join(parts).encode("utf-8")).hexdigest()[:12]
-    key = ".".join(slugs)
-    if len(key) > 64:
-        key = key[:51].rstrip("-.") + "-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
+    key = ".".join(slug for slug in slugs if slug)
+    unaccented = "".join(c for c in unicodedata.normalize("NFKD", "".join(parts)) if not unicodedata.combining(c))
+    lossy = not all(slugs) or any(ord(c) > 127 and c.isalnum() for c in unaccented)
+    if lossy or len(key) > 64:
+        digest = hashlib.sha1("\0".join(parts).encode("utf-8")).hexdigest()[:12]
+        key = key[:51].rstrip("-.") + "-" + digest if key else "scene-" + digest
     return key
 
 
@@ -426,13 +428,19 @@ class SceneCue:
         return {"setting": self.setting, "mood": self.mood, "scene": self.scene}
 
 
-def _match_place(place: str, world: WorldNotes) -> tuple[tuple[PlaceTheme, ...], bool] | None:
-    """Return the deepest saved place path named in `place`, and whether words are left over."""
+def _match_place(place: str, world: WorldNotes,
+                 region: str | None) -> tuple[tuple[PlaceTheme, ...], bool] | None:
+    """Return the saved place path that `place` names best, and whether words are left over.
+
+    Paths naming more of their ancestors win, then paths in the current region,
+    then deeper paths: "Saltmere mill" is Saltmere's mill, not Brackenford's.
+    """
     words = _norm(place)
     best = None
     for path in world.places:
         if _contains(words, _norm(path[-1].name)):
-            rank = (len(path), len(path[-1].name))
+            named = sum(_contains(words, _norm(level.name)) for level in path)
+            rank = (named, _norm(path[0].name) == region, len(path), len(path[-1].name))
             if best is None or rank > best[0]:
                 best = (rank, path)
     if best is None:
@@ -470,20 +478,22 @@ def derive(cue: str, mood: str | None = None, *, world: WorldNotes = WorldNotes(
         raise ValueError("--scene must start with the place, as '<place>: <what is happening>'")
     label = place if len(place) <= 120 else place[:119].rsplit(" ", 1)[0] + "…"
 
-    match = _match_place(place, world)
+    current_theme = _current_theme(current)
+    match = _match_place(place, world, _norm(current_theme[0].name) if current_theme else None)
     if match and not match[1]:
         theme = match[0]
-        key = _key([level.name for level in theme])
+        key = _key([_norm(level.name) for level in theme])
     else:
         key = _key([_norm(place)])
-        parent = match[0] if match else (_current_theme(current) or ())[:1]
-        theme = (parent + (PlaceTheme(label[:100]),))[:8] if parent else None
+        parent = match[0] if match else (current_theme or ())[:1]
+        theme = (parent + (PlaceTheme(label[:100].rstrip()),))[:8] if parent else None
 
     current_setting = (current or {}).get("setting")
     setting = (_setting_from(place) or _setting_from(" ".join(level.name for level in reversed(theme or ()))) or
                _setting_from(doing) or (current_setting if current_setting in SETTINGS else None) or "city")
     current_era = (current or {}).get("era")
-    era = world.era or (current_era if isinstance(current_era, str) and current_era.strip() else None)
+    era = world.era or (current_era.strip() if isinstance(current_era, str) and current_era.strip() and
+                        len(current_era) <= 100 and current_era.isprintable() else None)
     resolved = mood or theme_mood(theme) or SCENE_MUSIC[setting][1]
     return SceneCue(setting, resolved, SceneContext(key, label, cue, theme, era))
 

@@ -239,3 +239,32 @@ def test_send_scene_campaign_name_from_health_cannot_escape_the_data_root(tmp_pa
     health = {"campaign": "..", "data_root": str(tmp_path), "scene": None}
     payloads = _run_send(monkeypatch, ["--scene", "Station: trains"], health)
     assert "era" not in payloads[0]["music"]["scene"]
+
+
+@pytest.mark.parametrize("line", [
+    'Town: [{"name":"Town"}]. Gate: child {}',
+    'Deep: [' + ",".join('{"name":"L%d"}' % i for i in range(9)) + ']',
+    'Bad: [{"name":"Bad","mood":"wrong"}]',
+    'Odd: [{"name":5}]. X: child {"name":"X"}',
+])
+def test_malformed_world_notes_never_stop_a_scene_cue(line):
+    world = WorldNotes.parse("Era: medieval.\n" + line + "\n")
+    for place in ("Town gate", "L8", "L0", "Bad", "X"):
+        derive(f"{place}: something happens", world=world)
+
+
+def test_named_region_picks_the_matching_branch_and_current_region_breaks_ties():
+    world = WorldNotes.parse('Brackenford: [{"name":"Brackenford","mood":"warm"}]. Mill: child {"name":"Mill","mood":"warm"}.\n'
+                             'Saltmere: [{"name":"Saltmere","mood":"ominous"}]. Mill: child {"name":"Mill","mood":"ominous"}.\n')
+    cue = derive("Saltmere Mill: wheels turn", world=world)
+    assert cue.scene.key == "saltmere.mill" and cue.mood == "ominous"
+    current = {"setting": "city", "key": "saltmere", "theme": [{"name": "Saltmere", "mood": "ominous"}]}
+    assert derive("The mill: wheels turn", world=world, current=current).scene.key == "saltmere.mill"
+
+
+def test_places_differing_only_in_non_latin_text_get_different_keys():
+    tokyo, osaka = derive("東京の宿 inn: night").scene.key, derive("大阪の宿 inn: night").scene.key
+    assert tokyo != osaka and tokyo.startswith("inn-")
+    assert derive("Café Rouge: tea").scene.key == "cafe-rouge"
+    for key in (tokyo, osaka):
+        music.SceneContext.parse({"key": key, "label": "x", "description": "x"})
