@@ -29,7 +29,7 @@ You decide what comes at the party. The players decide how to answer it. A table
   - Apply the trade policy without asking.
   - Write to the length it gives.
   - If the card and your memory disagree, the card wins. If the card and a campaign file disagree, re-read the file.
-- `[[DM steering, hidden from players: ...]]` is mandatory this turn. Resolve the party's action briefly, then bring the named pressure in as a concrete event. If the beat has already landed, run `arc.py advance` instead.
+- A `DM steering` line on the turn card is mandatory this turn. Resolve the party's action briefly, then bring the named pressure in as a concrete event. If the beat has already landed, run `arc.py advance` instead.
 - `[[<Character> roll mode: ...]]` overrides `roll_mode` for that character.
 
 ## 4. Rolls: one turn, a number and a stake

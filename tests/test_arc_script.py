@@ -17,7 +17,7 @@ arc = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = arc
 spec.loader.exec_module(arc)
 
-STATE = (REPO / "tests/fixtures/enderal/state.md").read_text(encoding="utf-8")
+STATE = (REPO / "tests/fixtures/fenmoor/state.md").read_text(encoding="utf-8")
 
 
 def outside_arc(text):
@@ -63,14 +63,14 @@ def test_advancing_the_last_beat_completes_the_arc():
 
 
 def test_revise_round_trip_changes_only_the_named_fields():
-    data = arc.revise(arc.read(STATE), "1b", pressure="Piers flees with the ledger", steering="Let Mara ask for help",
+    data = arc.revise(arc.read(STATE), "1b", pressure="Bram flees with the ledger", steering="Let Ilsa ask for help",
                       today="2026-11-13")
     updated = arc.write(STATE, data)
     assert outside_arc(updated) == outside_arc(STATE)
     beat = arc.current(arc.read(updated))
-    assert beat["world_pressure"] == "Piers flees with the ledger"
+    assert beat["world_pressure"] == "Bram flees with the ledger"
     assert beat["what_changes"] == "The disruption proves to have interests beyond one gate"
-    assert arc.read(updated)["steering_notes"] == "Let Mara ask for help"
+    assert arc.read(updated)["steering_notes"] == "Let Ilsa ask for help"
     assert arc.read(updated)["revision_log"][-1] == "2026-11-13: 1b revised (pressure, steering)"
 
 
@@ -104,18 +104,18 @@ def run_cli(tmp_path, *args):
 
 
 def test_cli_status_advance_and_revise(tmp_path):
-    folder = tmp_path / "campaigns" / "Enderal"
+    folder = tmp_path / "campaigns" / "Fenmoor"
     folder.mkdir(parents=True)
     path = folder / "state.md"
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(STATE)
-    status = run_cli(tmp_path, "status", "--campaign", "Enderal")
+    status = run_cli(tmp_path, "status", "--campaign", "Fenmoor")
     assert status.returncode == 0 and 'beat 1b "Broken Ledgers"' in status.stdout
-    assert run_cli(tmp_path, "advance", "--campaign", "Enderal").returncode == 0
+    assert run_cli(tmp_path, "advance", "--campaign", "Fenmoor").returncode == 0
     assert arc.read(path.read_text(encoding="utf-8"))["current_beat"] == "2a"
-    refused = run_cli(tmp_path, "revise", "--campaign", "Enderal", "--beat", "1b", "--pressure", "x")
+    refused = run_cli(tmp_path, "revise", "--campaign", "Fenmoor", "--beat", "1b", "--pressure", "x")
     assert refused.returncode == 1 and "complete" in refused.stderr
-    assert run_cli(tmp_path, "revise", "--campaign", "Enderal", "--beat", "2a", "--steering", "Rivals bid").returncode == 0
+    assert run_cli(tmp_path, "revise", "--campaign", "Fenmoor", "--beat", "2a", "--steering", "Rivals bid").returncode == 0
     assert arc.read(path.read_text(encoding="utf-8"))["steering_notes"] == "Rivals bid"
     assert not list(folder.glob("*.arc-tmp"))
 

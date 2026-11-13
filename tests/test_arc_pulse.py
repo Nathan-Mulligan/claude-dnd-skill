@@ -16,7 +16,7 @@ arc_pulse = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = arc_pulse
 spec.loader.exec_module(arc_pulse)
 
-STATE = """# Campaign: Enderal
+STATE = """# Campaign: Fenmoor
 
 ## Campaign Arc
 ```yaml
@@ -25,7 +25,7 @@ acts:
   - act: 1
     title: The Narrow Road
     beats:
-      - {{id: 1a, label: The Cost of Passage, what_changes: Elbane's trade becomes entangled in the shortage, world_pressure: Mara enforces the posted rate while Tovin seeks salt, status: current}}
+      - {{id: 1a, label: The Cost of Passage, what_changes: Corin's trade becomes entangled in the shortage, world_pressure: Ilsa enforces the posted rate while Garrick seeks salt, status: current}}
       - {{id: 1b, label: Broken Ledgers, what_changes: The disruption has interests beyond one gate, world_pressure: The Wardens and Compact dispute records, status: pending}}
 current_act: 1
 current_beat: {beat}
@@ -41,7 +41,7 @@ Heroic danger.
 
 
 def campaign(tmp_path, beat="1a", flags=""):
-    folder = tmp_path / "campaigns" / "Enderal"
+    folder = tmp_path / "campaigns" / "Fenmoor"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "state.md").write_text(STATE.format(beat=beat, flags=flags), encoding="utf-8")
     return folder
@@ -59,16 +59,16 @@ def play_turns(folder, count):
 def test_reads_the_current_beat_from_flow_style_yaml(tmp_path):
     beat = arc_pulse.arc.current(arc_pulse.arc.read((campaign(tmp_path) / "state.md").read_text(encoding="utf-8")))
     assert beat["id"] == "1a" and beat["label"] == "The Cost of Passage"
-    assert "Mara enforces" in beat["world_pressure"]
+    assert "Ilsa enforces" in beat["world_pressure"]
 
 
 def test_nudges_on_the_sixth_turn_by_default_then_counts_again(tmp_path):
     directives = play_turns(campaign(tmp_path), 12)
     assert [i for i, d in enumerate(directives, 1) if d] == [6, 12]
-    assert "Mara enforces the posted rate" in directives[5]
+    assert "Ilsa enforces the posted rate" in directives[5]
     assert "Has this beat already landed?" in directives[11]
-    assert "arc.py advance --campaign Enderal" in directives[11]
-    assert "arc.py revise --campaign Enderal --beat 1a" in directives[11]
+    assert "arc.py advance --campaign Fenmoor" in directives[11]
+    assert "arc.py revise --campaign Fenmoor --beat 1a" in directives[11]
 
 
 def test_dm_led_spotlight_nudges_sooner(tmp_path):
@@ -112,7 +112,7 @@ def delivery(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "running", lambda: True)
     monkeypatch.setattr(portal, "notify_party_consumed", lambda *args: None)
     portal.RUNTIME.mkdir(parents=True)
-    portal.META_FILE.write_text('{"campaign":"Enderal","mode":"resume"}', encoding="utf-8")
+    portal.META_FILE.write_text('{"campaign":"Fenmoor","mode":"resume"}', encoding="utf-8")
     sent = []
     result = {"code": 0}
     monkeypatch.setattr(portal, "run", lambda *args, **kwargs: (
@@ -120,7 +120,7 @@ def delivery(tmp_path, monkeypatch):
     return campaign(tmp_path, flags="steer_after: 2"), sent, result
 
 
-def reply(text="[Elbane III]: We haggle over the flour."):
+def reply(text="[Corin Ashby]: We haggle over the flour."):
     (portal.RUNTIME / ".input_queue").write_text(text, encoding="utf-8")
     return portal.deliver_party_input()
 
@@ -160,18 +160,18 @@ def test_steering_notes_location_and_hooks_lead_the_directive(tmp_path):
     state = folder / "state.md"
     text = state.read_text(encoding="utf-8").replace(
         "current_act: 1\n", "current_act: 1\nsteering_notes: A clerk asks them to carry a sealed ledger.\n")
-    text = ("## Current Situation\n- **Location:** Saltmere market\n\n## Next Hooks\n- A courier with a lame horse\n\n"
+    text = ("## Current Situation\n- **Location:** Brinewick market\n\n## Next Hooks\n- A courier with a lame horse\n\n"
             + text)
     state.write_text(text, encoding="utf-8")
     directive = arc_pulse.plan(folder).directive
     assert "A clerk asks them to carry a sealed ledger" in directive
-    assert "at Saltmere market" in directive and "A courier with a lame horse" in directive
-    assert "Mara enforces" not in directive
+    assert "at Brinewick market" in directive and "A courier with a lame horse" in directive
+    assert "Ilsa enforces" not in directive
 
 
 def test_world_pressure_is_the_fallback(tmp_path):
     directive = arc_pulse.plan(campaign(tmp_path, flags="steer_after: 1")).directive
-    assert "Mara enforces the posted rate" in directive and "entangled in the shortage" in directive
+    assert "Ilsa enforces the posted rate" in directive and "entangled in the shortage" in directive
 
 
 def test_flag_lines_written_as_list_items_are_read(tmp_path):
@@ -184,7 +184,7 @@ def test_active_combat_turns_are_not_counted(tmp_path):
     folder = campaign(tmp_path, flags="steer_after: 2")
     state = folder / "state.md"
     clean_text = state.read_text(encoding="utf-8")
-    state.write_text(clean_text + "\n## Active Combat\nRound 2: Elbane vs bandit (HP 4/7)\n", encoding="utf-8")
+    state.write_text(clean_text + "\n## Active Combat\nRound 2: Corin vs bandit (HP 4/7)\n", encoding="utf-8")
     assert arc_pulse.plan(folder) is None
     for ended in ("None.", "*(none)*", "", "**Status:** Finished in round 3\n**Current turn:** none\n\n| Combatant | Side | HP | AC |"):
         state.write_text(clean_text + f"\n## Active Combat\n{ended}\n", encoding="utf-8")
@@ -192,12 +192,12 @@ def test_active_combat_turns_are_not_counted(tmp_path):
 
 
 @pytest.mark.parametrize("text", [
-    "[Elbane III]: 14", "[Elbane III]: I rolled a 17 for Perception", "[Nella Reed]: 8 and 9",
-    "[Nella Reed]: nat 20", "[Elbane III]: d20: 12 + 4 = 16",
-    "Elbane III rolls 1d20+4: [13] +4 = 17 — Inspect rope: Perception",
-    "[Everybody]: OOC: back in five minutes", "[Nella Reed]: (ooc) can we stop at nine?",
-    "[Elbane III]: ((pausing for tea))", "[Elbane III]: // what time is it",
-    "[Elbane III]: 15\n[Nella Reed]: OOC: nice roll",
+    "[Corin Ashby]: 14", "[Corin Ashby]: I rolled a 17 for Perception", "[Wren Talley]: 8 and 9",
+    "[Wren Talley]: nat 20", "[Corin Ashby]: d20: 12 + 4 = 16",
+    "Corin Ashby rolls 1d20+4: [13] +4 = 17 — Inspect rope: Perception",
+    "[Everybody]: OOC: back in five minutes", "[Wren Talley]: (ooc) can we stop at nine?",
+    "[Corin Ashby]: ((pausing for tea))", "[Corin Ashby]: // what time is it",
+    "[Corin Ashby]: 15\n[Wren Talley]: OOC: nice roll",
 ])
 def test_dice_only_and_out_of_character_inputs_do_not_count(tmp_path, text):
     assert not arc_pulse.counts_as_story(text)
@@ -205,8 +205,8 @@ def test_dice_only_and_out_of_character_inputs_do_not_count(tmp_path, text):
 
 
 @pytest.mark.parametrize("text", [
-    "[Elbane III]: We haggle over the flour.", "[Elbane III]: I rolled a 14\n[Nella Reed]: I grab the ledger",
-    "[Elbane III]: I offer 20 silver for the wagon", "[Elbane III]: 20 for the wagon", "",
+    "[Corin Ashby]: We haggle over the flour.", "[Corin Ashby]: I rolled a 14\n[Wren Talley]: I grab the ledger",
+    "[Corin Ashby]: I offer 20 silver for the wagon", "[Corin Ashby]: 20 for the wagon", "",
 ])
 def test_story_inputs_count(text):
     assert arc_pulse.counts_as_story(text)
@@ -216,11 +216,11 @@ def test_revising_the_beat_restarts_the_count_and_the_nudge_ladder(tmp_path):
     folder = campaign(tmp_path, flags="steer_after: 2")
     assert play_turns(folder, 4)[3].startswith("DM steering, mandatory this turn: beat 1a")
     state = folder / "state.md"
-    state.write_text(state.read_text(encoding="utf-8").replace("Mara enforces the posted rate", "Mara seizes a wagon"),
+    state.write_text(state.read_text(encoding="utf-8").replace("Ilsa enforces the posted rate", "Ilsa seizes a wagon"),
                      encoding="utf-8")
     directives = play_turns(folder, 2)
     assert directives[0] is None
-    assert "Mara seizes a wagon" in directives[1] and "already landed" not in directives[1]
+    assert "Ilsa seizes a wagon" in directives[1] and "already landed" not in directives[1]
 
 
 def test_structured_arc_gets_a_nudge_naming_the_key_beat_and_source(tmp_path):

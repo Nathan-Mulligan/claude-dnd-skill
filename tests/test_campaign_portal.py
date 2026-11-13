@@ -240,14 +240,14 @@ def test_party_input_is_sent_to_active_model(client, monkeypatch):
     assert portal.deliver_party_input() is False
 
 
-def play_turn(monkeypatch, mode="resume", campaign="Enderal"):
+def play_turn(monkeypatch, mode="resume", campaign="Fenmoor"):
     import shutil
     portal.RUNTIME.mkdir(parents=True, exist_ok=True)
     folder = portal.DATA_ROOT / "campaigns" / campaign
     if not folder.exists():
-        shutil.copytree(REPO / "tests/fixtures/enderal", folder)
+        shutil.copytree(REPO / "tests/fixtures/fenmoor", folder)
     portal.META_FILE.write_text(json.dumps({"campaign": campaign, "mode": mode}), encoding="utf-8")
-    (portal.RUNTIME / ".input_queue").write_text("[Elbane III]: We ask Meren about cargo.", encoding="utf-8")
+    (portal.RUNTIME / ".input_queue").write_text("[Corin Ashby]: We ask Rosa about cargo.", encoding="utf-8")
     calls = []
 
     def fake_run(*args, **kwargs):
@@ -266,36 +266,36 @@ def play_turn(monkeypatch, mode="resume", campaign="Enderal"):
 def test_play_turn_carries_the_turn_card_instead_of_scene_protocol(client, monkeypatch):
     delivered, prompt, _ = play_turn(monkeypatch)
     assert delivered
-    assert prompt.startswith("[[Turn card, hidden from players: Where: Saltmere")
+    assert prompt.startswith("[[Turn card, hidden from players: Where: Brinewick")
     assert 'Beat 1b "Broken Ledgers"' in prompt and "Trade policy" in prompt
     assert portal.SCENE_PROTOCOL not in prompt and "--scene-key" not in prompt
     assert "setup question" not in prompt
     assert "\n" not in prompt
-    assert prompt.endswith('Input: "[Elbane III]: We ask Meren about cargo."')
+    assert prompt.endswith('Input: "[Corin Ashby]: We ask Rosa about cargo."')
 
 
 def test_broken_state_still_delivers_the_reply(client, monkeypatch):
-    folder = portal.DATA_ROOT / "campaigns" / "Enderal"
+    folder = portal.DATA_ROOT / "campaigns" / "Fenmoor"
     folder.mkdir(parents=True)
     (folder / "state.md").write_bytes(b"\xff\xfe\x00 not utf-8 ## Campaign Arc ```yaml [")
     delivered, prompt, _ = play_turn(monkeypatch)
-    assert delivered and "We ask Meren about cargo" in prompt
+    assert delivered and "We ask Rosa about cargo" in prompt
 
 
 def test_nul_in_state_still_delivers_the_reply(client, monkeypatch):
     import shutil
-    folder = portal.DATA_ROOT / "campaigns" / "Enderal"
-    shutil.copytree(REPO / "tests/fixtures/enderal", folder)
+    folder = portal.DATA_ROOT / "campaigns" / "Fenmoor"
+    shutil.copytree(REPO / "tests/fixtures/fenmoor", folder)
     state = folder / "state.md"
-    state.write_text(state.read_text(encoding="utf-8").replace("Saltmere, Meren", "Salt\x00mere, Meren"), encoding="utf-8")
+    state.write_text(state.read_text(encoding="utf-8").replace("Brinewick, Rosa", "Salt\x00mere, Rosa"), encoding="utf-8")
     delivered, prompt, _ = play_turn(monkeypatch)
-    assert delivered and "We ask Meren about cargo" in prompt
+    assert delivered and "We ask Rosa about cargo" in prompt
 
 
 def test_card_failure_still_delivers_the_reply(client, monkeypatch):
     monkeypatch.setattr(portal.turn_card, "prepare", lambda *args: 1 / 0)
     delivered, prompt, _ = play_turn(monkeypatch)
-    assert delivered and prompt.startswith("Party Input") and "We ask Meren about cargo" in prompt
+    assert delivered and prompt.startswith("Party Input") and "We ask Rosa about cargo" in prompt
 
 
 def test_setup_note_stops_once_a_new_campaign_has_characters(client, monkeypatch):
@@ -304,7 +304,7 @@ def test_setup_note_stops_once_a_new_campaign_has_characters(client, monkeypatch
     (folder / "state.md").write_text("# Campaign: Fresh\n", encoding="utf-8")
     _, prompt, _ = play_turn(monkeypatch, mode="new", campaign="Fresh")
     assert "send.py --setup-question" in prompt
-    (folder / "characters" / "elbane.md").write_text("# Elbane\n", encoding="utf-8")
+    (folder / "characters" / "corin.md").write_text("# Corin\n", encoding="utf-8")
     _, prompt, _ = play_turn(monkeypatch, mode="new", campaign="Fresh")
     assert "setup question" not in prompt
 
@@ -461,11 +461,11 @@ def test_scene_protocol_prefix_reaches_each_launch_mode(mode, onboarding):
 
 
 def test_each_dm_choice_launches_its_own_model():
-    sol = portal.model_args("codex-sol", "resume", "Enderal", "", None)
+    sol = portal.model_args("codex-sol", "resume", "Fenmoor", "", None)
     assert sol[2] == "codex" and sol[sol.index("-m") + 1] == "gpt-6.1-sol"
-    terra = portal.model_args("codex", "resume", "Enderal", "", None)
+    terra = portal.model_args("codex", "resume", "Fenmoor", "", None)
     assert terra[terra.index("-m") + 1] == "gpt-6.1-terra"
-    claude = portal.model_args("claude", "resume", "Enderal", "", None)
+    claude = portal.model_args("claude", "resume", "Fenmoor", "", None)
     assert claude[2] == "claude" and claude[claude.index("--model") + 1] == "opus"
 
 
