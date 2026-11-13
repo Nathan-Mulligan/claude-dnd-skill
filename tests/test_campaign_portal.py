@@ -389,3 +389,20 @@ def test_scene_protocol_prefix_reaches_each_launch_mode(mode, onboarding):
     assert "/health" in prompt
     if onboarding is not None:
         assert json.loads(prompt.split("Completed questionnaire JSON: ", 1)[1]) == onboarding
+
+
+def test_each_dm_choice_launches_its_own_model():
+    sol = portal.model_args("codex-sol", "resume", "Enderal", "", None)
+    assert sol[2] == "codex" and sol[sol.index("-m") + 1] == "gpt-6.1-sol"
+    terra = portal.model_args("codex", "resume", "Enderal", "", None)
+    assert terra[terra.index("-m") + 1] == "gpt-6.1-terra"
+    claude = portal.model_args("claude", "resume", "Enderal", "", None)
+    assert claude[2] == "claude" and claude[claude.index("--model") + 1] == "opus"
+
+
+def test_page_lists_every_dm_choice(client):
+    page = client[0].get("/", base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    for key, choice in portal.DM_CHOICES.items():
+        assert f'value="{key}" data-launcher="{choice.launcher}"' in page
+    assert page.index('value="codex-sol" data-launcher') < page.index('value="codex" data-launcher')
+    assert '<option value="qwen" data-label="Ollama">' in page

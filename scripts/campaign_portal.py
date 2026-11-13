@@ -17,8 +17,12 @@ import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 from flask import Flask, jsonify, render_template, request, send_file
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_pulse  # noqa: E402
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -28,7 +32,26 @@ META_FILE = RUNTIME / "portal-session.json"
 SESSION = os.environ.get("DND_PORTAL_TMUX_SESSION", "dnd-campaign-portal")
 PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-ALLOWED_PROVIDERS = {"qwen", "codex", "claude"}
+class DmChoice(NamedTuple):
+    launcher: str
+    model: str
+    args: tuple[str, ...]
+
+
+LAUNCHER_LABELS = {"codex": "Codex", "claude": "Claude", "qwen": "Ollama"}
+_CODEX_EFFORT = ("-c", 'model_reasoning_effort="medium"')
+# Keys are stored in portal-session.json as "provider"; "codex" and "claude" keep their original meaning.
+DM_CHOICES = {
+    "codex-sol": DmChoice("codex", "Sol", ("-m", "gpt-6.1-sol", *_CODEX_EFFORT)),
+    "codex-astra": DmChoice("codex", "Astra", ("-m", "gpt-6-astra", *_CODEX_EFFORT)),
+    "codex-luna": DmChoice("codex", "Luna", ("-m", "gpt-6-luna", *_CODEX_EFFORT)),
+    "codex": DmChoice("codex", "Terra", ("-m", "gpt-6.1-terra", *_CODEX_EFFORT)),
+    "claude": DmChoice("claude", "Opus", ("--model", "opus")),
+    "claude-fable": DmChoice("claude", "Fable", ("--model", "fable")),
+    "claude-sonnet": DmChoice("claude", "Sonnet", ("--model", "sonnet")),
+    "qwen": DmChoice("qwen", "Qwen 3.6 35B", ()),
+}
+ALLOWED_PROVIDERS = set(DM_CHOICES)
 CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
 SESSION_LOCK = threading.RLock()
 HANDOFF_TIMEOUT = 180
@@ -152,12 +175,18 @@ def _deliver_party_input() -> bool:
     if not content:
         claim.unlink(missing_ok=True)
         return False
+    try:
+        campaign_dir = campaign_path(str(meta.get("campaign", "")))
+        pulse = arc_pulse.plan(campaign_dir)
+    except Exception:  # steering is optional; a bad state.md must never block the party's reply
+        pulse = None
     prompt = (
         SCENE_PROTOCOL +
         "Party Input for the current DM turn. During campaign or character setup, treat it as "
         "the answer to your latest question; during play, treat it as the party's action. "
         "Send your next setup question to the cinematic display with send.py --setup-question before waiting. "
-        "Input: " + json.dumps(content, ensure_ascii=True)
+        "Input: " + json.dumps(content, ensure_ascii=True) +
+        (" " + pulse.directive if pulse and pulse.directive else "")
     )
     literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", prompt)
     if literal.returncode:
@@ -167,6 +196,11 @@ def _deliver_party_input() -> bool:
     if enter.returncode:
         return False
     claim.unlink(missing_ok=True)
+    if pulse:
+        try:
+            arc_pulse.commit(campaign_dir, pulse)
+        except OSError:
+            pass
     notify_party_consumed()
     return True
 
@@ -297,19 +331,20 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
 
 
 def model_args(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None) -> list[str]:
-    args = ["bash", str(REPO / "scripts/play-local.sh"), provider]
+    choice = DM_CHOICES[provider]
+    args = ["bash", str(REPO / "scripts/play-local.sh"), choice.launcher]
     if mode == "resume":
         args += ["--campaign", name]
     prompt = initial_prompt(mode, name, description, onboarding)
-    if provider == "codex":
-        args += ["-m", "gpt-6.1-terra", "-c", 'model_reasoning_effort="medium"',
+    if choice.launcher == "codex":
+        args += [*choice.args,
                  "-c", "sandbox_workspace_write.network_access=true",
                  "-s", "workspace-write",
                  "--add-dir", str(DATA_ROOT), prompt]
-    elif provider == "qwen":
+    elif choice.launcher == "qwen":
         args += ["-i", prompt]
     else:
-        args += [prompt]
+        args += [*choice.args, prompt]
     return args
 
 
@@ -341,7 +376,7 @@ def prepare_display(name: str, reset: bool = True) -> None:
 def selection_error(provider: str, mode: str, name: str, description: str) -> str | None:
     if provider not in ALLOWED_PROVIDERS or mode not in {"new", "resume"}:
         return "Choose a model and New or Resume."
-    if provider == "codex" and not CODEX_ENABLED:
+    if DM_CHOICES[provider].launcher == "codex" and not CODEX_ENABLED:
         return "Codex is disabled on this M5. Choose Qwen or remove the DND_PORTAL_ENABLE_CODEX=0 override."
     if not NAME_RE.fullmatch(name) or name in {".", ".."}:
         return "Campaign name must use letters, numbers, dots, dashes or underscores."
@@ -360,10 +395,11 @@ def selection_error(provider: str, mode: str, name: str, description: str) -> st
 
 
 def provider_error(provider: str) -> str | None:
-    installed = run("bash", "-c", 'command -v "$1" >/dev/null', "dnd-provider-check", provider)
+    launcher = DM_CHOICES[provider].launcher
+    installed = run("bash", "-c", 'command -v "$1" >/dev/null', "dnd-provider-check", launcher)
     if installed.returncode:
-        return f"The selected DM ({provider}) is not installed. Choose another model."
-    if provider == "claude":
+        return f"The selected DM ({launcher}) is not installed. Choose another model."
+    if launcher == "claude":
         auth = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--claude-auth")
         if auth.returncode:
             return "Claude Code is signed out on the M5. Sign in there or choose Qwen or Codex."
@@ -390,7 +426,7 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
         error = provider_error(provider)
         if error:
             return False, error
-        service = run("env", "DND_PORTAL_START=1", "bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", provider, timeout=60)
+        service = run("env", "DND_PORTAL_START=1", "bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", DM_CHOICES[provider].launcher, timeout=60)
         if service.returncode:
             return False, (service.stderr or service.stdout or "M5 services did not start.").strip()[-800:]
         try:
@@ -655,7 +691,7 @@ def create_app() -> Flask:
 
     @app.get("/")
     def home():
-        return render_template("campaign_portal.html", token=token)
+        return render_template("campaign_portal.html", token=token, dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS)
 
     @app.get("/icon.png")
     def icon():
