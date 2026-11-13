@@ -15,7 +15,7 @@ def test_tray_keyboard_toggle_remembers_choice():
         pytest.skip('node unavailable')
     source = HTML.read_text(encoding="utf-8")
     code = source[source.index('function _setInputExpanded('):source.index('// ── Build character tabs')]
-    result = subprocess.run([node, '-'], text=True, capture_output=True, check=True, input='''
+    result = subprocess.run([node, '-'], text=True, encoding='utf-8', capture_output=True, check=True, input='''
 const classes = new Set(['collapsed']);
 const listeners = {}, attributes = {}, saved = new Map();
 const _inputPanel = {classList:{contains:key=>classes.has(key), toggle(key,on){on?classes.add(key):classes.delete(key);}}};
@@ -62,7 +62,7 @@ def test_tray_follows_each_frame_of_a_sideways_column_transition():
         pytest.skip('node unavailable')
     source = HTML.read_text(encoding="utf-8")
     code = source[source.index('function _reserveInputSpace()'):source.index('// Initialise with no extra chars')]
-    result = subprocess.run([node, '-'], text=True, capture_output=True, check=True, input='''
+    result = subprocess.run([node, '-'], text=True, encoding='utf-8', capture_output=True, check=True, input='''
 let columnLeft = 100;
 const frames = [], listeners = {};
 const panel = {style:{},getBoundingClientRect:()=>({height:200,top:600}),addEventListener(){}};

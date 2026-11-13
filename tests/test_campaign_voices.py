@@ -75,7 +75,7 @@ def test_browser_reuses_preloaded_samples_and_skips_paid_catalog():
         pytest.skip('node unavailable')
     source = (DISPLAY / 'templates/index.html').read_text(encoding='utf-8')
     code = source[source.index('const _ttsSamples ='):source.index('function _ttsBuildVoiceMenu')]
-    result = subprocess.run([node, '--input-type=module', '-'], text=True, capture_output=True, check=True, input='''
+    result = subprocess.run([node, '--input-type=module', '-'], text=True, encoding='utf-8', capture_output=True, check=True, input='''
 let requests = [];
 const _TTS_VOICES_MALE = ['bm_george'], _TTS_VOICES_FEMALE = ['bf_emma'];
 function _authHeaders() { return {}; }
@@ -105,7 +105,7 @@ def test_short_speaker_name_keeps_the_full_character_assignment():
         pytest.skip('node unavailable')
     source = (DISPLAY / 'templates/index.html').read_text(encoding='utf-8')
     code = source[source.index('function _castKey('):source.index('function _voiceForBlock(')]
-    result = subprocess.run([node, '-'], text=True, capture_output=True, check=True, input='''
+    result = subprocess.run([node, '-'], text=True, encoding='utf-8', capture_output=True, check=True, input='''
 const _CAST = {'nella reed':'bf_emma', 'ann':'af_bella'};
 function _narratorVoice() { return 'bm_fable'; }
 ''' + code + '''
