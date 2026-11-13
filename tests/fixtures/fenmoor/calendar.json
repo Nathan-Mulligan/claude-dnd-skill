@@ -1,0 +1,27 @@
+{
+  "day": 16,
+  "year": 1247,
+  "months": [
+    "Frostfall",
+    "Deepwinter",
+    "Thawmonth",
+    "Seedtime",
+    "Bloomtide",
+    "Highsun",
+    "Harvestmoon",
+    "Leaffall"
+  ],
+  "month": 8,
+  "hour": 8,
+  "month_length": 30,
+  "day_names": [
+    "Sunday",
+    "Moonday",
+    "Ironday",
+    "Windday",
+    "Earthday",
+    "Fireday",
+    "Starday"
+  ],
+  "events": []
+}
