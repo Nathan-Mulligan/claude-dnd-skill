@@ -377,7 +377,7 @@ def test_renaming_a_pc_moves_the_ledger_with_the_sheet(enderal):
     out = subprocess.run(
         [sys.executable, str(SCRIPTS / "npc_rename.py"), "--campaign", "Enderal", "--old", "Nella Reed",
          "--new", "Nella Thorn", "--type", "pc", "--yes"],
-        capture_output=True, text=True, env={**os.environ}, timeout=60)
+        capture_output=True, text=True, encoding='utf-8', env={**os.environ}, timeout=60)
     assert out.returncode == 0, out.stderr
     assert not (enderal / "characters/nella-reed.inventory.json").exists()
     assert ledger(enderal, "nella-thorn")["character"] == "Nella Thorn"

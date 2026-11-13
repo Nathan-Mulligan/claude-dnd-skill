@@ -100,7 +100,10 @@ def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess[str]:
 
 
 def running() -> bool:
-    return run("tmux", "has-session", "-t", f"={SESSION}").returncode == 0
+    try:
+        return run("tmux", "has-session", "-t", f"={SESSION}").returncode == 0
+    except FileNotFoundError:
+        return False
 
 
 def read_meta() -> dict:
