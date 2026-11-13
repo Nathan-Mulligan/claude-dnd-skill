@@ -14,28 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from music import MOODS, SETTINGS, SceneContext, MOOD_PROFILES
-
-ENVIRONMENTS = {
-    "arcane": "an ancient magical observatory, floating stone arches and luminous runes",
-    "castle": "a medieval castle courtyard, tall stone towers and distant battlements",
-    "cave": "a vast vaulted cavern, stalactites, an underground lake and ancient ruined stone archways",
-    "city": "a medieval harbour city, distinctive rooftops, towers and narrow streets",
-    "crypt": "an underground stone crypt, vaulted tombs and old carved pillars",
-    "desert": "a desert of rolling dunes, distant sandstone ruins and an oasis",
-    "dungeon": "an underground dungeon of damp stone corridors, iron bars and torchlit arches",
-    "fire": "a volcanic landscape, a recognisable volcanic peak, lava rivers and dark basalt cliffs",
-    "forest": "an ancient forest, layered woodland, mossy trunks and a distant stone bridge",
-    "mine": "an abandoned mine, timber supports, rock tunnels and old rail tracks",
-    "mountain": "a mountain valley, distant jagged peaks and a stone fortress on a ridge",
-    "night": "a quiet moonless countryside, distant village rooftops and dark wooded hills",
-    "ocean": "a coastal seascape, broad open sea, weathered cliffs and a distant harbour village",
-    "prison": "a medieval underground prison, barred stone cells and torchlit passages",
-    "ruins": "an ancient ruined city, broken stone towers and overgrown arches",
-    "swamp": "a misty swamp, twisted trees, still water and an old sunken stone causeway",
-    "tavern": "a warm medieval roadside inn, timber beams, a hearth and a distant bar",
-    "temple": "an ancient temple, monumental stone columns, broad stairs and a distant altar",
-}
+from scene_engine import (  # noqa: F401  (re-exported for callers of backgrounds)
+    ENVIRONMENTS, MOODS, SETTINGS, SceneContext, image_prompt as prompt_for,
+)
 
 
 @dataclass(frozen=True)
@@ -98,57 +79,6 @@ def runtime_config(config_path: Path | None = None) -> LocalConfig | None:
             width % 16 == height % 16 == 0 and 1 <= steps <= 20 and 10 <= timeout <= 1800):
         return None
     return LocalConfig(python, runner, model, reference, guard, width, height, steps, timeout, density_map)
-
-
-ERA_GUIDANCE = {
-    "medieval": "A pre-industrial medieval fantasy world, historically inspired rather than contemporary. Period material culture throughout: rough-hewn timber, limewashed stone, hand-forged iron, pottery, wooden furnishings, beeswax candles and hearth light. ",
-    "renaissance": "A Renaissance-inspired fantasy world with carved stone and timber architecture, period furnishings, oil lamps and candles. ",
-    "ancient": "An ancient-world fantasy setting with era-appropriate stone, plaster and timber architecture, pottery and oil lamps. ",
-    "modern": "An explicitly modern world with contemporary architecture, furnishings, technology appropriate to the described scene. ",
-    "futuristic": "An explicitly futuristic world with advanced architecture, technology, materials appropriate to the described scene. ",
-}
-
-
-def prompt_for(setting: str, mood: str, reference: bool = False, density_map: bool = False,
-               scene: SceneContext | None = None) -> str:
-    opening = ("Use the reference only for its painterly style, composition and gradual shading. "
-               "Replace its entire environment with the requested setting. Do not copy cave walls, "
-               "stalactites or buildings unless they belong in the requested setting. " if reference else "")
-    if density_map:
-        opening = ("The reference is a grayscale detail density map, not a literal scene. White means "
-                   "scenery and detail are allowed in the upper area and outer edges. Black means a quiet "
-                   "dark reading area in the lower centre. Follow that composition, but create a full-colour "
-                   "painting of the requested environment, not a grayscale image or a visible map. ")
-    environment = scene.description if scene else ENVIRONMENTS[setting]
-    profile = MOOD_PROFILES[mood]
-    era = scene.era if scene and scene.era else "medieval"
-    fantasy_era = era.casefold() in {"medieval", "renaissance", "ancient"}
-    atmosphere = profile["atmosphere"] if fantasy_era else profile["atmosphere"].replace("fantasy ", "")
-    tone = (scene.place_guidance() + atmosphere + " " + profile["visual"] + " "
-            if scene else "")
-    palette = ("Subdued saturation and gentle scenic contrast, with no glaring highlights. " if tone else
-               "Subtle muted ink blue, teal, stone grey and restrained amber, low saturation and very low tonal contrast, dim light, no bright highlights. ")
-    guidance = ERA_GUIDANCE.get(era.casefold(),
-        f"The established world era is {era}. Use architecture, materials and technology appropriate to that era and the described scene. ")
-    genre = "fantasy " if fantasy_era else ""
-    return (
-        "A scenery-first environment establishing shot, focused on landscape and architecture. "
-        "By default, depict no people, characters, creatures or monsters. The only exception is a specific "
-        "character, NPC, creature or monster that the scene explicitly says the party is currently interacting with. "
-        "If no such active interaction is described, show scenery only. A mere mention of a person or animal "
-        "in the setting is not an interaction. Include only the subject of that explicit interaction, "
-        "subordinate to the scenery and clear of the central reading area. Any permitted interaction subject "
-        "must fit the established world era. " + guidance +
-        "Preserve any fantastical machines, constructs or other exceptional elements explicitly described in this world. " +
-        opening + f"Paint a very wide shallow illustrated {genre}panorama of {environment}. " + tone +
-        f"{mood.capitalize()} atmosphere. Recognisable distant scenery, soft painterly forms and shaded depth. "
-        "Place the horizon and major landmarks in the upper quarter, with restrained framing at the outer edges. "
-        "The lower three quarters and central reading area are a dark reading area, quiet low-contrast shadow with subtle visible "
-        "surface detail. Blend the scenery gradually into that reading area, with no abrupt black band or "
-        "solid rectangle. " + palette + "Landmarks are distant and small, not large "
-        "focal subjects. Matte storybook painting that supports narration rather than dominating it. "
-        "No bystanders, background people, crowds, unrelated wildlife or extra monsters. No portraits, close-up figures, text, lettering, interface, borders, sun, stars or decorative clouds."
-    )
 
 
 def valid_png(path: Path) -> bool:

@@ -31,6 +31,11 @@ Usage:
     Attempts to shimmy across the rope to the ship under cover of darkness.
     DNDEND
 
+    # Scene change, bundled with the narration that enters it
+    python3 send.py --scene "Saltmere, Meren's bakery: haggling over flour by the ovens" << 'DNDEND'
+    Warm bread and woodsmoke fill the little shop.
+    DNDEND
+
     # Short inline string
     echo "Short message" | python3 send.py
 
@@ -67,6 +72,7 @@ import ssl
 import time
 import uuid
 import urllib.request
+from pathlib import Path
 
 # Windows CJK fix: Python decodes stdin via the system codepage (GBK), but
 # heredocs/pipes deliver UTF-8 bytes — force UTF-8 to keep Chinese narration intact.
@@ -79,7 +85,7 @@ _DISPLAY_DIR = os.path.dirname(os.path.abspath(__file__))
 if _DISPLAY_DIR not in sys.path:
     sys.path.insert(0, _DISPLAY_DIR)
 from runtime_paths import rt          # writable runtime dir (update-safe)
-from music import SceneContext, SETTINGS, SETTING_ALIASES
+from scene_engine import MOODS, SETTINGS, SETTING_ALIASES, SceneContext, WorldNotes, derive, is_continuation
 _SCHEME_FILE = os.path.join(_DISPLAY_DIR, ".scheme")   # launch marker → code dir
 _SCHEME = open(_SCHEME_FILE, encoding="utf-8").read().strip() if os.path.exists(_SCHEME_FILE) else "http"
 BASE_URL    = f"{_SCHEME}://localhost:5001"
@@ -222,11 +228,26 @@ def _verify_health() -> "dict | None":
         return None
 
 
+_CAMPAIGN_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def _derive_scene(cue: str, mood: "str | None"):
+    """Derive the full scene cue from the display's current scene and the campaign's world notes."""
+    health = _verify_health() or {}
+    current = health.get("scene") if isinstance(health.get("scene"), dict) else None
+    name, root = health.get("campaign"), health.get("data_root")
+    world = WorldNotes()
+    if isinstance(name, str) and _CAMPAIGN_NAME.fullmatch(name) and isinstance(root, str) and root:
+        world = WorldNotes.load(Path(root) / "campaigns" / name)
+    derived = derive(cue, mood, world=world, current=current)
+    return derived, is_continuation(derived, current, mood)
+
+
 def _ensure_active_campaign() -> None:
     name = os.environ.get("DND_ACTIVE_CAMPAIGN", "").strip()
     if not name:
         return
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) or name in (".", ".."):
+    if not _CAMPAIGN_NAME.fullmatch(name):
         raise SystemExit("send.py: invalid DND_ACTIVE_CAMPAIGN")
     scripts_dir = os.path.abspath(os.path.join(_DISPLAY_DIR, "..", "scripts"))
     if scripts_dir not in sys.path:
@@ -434,6 +455,11 @@ def main() -> None:
              "outcome is decided so the table hears it while the rest is written. "
              "The display holds the paragraph open for the next narration send.",
     )
+    parser.add_argument("--scene", metavar="'PLACE: WHAT IS HAPPENING'",
+        help="Scene change in one line, bundled with DM narration. The place (before the colon) "
+             "sets the key, setting, saved place theme and era; repeating the current place changes nothing")
+    parser.add_argument("--mood", choices=sorted(MOODS),
+        help="Optional mood for --scene; otherwise the saved place mood or the setting's usual tone")
     parser.add_argument("--music-event", choices=["scene", "combat-start", "combat-end"],
         help="Scene-entry, combat-start or combat-end music cue bundled with DM narration")
     parser.add_argument("--music-setting", metavar="SETTING", choices=sorted(SETTINGS.union(SETTING_ALIASES)),
@@ -535,6 +561,17 @@ def main() -> None:
             if not _post(FLASK_URL, json.dumps({"text": question}).encode("utf-8"), token):
                 raise SystemExit("send.py: setup question did not reach display")
         return
+    long_scene_flags = (args.music_event, args.music_setting, args.music_mood, args.scene_key,
+                        args.scene_label, args.scene_description, args.scene_era, args.scene_theme)
+    if args.scene is not None:
+        if any(value is not None for value in long_scene_flags):
+            parser.error("--scene replaces --music-* and --scene-* flags; use one form")
+        try:
+            derive(args.scene, args.mood)
+        except ValueError as error:
+            parser.error(str(error))
+    elif args.mood is not None:
+        parser.error("--mood requires --scene")
     if args.music_event:
         if args.music_event == "scene" and not args.music_setting:
             parser.error("--music-event scene requires --music-setting")
@@ -559,8 +596,17 @@ def main() -> None:
             scene = SceneContext.parse(value)
         except ValueError as error:
             parser.error(str(error))
-    music_id = uuid.uuid4().hex if args.music_event else None
+    music_event, music_setting, music_mood = args.music_event, args.music_setting, args.music_mood
     _ensure_active_campaign()
+    scene_note = None
+    if args.scene is not None:
+        derived, unchanged = _derive_scene(args.scene, args.mood)
+        scene_note = (f"scene unchanged: {derived.scene.label} ({derived.scene.key})" if unchanged else
+                      f"scene: {derived.scene.label} ({derived.scene.key}; {derived.setting}, {derived.mood}"
+                      + (f", {derived.scene.era})" if derived.scene.era else ")"))
+        if not unchanged:
+            music_event, music_setting, music_mood, scene = "scene", derived.setting, derived.mood, derived.scene
+    music_id = uuid.uuid4().hex if music_event else None
 
     # Two categories of flags drive whether to read stdin:
     #   1. Content flags (--player/--npc/--dice/--tutor/--action): body REQUIRED.
@@ -736,10 +782,10 @@ def main() -> None:
         for chunk in chunks:
             payload: dict = {"text": chunk}
             if music_id and chunks_sent == 0:
-                payload["music"] = {"event": args.music_event.replace("-", "_"),
-                                    "id": music_id, "setting": args.music_setting}
-                if args.music_mood is not None:
-                    payload["music"]["mood"] = args.music_mood
+                payload["music"] = {"event": music_event.replace("-", "_"),
+                                    "id": music_id, "setting": music_setting}
+                if music_mood is not None:
+                    payload["music"]["mood"] = music_mood
                 if scene:
                     payload["music"]["scene"] = scene.to_dict()
             if args.action:
@@ -764,9 +810,11 @@ def main() -> None:
             if ok:
                 chunks_sent += 1
 
-    if args.music_event and chunks_sent == 0:
+    if music_event and chunks_sent == 0:
         print("send.py: music cue requires successfully sent narration", file=sys.stderr)
         sys.exit(2)
+    if scene_note:
+        print(scene_note)
 
     # ── Stat send (bundled) ───────────────────────────────────────────────────
     stats_payload = _build_stats_payload(args)

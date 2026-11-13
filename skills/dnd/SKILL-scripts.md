@@ -545,35 +545,32 @@ The DM skill sends each narration block, dice result, and stat update via `send.
 
 Open the browser tab and Chromecast it *before* running `/dm:dnd load` so the browser is connected when the opening narration streams in. The display buffers the last 60 chunks and replays them to reconnecting browsers.
 
-**Scene detection:** keyword scanning supplies a broad setting when no named scene is active. It cannot distinguish individual rooms, venues or activities. Use named scene cues for meaningful changes; an active named scene remains in place until the DM changes it.
-
-**Generated scene music:** ordinary DM narration starts the scene intro and loop automatically when music is idle. Established scene changes start new music; repeated narration in the same scene does not. Setup questions, character speech and dice results do not start scene music, and combat keeps its current scene.
-
-Before narrating, read `GET http://127.0.0.1:5001/health`. Its `scene` object contains the current broad `setting`, `mood`, and, for a named scene, `key`, `label` and `description`. Reuse the current key while the place and activity continue. On a meaningful change of location, activity or atmosphere, choose a new key even if the broad setting stays the same. Do not change scenes just because a destination is mentioned or offered as a choice.
-
-Bundle the cue with the first narration for the new scene:
+**Scene cue.** Send one when the party arrives somewhere new, or when a place's mood truly changes. Bundle it with the first narration there:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --music-event scene --music-setting city --music-mood curious \
-  --scene-key clockwork-room --scene-label 'The Clockwork Room' \
-  --scene-description 'A vaulted interior of intricate brass mechanisms and gently chiming clocks.' << 'DNDEND'
-The door opens onto a room of quietly turning brass gears.
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --scene "Saltmere, Meren's bakery: haggling over flour by the ovens" << 'DNDEND'
+Warm bread and woodsmoke fill the little shop.
 DNDEND
 ```
 
-All three scene flags are required together. The key is a stable ASCII slug of at most 64 characters; the label is at most 120 characters and the description at most 800. Describe the actual visible environment, activity and atmosphere. These details drive both the illustration and musical texture, rather than selecting from a list of venue names. Use a fitting mood: dark fantasy remains appropriate for ominous or tense scenes, while warm, curious and calm scenes need not sound gloomy.
+Write the place, a colon, then what the party sees happening. Add `--mood calm|curious|ominous|tense|warm` only when the moment needs a different feel from the place. There is no need to read `/health` first: `send.py` reads the current scene and the campaign's `world.md`, works out the rest, and prints one line saying what it chose.
 
-The corresponding `music` JSON cue accepts `"scene":{"key":"clockwork-room","label":"The Clockwork Room","description":"A vaulted interior of intricate brass mechanisms and gently chiming clocks."}` alongside `event`, `id`, `setting` and `mood`. Different keys generate fresh music and illustration even within the same broad setting. Repeating the current key and setting preserves the current media, even with a new event ID or revised prose; use a new key for a deliberate new variation. Returning to an earlier key after another scene produces a fresh variation.
+- **Key:** taken from the place alone, so the same place always gets the same key. A cue for the place already on screen changes nothing and prints `scene unchanged`, unless `--mood` or the world era differs.
+- **Setting:** keyword mapping of the place to one of the 18 broad settings (`inn` to tavern, `bakery` to city, `cavern` to cave). If the place has no keyword, the activity words are tried, then the current setting, then `city`.
+- **Place theme:** a place named in the world notes takes its saved path and mood. Two formats are read: `Town: [{"name":"Town","mood":"tense"}]. Gate: child {"name":"Gate"}` lines, and `Scene theme: Region (warm) → Place (curious)` lines. A named place with extra words (`Saltmere docks`) becomes a child of that place. An unknown place becomes a child of the current outer region.
+- **Era:** an `Era:` or `Established era:` line in the world notes, else a `Setting type:` naming medieval, renaissance, ancient, modern or futuristic, else the current scene's era, else medieval.
+- **Mood:** `--mood`, else the nearest saved place mood, else the setting's usual tone.
+- **Prompts:** the music and the background illustration are both written by `display/scene_engine.py` from that one scene.
 
-**World era:** `--scene-era` declares the campaign's visual era on a complete named scene cue. Use `medieval` for default fantasy, `renaissance`, `ancient`, `modern`, `futuristic`, or a specific custom era. It must be non-empty printable text of at most 100 characters. For JSON cues, include `"era":"medieval"` inside `music.scene`. Omitted era inherits the current authored scene's era; campaigns without a declaration use medieval fantasy image guidance. A deliberate era correction refreshes scene media even when the scene key stays the same. The resolved era appears in health and persists with queued images, saved scene state and combat return. Save the campaign era in existing world notes. This does not change music genre or forbid clockwork constructs explicitly established in the world.
+To give a new place a lasting tone for revisits, add a line under `## Place Themes` in `world.md`, such as `Scene theme: Greenwood (warm) → Clearing Hut`. Don't change scenes for a mentioned destination, ordinary dialogue or every paragraph. For combat, send `--music-event combat-start` with the first fighting narration and `--music-event combat-end` with the first narration after it; the scene survives combat.
 
-**Inherited place tone:** `--scene-theme` takes a JSON array of outer-to-inner places, each with `name` and an optional `mood`. The nearest specified place mood guides both image palette/lighting and musical character. For a welcoming forest use `[{"name":"Greenwood","mood":"warm"}]`. Entering a normal hut adds `{"name":"Clearing Hut"}`; a deliberately creepy hut adds `{"name":"Creepy Hut","mood":"ominous"}`. Leaving the hut sends the forest-only path and restores its warm tone.
+**Long-form scene flags (reference).** Older prompts may still send the full cue. It still works, but cannot be mixed with `--scene`:
 
-Omitting `--scene-theme` inherits the current authored path; `--scene-theme '[]'` clears it. Omit `--music-mood` to inherit the nearest place mood. An explicit cue mood takes precedence for that scene, and remains during same-key continuation; a new scene resolves its inherited tone again. Put a lasting local atmosphere on its place node. A deliberate tone or ancestry change refreshes media even with the same scene key. Keep canonical place names and tones in the existing campaign world notes for consistent revisits. Health exposes the resolved path and mood.
+`--music-event scene --music-setting <setting> [--music-mood <mood>] --scene-key <slug> --scene-label <text> --scene-description <text> [--scene-era <era>] [--scene-theme '<JSON path>']`
 
-The array accepts at most eight places; each name is 1–100 characters. Existing three-field scene objects remain valid. In JSON, put the array in `music.scene.theme` and omit `music.mood` for inheritance. New regions supply their own root path. The shared fantasy style stays coherent while its warm, curious, calm, tense or ominous character changes.
+Key, label and description go together. The key is an ASCII slug of up to 64 characters, the label up to 120, the description up to 800 and the era up to 100. The theme is an outer-to-inner JSON array of up to eight `{"name": …, "mood": …}` places, with mood optional. Omitted era, theme or mood inherits from the current scene, and `--scene-theme '[]'` clears the path. The JSON form puts the same fields in `music.scene`, beside `event`, `id`, `setting` and `mood`. The same key, setting, theme, era and mood keep the current media. A change to any of them makes fresh music and a fresh illustration.
 
-An explicit valid cue takes precedence over automatic detection. Legacy cues without scene context retain their broad-setting behaviour. Use `--music-event combat-start` and `--music-event combat-end` with the corresponding narration to change combat music; the named scene survives combat. When configured, the local illustration queues after the scene's intro and loop finish.
+**Automatic detection:** with no named scene, keyword scanning of narration picks a broad setting, and ordinary narration starts scene music when music is idle. Setup questions, character speech and dice results never change the scene. When configured, the local illustration queues after the scene's intro and loop finish.
 
 **Sound effects:** `audio.py` scans narration for optional one-shot effects. Character names are excluded from trigger matching. These effects are separate from the generated intro and music loop. The display has separate Sound Effects and Music toggles.
 
