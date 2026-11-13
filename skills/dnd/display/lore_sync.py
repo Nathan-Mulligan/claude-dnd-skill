@@ -108,20 +108,35 @@ def fingerprint(public: str, factions: list, quests: list) -> str:
 
 # ── cache ────────────────────────────────────────────────────────────────────
 
-def load_cache() -> dict:
+def _load_all() -> dict:
+    """{"campaigns": {name: entry}}; an entry is {campaign, fingerprint, factions, quests}."""
     try:
         with open(cache_path(), encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
-        return {}
+        return {"campaigns": {}}
+    if not isinstance(data, dict):
+        return {"campaigns": {}}
+    if "campaigns" not in data:  # single-campaign file from the first version
+        name = data.get("campaign")
+        return {"campaigns": {name: data} if name else {}}
+    return data if isinstance(data.get("campaigns"), dict) else {"campaigns": {}}
 
 
-def save_cache(data: dict) -> None:
+def load_cache(campaign: "str | None") -> dict:
+    """Saved notes for one campaign (kept per campaign, so switching back and
+    forth never loses track of which notes this helper wrote)."""
+    entry = _load_all()["campaigns"].get(campaign) if campaign else None
+    return entry if isinstance(entry, dict) else {}
+
+
+def save_cache(entry: dict) -> None:
+    data = _load_all()
+    data["campaigns"][entry["campaign"]] = entry
     path = cache_path()
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".lore_notes.")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
+        json.dump(data, f, ensure_ascii=False, indent=1)  # all campaigns
     os.replace(tmp, path)
 
 
@@ -133,7 +148,7 @@ def apply_cached(payload: dict, campaign: "str | None", cache: "dict | None" = N
     supplies itself always wins. Used by push_stats.py so a DM push without
     notes does not wipe the helper's notes from the screen.
     """
-    cache = load_cache() if cache is None else cache
+    cache = load_cache(campaign) if cache is None else cache
     if not campaign or cache.get("campaign") != campaign:
         return payload
     for key in ("factions", "quests"):
@@ -300,8 +315,8 @@ def sync_once() -> str:
     if not factions and not quests:
         return "empty"
     fp = fingerprint(public, factions, quests)
-    old = load_cache()
-    if old.get("fingerprint") == fp and old.get("campaign") == campaign:
+    old = load_cache(campaign)
+    if old.get("fingerprint") == fp:
         return "unchanged"
 
     result = ask_model(build_prompt(public, factions, quests))

@@ -1988,6 +1988,10 @@ def stats_lore():
         return "Campaign changed", 409
     previous = data.get("previous") if isinstance(data.get("previous"), dict) else {}
     with _stats_lock:
+        # The stats in memory must belong to this campaign, checked under the same
+        # lock campaign selection uses, so a switch mid-write can't take A's notes.
+        if _stats_owner != campaign:
+            return "Campaign changed", 409
         for key in ("factions", "quests"):
             notes = data.get(key) if isinstance(data.get(key), dict) else {}
             old = previous.get(key) if isinstance(previous.get(key), dict) else {}

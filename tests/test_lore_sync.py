@@ -227,6 +227,7 @@ def display(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "_broadcast", lambda payload: None)
     monkeypatch.setattr(module, "_token_ok", lambda: True)
     monkeypatch.setattr(module, "_active_campaign_name", lambda: "Test")
+    module._stats_owner = "Test"
     module._current_stats["factions"] = [
         {"name": "Guild", "standing": "Hostile"},                       # DM changed it meanwhile
         {"name": "Wardens", "standing": "Neutral", "detail": "old helper note"},
@@ -257,3 +258,27 @@ def test_lore_endpoint_refuses_other_campaign(display):
     r = client.post("/stats/lore", json={"campaign": "Other", "factions": {"Guild": "x"}})
     assert r.status_code == 409
     assert "detail" not in module._current_stats["factions"][0]
+
+
+def test_lore_endpoint_refuses_when_stats_belong_to_another_campaign(display):
+    module, client = display
+    module._stats_owner = "Other"  # switch in progress: stats already swapped
+    r = client.post("/stats/lore", json={"campaign": "Test", "factions": {"Guild": "x"}})
+    assert r.status_code == 409
+    assert "detail" not in module._current_stats["factions"][0]
+
+
+def test_cache_keeps_each_campaign_separately(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
+    lore_sync.save_cache({"campaign": "A", "fingerprint": "a", "factions": {"Guild": "A note"}, "quests": {}})
+    lore_sync.save_cache({"campaign": "B", "fingerprint": "b", "factions": {"Guild": "B note"}, "quests": {}})
+    assert lore_sync.load_cache("A")["factions"] == {"Guild": "A note"}
+    assert lore_sync.load_cache("B")["factions"] == {"Guild": "B note"}
+    assert lore_sync.load_cache(None) == {}
+
+
+def test_old_single_campaign_cache_still_reads(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
+    (tmp_path / "lore_notes.json").write_text(json.dumps(
+        {"campaign": "Enderal", "fingerprint": "f", "factions": {"Road Wardens": "n"}, "quests": {}}), encoding="utf-8")
+    assert lore_sync.load_cache("Enderal")["factions"] == {"Road Wardens": "n"}

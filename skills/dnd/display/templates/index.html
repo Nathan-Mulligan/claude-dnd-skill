@@ -5930,8 +5930,10 @@ function _smDivider() {
 
 let _openSheetName = null;
 
+// A labelled money line ("**Currency:** …" / "Coins: …"), not an item like "Coin of Delving".
 function _isCurrencyLine(line) {
-  return /^\s*(\*\*)?\s*(currency|coins?|purse|money)\b/i.test(String(line || ''));
+  return /^\s*(\*\*)?\s*(currency|coins?|purse|money)\s*:/i.test(String(line || ''))
+      || /^\s*\*\*\s*(currency|coins?|purse|money)\s*:?\s*\*\*/i.test(String(line || ''));
 }
 // "**Currency:** 32 gp 8 sp 7 cp (after …)" → [["32","gp"],["8","sp"],["7","cp"]].
 // Reads only the leading run of amounts, so later history ("less 91 gp") is ignored.
@@ -6154,7 +6156,9 @@ function openSheet(name) {
   }
 
   // Inventory (above Features). Lines arrive as "**Label:** text" from the sheet file.
-  const invLines = (sheet.inventory || []).filter(l => !_isCurrencyLine(l) || !purse);
+  // Hide only the one line that was read into the purse.
+  const purseLine = purse ? (sheet.inventory || []).find(_isCurrencyLine) : null;
+  const invLines = (sheet.inventory || []).filter(l => l !== purseLine);
   if (invLines.length) {
     content.appendChild(_smDivider());
     const title = document.createElement('div');
