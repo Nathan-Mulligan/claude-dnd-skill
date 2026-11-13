@@ -34,9 +34,10 @@ SECRET-ARC
 
 def test_public_text_keeps_party_sections_and_drops_dm_secrets():
     text = lore_sync.public_text(STATE)
-    for kept in ("Road Wardens keep the toll road", "Find a return cargo", "toll doubled", "Sold the flour"):
+    for kept in ("Find a return cargo", "toll doubled", "Sold the flour"):
         assert kept in text
     assert "SECRET" not in text
+    assert "Road Wardens keep" not in text  # World State can hold hidden faction activity
     assert "Party in town" not in text
 
 
@@ -99,7 +100,7 @@ class Live:
         camp.mkdir(parents=True)
         (camp / "state.md").write_text(STATE, encoding="utf-8")
         self.tmp, self.posts, self.calls = tmp_path, [], []
-        self.campaign, self.fail_post, self.on_model = "Test", False, None
+        self.campaign, self.fail_post, self.on_model, self.old_server = "Test", False, None, False
         monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
         self.write_stats(stats or {"factions": [{"name": "Road Wardens", "standing": "Neutral"}], "quests": []})
         monkeypatch.setattr(lore_sync, "_request", self.request)
@@ -114,7 +115,9 @@ class Live:
             return {"campaign": self.campaign, "data_root": str(self.tmp)}
         if self.fail_post:
             raise OSError("display down")
-        self.posts.append(json.loads(data))
+        if path == "/stats/lore" and self.old_server:
+            raise lore_sync.urllib.error.HTTPError(path, 404, "Not Found", {}, None)
+        self.posts.append((path, json.loads(data)))
         return {}
 
     def model(self, prompt):
@@ -127,8 +130,9 @@ class Live:
 def test_run_skips_model_when_nothing_changed(monkeypatch, tmp_path):
     live = Live(monkeypatch, tmp_path)
     assert lore_sync.run(settle_s=0) == "updated"
-    assert live.posts[-1]["factions"][0]["detail"] == "Keep the toll road."
-    assert "campaign" not in live.posts[-1]  # would switch campaigns on the display
+    path, body = live.posts[-1]
+    assert path == "/stats/lore"  # notes only, never whole lists
+    assert body["factions"] == {"Road Wardens": "Keep the toll road."} and body["campaign"] == "Test"
     assert lore_sync.run(settle_s=0) == "unchanged"
     assert len(live.calls) == 1 and "SECRET" not in live.calls[0]
 
@@ -136,8 +140,8 @@ def test_run_skips_model_when_nothing_changed(monkeypatch, tmp_path):
 def test_unreadable_stats_never_publishes_empty_lists(monkeypatch, tmp_path):
     live = Live(monkeypatch, tmp_path)
     live.on_model = lambda: live.write_stats('{"factions": [')  # display mid-write
-    assert lore_sync.run(settle_s=0) == "unreadable"
-    assert live.posts == []
+    lore_sync.run(settle_s=0)
+    assert all(path == "/stats/lore" for path, _ in live.posts)  # never a list-replacing post
 
 
 def test_failed_post_is_retried_next_time(monkeypatch, tmp_path):
@@ -170,3 +174,86 @@ def test_push_while_busy_is_replayed(monkeypatch, tmp_path):
     live.on_model = change_during_model
     assert lore_sync.run(settle_s=0) == "updated,updated"
     assert len(live.calls) == 2 and "Road Wardens (Hostile)" in live.calls[1]
+
+
+def test_old_display_falls_back_to_full_post_without_campaign_key(monkeypatch, tmp_path):
+    live = Live(monkeypatch, tmp_path)
+    live.old_server = True
+    assert lore_sync.run(settle_s=0) == "updated"
+    path, body = live.posts[-1]
+    assert path == "/stats" and "campaign" not in body  # campaign key would switch campaigns
+    assert body["factions"][0]["detail"] == "Keep the toll road."
+
+
+def test_unreadable_stats_on_old_display_never_publishes(monkeypatch, tmp_path):
+    live = Live(monkeypatch, tmp_path)
+    live.old_server = True
+    live.on_model = lambda: live.write_stats('{"factions": [')
+    assert lore_sync.run(settle_s=0) == "unreadable"
+    assert live.posts == []
+
+
+def test_pending_work_at_pass_limit_is_rescheduled(monkeypatch, tmp_path):
+    live = Live(monkeypatch, tmp_path)
+    kicks = []
+    monkeypatch.setattr(lore_sync, "kick", lambda: kicks.append(1))
+
+    def push_every_pass():
+        n = len(live.calls)
+        live.write_stats({"factions": [{"name": "Road Wardens", "standing": "Hostile" if n % 2 else "Neutral"}], "quests": []})
+        (tmp_path / "lore_sync.pending").touch()
+    live.on_model = push_every_pass
+    lore_sync.run(settle_s=0, max_passes=2)
+    assert kicks == [1]
+
+
+# ── display endpoint ─────────────────────────────────────────────────────────
+
+import pytest  # noqa: E402
+
+DISPLAY = REPO / "skills/dnd/display"
+
+
+@pytest.fixture
+def display(tmp_path, monkeypatch):
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(tmp_path))
+    monkeypatch.setenv("DND_RUNTIME_DIR", str(tmp_path / ".runtime"))
+    monkeypatch.syspath_prepend(str(DISPLAY))
+    spec = importlib.util.spec_from_file_location("_lore_display_test", DISPLAY / "dnd-display-app.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    module.app.testing = True
+    monkeypatch.setattr(module, "_broadcast", lambda payload: None)
+    monkeypatch.setattr(module, "_token_ok", lambda: True)
+    monkeypatch.setattr(module, "_active_campaign_name", lambda: "Test")
+    module._current_stats["factions"] = [
+        {"name": "Guild", "standing": "Hostile"},                       # DM changed it meanwhile
+        {"name": "Wardens", "standing": "Neutral", "detail": "old helper note"},
+        {"name": "Court", "standing": "Allied", "detail": "written by the DM"},
+    ]
+    module._current_stats["quests"] = [{"name": "New quest", "status": "active"}]
+    return module, module.app.test_client()
+
+
+def test_lore_endpoint_sets_notes_without_replacing_lists(display):
+    module, client = display
+    r = client.post("/stats/lore", json={
+        "campaign": "Test",
+        "factions": {"Guild": "Guild note", "Court": "helper tries to overwrite"},
+        "quests": {},
+        "previous": {"factions": {"Wardens": "old helper note"}},
+    })
+    assert r.status_code == 204
+    f = {x["name"]: x for x in module._current_stats["factions"]}
+    assert f["Guild"] == {"name": "Guild", "standing": "Hostile", "detail": "Guild note"}
+    assert "detail" not in f["Wardens"]            # stale helper note removed
+    assert f["Court"]["detail"] == "written by the DM"  # DM note untouched
+    assert module._current_stats["quests"] == [{"name": "New quest", "status": "active"}]
+
+
+def test_lore_endpoint_refuses_other_campaign(display):
+    module, client = display
+    r = client.post("/stats/lore", json={"campaign": "Other", "factions": {"Guild": "x"}})
+    assert r.status_code == 409
+    assert "detail" not in module._current_stats["factions"][0]

@@ -1969,6 +1969,49 @@ def stats():
     return "", 204
 
 
+@app.route("/stats/lore", methods=["POST"])
+def stats_lore():
+    """Set sidebar notes (`detail`) on the current factions and quests by name.
+
+    Used by lore_sync.py. Never replaces the lists, so a DM update made while
+    notes were being written is kept. Body: {"campaign": str,
+    "factions": {name: note}, "quests": {name: note},
+    "previous": {"factions": {name: note}, "quests": {name: note}}}.
+    A previous helper note still showing is removed when no new note replaces it;
+    a detail the DM wrote is never touched. 409 if the campaign has changed.
+    """
+    if not _token_ok():
+        return "Forbidden", 403
+    data = request.get_json(silent=True) or {}
+    campaign = str(data.get("campaign") or "").strip()
+    if not campaign or campaign != _active_campaign_name():
+        return "Campaign changed", 409
+    previous = data.get("previous") if isinstance(data.get("previous"), dict) else {}
+    with _stats_lock:
+        for key in ("factions", "quests"):
+            notes = data.get(key) if isinstance(data.get(key), dict) else {}
+            old = previous.get(key) if isinstance(previous.get(key), dict) else {}
+            items = []
+            for item in _current_stats.get(key) or []:
+                if isinstance(item, dict):
+                    item = dict(item)
+                    name = str(item.get("name", ""))
+                    mine = not item.get("detail") or old.get(name) == item.get("detail")
+                    if mine:
+                        note = str(notes.get(name) or "").strip()[:400]
+                        if note:
+                            item["detail"] = note
+                        else:
+                            item.pop("detail", None)
+                items.append(item)
+            if key in _current_stats:
+                _current_stats[key] = items
+        current = dict(_current_stats)
+    _persist_stats()
+    _broadcast({"stats": current})
+    return "", 204
+
+
 @app.route("/effects/expire", methods=["POST"])
 def effects_expire():
     """Called by browser when a time-based effect countdown reaches zero.

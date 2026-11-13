@@ -14,8 +14,9 @@ How it runs
 
 Rules
   * Reads campaign files; never writes them. The DM stays the only writer.
-  * Only PUBLIC_SECTIONS of state.md reach the model. Next Hooks, Faction
-    Moves, Clocks, the Campaign Arc and other DM-only sections never do.
+  * Only PUBLIC_SECTIONS of state.md reach the model (Active Quests, Open
+    Threads, Recent Events, Party Knowledge). World State, Next Hooks,
+    Faction Moves, Clocks, the Campaign Arc and other DM sections never do.
   * Notes are display-only, saved in the runtime dir (lore_notes.json).
     push_stats.py refills them when the DM re-pushes a list without notes.
   * Any failure is silent apart from runtime/lore_sync.log. Set
@@ -30,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -37,8 +39,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 from runtime_paths import rt  # noqa: E402
 
+# Only sections that hold what the party knows. "World State" is left out on
+# purpose: the state template keeps hidden faction activity there.
 PUBLIC_SECTIONS = (
-    "world state",
     "active quests",
     "open threads",
     "recent events",
@@ -309,20 +312,30 @@ def sync_once() -> str:
         "quests": clean_notes(result.get("quests"), [q.get("name") for q in quests if isinstance(q, dict)]),
     }
 
-    # Publish onto the latest lists, and only to the campaign the notes were written for.
+    # Publish only to the campaign the notes were written for.
     if active_campaign() != campaign:
         return "campaign-changed"
-    latest = _current_stats()
-    if latest is None:
-        return "unreadable"
-    payload = {k: [dict(x) for x in (latest.get(k) or []) if isinstance(x, dict)] for k in ("factions", "quests")}
     mine = old if old.get("campaign") == campaign else {}
-    for k in ("factions", "quests"):  # drop only notes this helper wrote earlier
-        for x in payload[k]:
-            if x.get("detail") and (mine.get(k) or {}).get(str(x.get("name", ""))) == x["detail"]:
-                x.pop("detail")
-    apply_cached(payload, campaign, new)  # no "campaign" key: on /stats it switches campaigns
-    _request("/stats", json.dumps(payload).encode("utf-8"))  # raises on failure
+    body = {"campaign": campaign, "factions": new["factions"], "quests": new["quests"],
+            "previous": {k: mine.get(k) or {} for k in ("factions", "quests")}}
+    try:
+        _request("/stats/lore", json.dumps(body).encode("utf-8"))  # notes only; lists untouched
+    except urllib.error.HTTPError as e:
+        if e.code == 409:
+            return "campaign-changed"
+        if e.code != 404:
+            raise
+        # Display started before /stats/lore existed: repost the latest lists with notes.
+        latest = _current_stats()
+        if latest is None:
+            return "unreadable"
+        payload = {k: [dict(x) for x in (latest.get(k) or []) if isinstance(x, dict)] for k in ("factions", "quests")}
+        for k in ("factions", "quests"):  # drop only notes this helper wrote earlier
+            for x in payload[k]:
+                if x.get("detail") and (mine.get(k) or {}).get(str(x.get("name", ""))) == x["detail"]:
+                    x.pop("detail")
+        apply_cached(payload, campaign, new)  # no "campaign" key: on /stats it switches campaigns
+        _request("/stats", json.dumps(payload).encode("utf-8"))  # raises on failure
     save_cache(new)  # only after the display has the notes, so a failed post is retried
     return "updated"
 
@@ -341,13 +354,17 @@ def run(settle_s: float = 2.0, max_passes: int = 3) -> str:
     try:
         _take_pending()
         time.sleep(settle_s)  # let the DM's push land first
-        for _ in range(max_passes):
+        for i in range(max_passes):
             outcomes.append(sync_once())
-            if not _take_pending():  # nothing new was pushed while this pass ran
+            if not os.path.exists(_pending_path()):  # nothing new was pushed meanwhile
                 break
+            if i < max_passes - 1:  # at the limit, leave the flag for the successor run
+                _take_pending()
         return ",".join(outcomes)
     finally:
         _release(fd)
+        if os.path.exists(_pending_path()):  # pass limit reached with work queued
+            kick()
 
 
 def kick() -> None:
