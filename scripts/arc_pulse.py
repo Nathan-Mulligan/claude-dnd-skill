@@ -18,6 +18,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 SPOTLIGHT_LIMITS = {"dm_led": 4, "balanced": 6, "player_led": 10}
 PULSE_FILE = "arc_pulse.json"
@@ -70,14 +71,19 @@ def hooks(state_text: str) -> list[str]:
 
 
 def in_combat(state_text: str) -> bool:
-    return re.sub(r"[^a-z]", "", section(state_text, "Active Combat").lower()) not in {
-        "", "none", "nocombat", "noactivecombat", "noneactive"}
+    combat = section(state_text, "Active Combat")
+    if re.search(r"status:?\**:?\s*finished\b", combat, re.IGNORECASE):
+        return False
+    return re.sub(r"[^a-z]", "", combat.lower()) not in {"", "none", "nocombat", "noactivecombat", "noneactive"}
 
 
 _NAME = re.compile(r"^\s*\[[^\]\n]{1,60}\]:\s*")
+_SUM = r"\d{1,3}(?:\s*(?:[+\-,/&=]|plus|minus|and)\s*\d{1,3})*"
 _DICE = re.compile(
-    r"^\W*(?:(?:i|we|he|she|they)\s+)?(?:rolled|rolls|roll|got)?\s*(?:an?\s+)?(?:nat(?:ural)?\s*)?(?:d\d+\s*[:=]?\s*)?"
-    r"\d{1,3}(?:\s*(?:[+\-,/&=]|plus|minus|and)\s*\d{1,3})*(?:\s*(?:total|for\s+[\w' ]{1,30}))?\W*$", re.IGNORECASE)
+    rf"^\W*(?:{_SUM}(?:\s*total)?"
+    rf"|(?:(?:i|we|he|she|they)\s+)?(?:(?:rolled|rolls|roll|got)\s+(?:an?\s+)?|nat(?:ural)?\s*|d\d+\s*[:=]?\s*)"
+    rf"(?:nat(?:ural)?\s*)?{_SUM}(?:\s*(?:total|on\s+(?:the|my)\s+[\w' ]{{1,30}}|for\s+[\w' ]{{1,30}}))?)\W*$",
+    re.IGNORECASE)
 _SERVER_DICE = re.compile(r"\brolls\s+\d+d\d+.*=\s*-?\d+", re.IGNORECASE)
 _OOC = re.compile(r"^\W*(?:ooc\b|out[ -]of[ -]character\b)|^\s*(?:\(\(|//)", re.IGNORECASE)
 
@@ -104,8 +110,8 @@ def turn_limit(state_text: str) -> int:
 class _Target:
     key: str
     version: str
-    first: str
-    again: str
+    first: Callable[[int], str]
+    again: Callable[[int], str]
 
 
 def _version(*parts: object) -> str:
@@ -125,11 +131,11 @@ def _target(state_text: str, campaign: str) -> _Target | None:
         bid, label = clean(beat["id"]), clean(beat.get("label"))
         pressure, change = clean(beat.get("world_pressure")), clean(beat.get("what_changes"))
         plan = (steering or f"{pressure}. Aim it at what this beat must change: {change}").rstrip(".")
-        first = (f"the story has sat on beat {bid} \"{label}\" for {{turns}} party turns. This turn, resolve the "
+        first = lambda turns: (f"the story has sat on beat {bid} \"{label}\" for {turns} party turns. This turn, resolve the "
                  f"party's action briefly, then make this happen now{at}, as something that demands a response: "
                  f"{plan}.{hook_text} Make it concrete: a person arrives, a deadline lands, a problem breaks open. "
                  "A hint or rumour is not enough.")
-        again = (f"beat {bid} \"{label}\" has had a nudge already and the party is still on it ({{turns}} turns). "
+        again = lambda turns: (f"beat {bid} \"{label}\" has had a nudge already and the party is still on it ({turns} turns). "
                  f"Has this beat already landed? If so run {advance} now; if not, revise its pressure to fit where "
                  f"the party is{at}: python3 {ARC_SCRIPT} revise --campaign {campaign} --beat {bid} "
                  "--pressure \"...\" --steering \"...\", then play the new pressure this turn.")
@@ -138,18 +144,18 @@ def _target(state_text: str, campaign: str) -> _Target | None:
     if nxt:
         name = f"chapter {nxt['chapter']}" + (f" \"{nxt['title']}\"" if nxt["title"] else "")
         guide = f" {steering}" if steering else ""
-        first = (f"the party has spent {{turns}} turns in {name} without reaching its next key beat: "
+        first = lambda turns: (f"the party has spent {turns} turns in {name} without reaching its next key beat: "
                  f"\"{nxt['beat']}\". Read {nxt['source']} for how that beat plays, then bring it in this turn "
                  f"through what is already in front of the party{at}.{guide}")
-        again = (f"the key beat \"{nxt['beat']}\" of {name} has had a nudge already ({{turns}} turns). Has it already "
+        again = lambda turns: (f"the key beat \"{nxt['beat']}\" of {name} has had a nudge already ({turns} turns). Has it already "
                  f"happened? If so run {advance} now; if not, read {nxt['source']} and bring it in through the "
                  f"people and places in front of the party{at}.")
         return _Target(f"{nxt['chapter']}:{nxt['beat']}", _version(steering), first, again)
     return None
 
 
-def directive(text: str, turns: int) -> str:
-    return ("DM steering, mandatory this turn: " + text.format(turns=turns) +
+def directive(text: str) -> str:
+    return ("DM steering, mandatory this turn: " + text +
             " Offer the party real choices and never decide for them. Do not mention the beat or the arc.")
 
 
@@ -179,7 +185,7 @@ def plan(campaign_dir: Path, party_input: str = "") -> Pulse | None:
     limit = turn_limit(state_text)
     if limit and turns >= limit:
         return Pulse(target.key, target.version, 0, nudges + 1,
-                     directive(target.again if nudges else target.first, turns))
+                     directive((target.again if nudges else target.first)(turns)))
     return Pulse(target.key, target.version, turns, nudges, None)
 
 

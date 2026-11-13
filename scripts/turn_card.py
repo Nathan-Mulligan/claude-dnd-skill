@@ -239,7 +239,10 @@ def _lines(campaign_dir: Path, party_input: str, runtime_dir: Path | None, pulse
 
 
 def render(lines: list[str]) -> str:
-    return "[[Turn card, hidden from players: " + " | ".join(lines) + "]] " if lines else ""
+    if not lines:
+        return ""
+    # Control characters (a NUL makes subprocess refuse the tmux call) never reach the terminal.
+    return re.sub(r"[\x00-\x1f\x7f]", " ", "[[Turn card, hidden from players: " + " | ".join(lines) + "]] ")
 
 
 def prepare(campaign_dir: Path, party_input: str = "", runtime_dir: Path | None = None):
@@ -262,6 +265,8 @@ def build(campaign_dir: Path, party_input: str = "", runtime_dir: Path | None = 
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     card = build(Path(sys.argv[1]), sys.argv[2] if len(sys.argv) > 2 else "")

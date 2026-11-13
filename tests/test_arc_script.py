@@ -118,3 +118,12 @@ def test_cli_status_advance_and_revise(tmp_path):
     assert run_cli(tmp_path, "revise", "--campaign", "Enderal", "--beat", "2a", "--steering", "Rivals bid").returncode == 0
     assert arc.read(path.read_text(encoding="utf-8"))["steering_notes"] == "Rivals bid"
     assert not list(folder.glob("*.arc-tmp"))
+
+
+def test_write_refuses_when_state_changed_underneath(tmp_path):
+    path = tmp_path / "state.md"
+    path.write_text(STATE, encoding="utf-8")
+    with pytest.raises(arc.ArcError):
+        arc._write_state(path, "new text", "an older read")
+    assert path.read_text(encoding="utf-8") == STATE
+    assert [p.name for p in tmp_path.iterdir()] == ["state.md"]

@@ -16,6 +16,7 @@ import datetime
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 try:
@@ -215,11 +216,17 @@ def _read_state(path: Path) -> str:
         return f.read()
 
 
-def _write_state(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + ".arc-tmp")
-    with open(tmp, "w", encoding="utf-8", newline="") as f:
-        f.write(text)
-    os.replace(tmp, path)
+def _write_state(path: Path, text: str, expected: str) -> None:
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".arc-tmp", dir=path.parent)
+    try:
+        with open(fd, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        if _read_state(path) != expected:
+            raise ArcError("state.md changed while this edit ran; nothing was written, run the command again")
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -256,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
             arc, message = advance(arc, args.beat)
         else:
             arc, message = revise(arc, args.beat, args.pressure, args.what_changes, args.steering), f"Beat {args.beat} revised."
-        _write_state(path, write(text, arc))
+        _write_state(path, write(text, arc), text)
     except ArcError as error:
         print(f"arc.py: {error}", file=sys.stderr)
         return 1

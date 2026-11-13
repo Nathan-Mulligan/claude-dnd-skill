@@ -125,6 +125,13 @@ def test_broken_files_never_raise(enderal, damage):
     assert isinstance(card(enderal), str)
 
 
+def test_control_characters_never_reach_the_terminal(enderal):
+    edit_state(enderal, "Saltmere, Meren", "Salt\x00mere\x1b[2J, Meren")
+    text = card(enderal)
+    assert "Salt mere [2J, Meren" in text
+    assert not any(ord(ch) < 32 or ord(ch) == 127 for ch in text)
+
+
 def test_no_state_means_no_card(tmp_path):
     assert card(tmp_path / "campaigns" / "Missing") == ""
 

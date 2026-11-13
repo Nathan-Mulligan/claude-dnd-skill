@@ -186,7 +186,7 @@ def test_active_combat_turns_are_not_counted(tmp_path):
     clean_text = state.read_text(encoding="utf-8")
     state.write_text(clean_text + "\n## Active Combat\nRound 2: Elbane vs bandit (HP 4/7)\n", encoding="utf-8")
     assert arc_pulse.plan(folder) is None
-    for ended in ("None.", "*(none)*", ""):
+    for ended in ("None.", "*(none)*", "", "**Status:** Finished in round 3\n**Current turn:** none\n\n| Combatant | Side | HP | AC |"):
         state.write_text(clean_text + f"\n## Active Combat\n{ended}\n", encoding="utf-8")
         assert arc_pulse.plan(folder) is not None
 
@@ -206,7 +206,7 @@ def test_dice_only_and_out_of_character_inputs_do_not_count(tmp_path, text):
 
 @pytest.mark.parametrize("text", [
     "[Elbane III]: We haggle over the flour.", "[Elbane III]: I rolled a 14\n[Nella Reed]: I grab the ledger",
-    "[Elbane III]: I offer 20 silver for the wagon", "",
+    "[Elbane III]: I offer 20 silver for the wagon", "[Elbane III]: 20 for the wagon", "",
 ])
 def test_story_inputs_count(text):
     assert arc_pulse.counts_as_story(text)
@@ -233,3 +233,12 @@ def test_structured_arc_gets_a_nudge_naming_the_key_beat_and_source(tmp_path):
     directives = play_turns(folder, 4)
     assert directives[1] and '"Find the map"' in directives[1] and "source/1.1.md" in directives[1]
     assert "arc.py advance --campaign Keep" in directives[3]
+
+
+def test_braces_in_campaign_text_do_not_break_the_nudge(tmp_path):
+    folder = campaign(tmp_path, flags="steer_after: 1")
+    state = folder / "state.md"
+    state.write_text(state.read_text(encoding="utf-8").replace(
+        "current_act: 1\n", "current_act: 1\nsteering_notes: Deliver the note marked {M} and {turns}.\n"), encoding="utf-8")
+    directive = arc_pulse.plan(folder).directive
+    assert "Deliver the note marked {M} and {turns}" in directive and "for 1 party turns" in directive

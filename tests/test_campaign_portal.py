@@ -249,8 +249,15 @@ def play_turn(monkeypatch, mode="resume", campaign="Enderal"):
     portal.META_FILE.write_text(json.dumps({"campaign": campaign, "mode": mode}), encoding="utf-8")
     (portal.RUNTIME / ".input_queue").write_text("[Elbane III]: We ask Meren about cargo.", encoding="utf-8")
     calls = []
+
+    def fake_run(*args, **kwargs):
+        if any("\x00" in arg for arg in args):
+            raise ValueError("embedded null byte")  # as subprocess does
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
     monkeypatch.setattr(portal, "running", lambda: True)
-    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: (calls.append(args), subprocess.CompletedProcess(args, 0, "", ""))[1])
+    monkeypatch.setattr(portal, "run", fake_run)
     delivered = portal.deliver_party_input()
     typed = [args[-1] for args in calls if "-l" in args]
     return delivered, typed[0] if typed else "", folder
@@ -271,6 +278,16 @@ def test_broken_state_still_delivers_the_reply(client, monkeypatch):
     folder = portal.DATA_ROOT / "campaigns" / "Enderal"
     folder.mkdir(parents=True)
     (folder / "state.md").write_bytes(b"\xff\xfe\x00 not utf-8 ## Campaign Arc ```yaml [")
+    delivered, prompt, _ = play_turn(monkeypatch)
+    assert delivered and "We ask Meren about cargo" in prompt
+
+
+def test_nul_in_state_still_delivers_the_reply(client, monkeypatch):
+    import shutil
+    folder = portal.DATA_ROOT / "campaigns" / "Enderal"
+    shutil.copytree(REPO / "tests/fixtures/enderal", folder)
+    state = folder / "state.md"
+    state.write_text(state.read_text(encoding="utf-8").replace("Saltmere, Meren", "Salt\x00mere, Meren"), encoding="utf-8")
     delivered, prompt, _ = play_turn(monkeypatch)
     assert delivered and "We ask Meren about cargo" in prompt
 
