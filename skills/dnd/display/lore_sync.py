@@ -19,9 +19,17 @@ Rules
     Faction Moves, Clocks, the Campaign Arc and other DM sections never do.
   * Notes are display-only, saved in the runtime dir (lore_notes.json).
     push_stats.py refills them when the DM re-pushes a list without notes.
-  * Any failure is silent apart from runtime/lore_sync.log. Set
-    DND_LORE_SYNC=0 to switch the helper off; DND_LORE_MODEL picks the model
-    (default gpt-6-luna, run through the Codex CLI on the user's subscription).
+  * Any failure is silent apart from runtime/lore_sync.log. A malformed
+    model reply counts as a failure, so nothing is published.
+
+Which model
+  The campaign portal saves the choice in runtime/helper-settings.json, read
+  on every run, so a change needs no DM restart. HELPERS lists the choices:
+  off, luna (default, Codex CLI), terra (Codex CLI), haiku (Claude CLI) and
+  qwen (local Ollama). Subscriptions and local models only, never an API key.
+  Environment overrides win over the saved choice: DND_LORE_SYNC=0 switches
+  the helper off; DND_LORE_MODEL names a choice above, or any other Codex
+  model name.
 """
 import hashlib
 import json
@@ -50,6 +58,17 @@ PUBLIC_SECTIONS = (
 DETAIL_MAX = 320
 LOCK_STALE_S = 600
 MODEL_TIMEOUT_S = 180
+OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
+
+# Helper choices shown in the portal: key -> (provider, model, label).
+HELPERS = {
+    "off": (None, None, "Off"),
+    "luna": ("codex", "gpt-6-luna", "GPT-6 Luna"),
+    "terra": ("codex", "gpt-6.1-terra", "GPT-6.1 Terra"),
+    "haiku": ("claude", "haiku", "Claude Haiku"),
+    "qwen": ("ollama", "qwen3.6:35b-mlx", "Local Qwen"),
+}
+DEFAULT_HELPER = "luna"
 
 _SCHEMA = {
     "type": "object",
@@ -72,6 +91,46 @@ _SCHEMA = {
 
 def cache_path() -> str:
     return rt("lore_notes.json")
+
+
+def settings_path() -> str:
+    return rt("helper-settings.json")
+
+
+def saved_helper() -> str:
+    """The helper chosen in the portal, or the default if none is saved."""
+    try:
+        with open(settings_path(), encoding="utf-8") as f:
+            key = json.load(f).get("helper")
+    except (OSError, ValueError, AttributeError):
+        key = None
+    return key if key in HELPERS else DEFAULT_HELPER
+
+
+def save_helper(key: str) -> None:
+    if key not in HELPERS:
+        raise ValueError(f"unknown helper {key!r}")
+    path = settings_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".helper-settings.")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump({"helper": key}, f)
+    os.replace(tmp, path)
+
+
+def choose_model() -> "tuple[str, str] | None":
+    """(provider, model) for this run, or None when the helper is off.
+    DND_LORE_SYNC=0 and DND_LORE_MODEL win over the portal's saved choice."""
+    if os.environ.get("DND_LORE_SYNC", "1").strip() == "0":
+        return None
+    override = os.environ.get("DND_LORE_MODEL", "").strip()
+    if override:
+        if override in HELPERS:
+            provider, model, _ = HELPERS[override]
+            return (provider, model) if provider else None
+        return ("codex", override)  # any other name is a Codex model, as before
+    provider, model, _ = HELPERS[saved_helper()]
+    return (provider, model) if provider else None
 
 
 def log(msg: str) -> None:
@@ -223,7 +282,8 @@ def build_prompt(public: str, factions: list, quests: list) -> str:
 For each faction and quest listed below, write one or two plain sentences saying what the
 party knows about it, using ONLY the campaign notes given here. Never add facts, guesses,
 motives or outcomes that the notes do not state. If the notes say nothing beyond the name,
-return an empty string for that item. Use each name exactly as listed. Do not run commands.
+return an empty string for that item. Use each name exactly as listed, without the bracketed
+standing or status. Do not run commands.
 
 FACTIONS (standing in brackets):
 {lines(factions, "standing")}
@@ -236,8 +296,7 @@ CAMPAIGN NOTES (party-known sections only):
 """
 
 
-def ask_model(prompt: str) -> dict:
-    model = os.environ.get("DND_LORE_MODEL", "gpt-6-luna").strip() or "gpt-6-luna"
+def _ask_codex(prompt: str, model: str) -> object:
     with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
         schema = Path(work, "schema.json")
         out = Path(work, "out.json")
@@ -253,6 +312,65 @@ def ask_model(prompt: str) -> dict:
         return json.loads(out.read_text(encoding="utf-8"))
 
 
+def _ask_claude(prompt: str, model: str) -> object:
+    """Claude CLI in print mode on the user's subscription: no tools, no
+    settings, no MCP servers, no saved session. ANTHROPIC_API_KEY is removed
+    so the call can never be billed to an API account."""
+    with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
+        cmd = ["claude", "-p", "--model", model, "--output-format", "json",
+               "--json-schema", json.dumps(_SCHEMA), "--tools", "", "--setting-sources", "",
+               "--strict-mcp-config", "--no-session-persistence",
+               "--system-prompt", "You write short JSON notes for a game sidebar. Reply only with the JSON asked for."]
+        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
+        env["AGENT_TASK"] = "1"
+        done = subprocess.run(cmd, cwd=work, env=env, input=prompt, capture_output=True,
+                              text=True, timeout=MODEL_TIMEOUT_S, check=True)
+    reply = json.loads(done.stdout)
+    if not isinstance(reply, dict) or reply.get("is_error"):
+        raise ValueError("claude reported an error")
+    if "structured_output" in reply:
+        return reply["structured_output"]
+    return json.loads(reply.get("result") or "")
+
+
+def _ask_ollama(prompt: str, model: str) -> object:
+    body = {"model": model, "stream": False, "think": False, "format": _SCHEMA,
+            "options": {"temperature": 0.2},
+            "messages": [{"role": "user", "content": prompt}]}
+    req = urllib.request.Request(OLLAMA_URL, data=json.dumps(body).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=MODEL_TIMEOUT_S) as resp:
+        reply = json.loads(resp.read().decode("utf-8"))
+    return json.loads(reply["message"]["content"])
+
+
+_PROVIDERS = {"codex": _ask_codex, "claude": _ask_claude, "ollama": _ask_ollama}
+
+
+def validate(result: object) -> dict:
+    """Return the reply if it has exactly the notes shape; raise otherwise."""
+    if not isinstance(result, dict) or set(result) != {"factions", "quests"}:
+        raise ValueError("model reply is not {factions, quests}")
+    for key in ("factions", "quests"):
+        items = result[key]
+        if not isinstance(items, list):
+            raise ValueError(f"model reply {key} is not a list")
+        for item in items:
+            if (not isinstance(item, dict) or set(item) != {"name", "detail"}
+                    or not all(isinstance(item[k], str) for k in ("name", "detail"))):
+                raise ValueError(f"model reply has a malformed {key} item")
+    return result
+
+
+def ask_model(prompt: str, choice: "tuple[str, str] | None" = None) -> dict:
+    """Ask the chosen helper for notes. Raises on any failure or malformed reply."""
+    choice = choice or choose_model()
+    if choice is None:
+        raise RuntimeError("helper is off")
+    provider, model = choice
+    return validate(_PROVIDERS[provider](prompt, model))
+
+
 def clean_notes(result: dict, names: list) -> dict:
     allowed = set(names)
     notes = {}
@@ -260,6 +378,8 @@ def clean_notes(result: dict, names: list) -> dict:
         if not isinstance(item, dict):
             continue
         name, detail = str(item.get("name", "")), " ".join(str(item.get("detail", "")).split())
+        if name not in allowed:  # some models copy the "(standing)" from the prompt
+            name = re.sub(r"\s*\([^()]*\)\s*$", "", name)
         if name in allowed and detail:
             notes[name] = detail[:DETAIL_MAX]
     return notes
@@ -318,11 +438,14 @@ def sync_once() -> str:
     old = load_cache(campaign)
     if old.get("fingerprint") == fp and old.get("published") is not False:
         return "unchanged"
+    choice = choose_model()  # read each pass, so a portal change applies at once
+    if choice is None:
+        return "off"
 
     if old.get("fingerprint") == fp:  # notes already written, the screen never got them
         new = old
     else:
-        result = ask_model(build_prompt(public, factions, quests))
+        result = ask_model(build_prompt(public, factions, quests), choice)
         new = {
             "campaign": campaign,
             "fingerprint": fp,
@@ -386,9 +509,9 @@ def run(settle_s: float = 2.0, max_passes: int = 3) -> str:
 
 def kick() -> None:
     """Start a sync pass in the background. Never raises, never blocks."""
-    if os.environ.get("DND_LORE_SYNC", "1").strip() == "0":
-        return
     try:
+        if choose_model() is None:
+            return
         subprocess.Popen([sys.executable, os.path.abspath(__file__), "--run"],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)

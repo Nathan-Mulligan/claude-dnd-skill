@@ -24,6 +24,8 @@ from flask import Flask, jsonify, render_template, request, send_file
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_pulse  # noqa: E402
 import turn_card  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/dnd/display"))
+import lore_sync  # noqa: E402  (helper choices only; the portal never runs it)
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -40,13 +42,17 @@ class DmChoice(NamedTuple):
 
 
 LAUNCHER_LABELS = {"codex": "Codex", "claude": "Claude", "qwen": "Ollama"}
-_CODEX_EFFORT = ("-c", 'model_reasoning_effort="medium"')
+# Codex DMs run at the reasoning effort chosen in the portal; lower is faster.
+CODEX_EFFORTS = {"low": "Low · fastest", "medium": "Medium", "high": "High · slowest"}
+DEFAULT_EFFORT = "medium"
+# Sidebar-notes helper (display/lore_sync.py); the choice is saved where lore_sync reads it.
+HELPER_CHOICES = {key: label for key, (_, _, label) in lore_sync.HELPERS.items()}
 # Keys are stored in portal-session.json as "provider"; "codex" and "claude" keep their original meaning.
 DM_CHOICES = {
-    "codex-sol": DmChoice("codex", "Sol", ("-m", "gpt-6.1-sol", *_CODEX_EFFORT)),
-    "codex-astra": DmChoice("codex", "Astra", ("-m", "gpt-6-astra", *_CODEX_EFFORT)),
-    "codex-luna": DmChoice("codex", "Luna", ("-m", "gpt-6-luna", *_CODEX_EFFORT)),
-    "codex": DmChoice("codex", "Terra", ("-m", "gpt-6.1-terra", *_CODEX_EFFORT)),
+    "codex-sol": DmChoice("codex", "Sol", ("-m", "gpt-6.1-sol")),
+    "codex-astra": DmChoice("codex", "Astra", ("-m", "gpt-6-astra")),
+    "codex-luna": DmChoice("codex", "Luna", ("-m", "gpt-6-luna")),
+    "codex": DmChoice("codex", "Terra", ("-m", "gpt-6.1-terra")),
     "claude": DmChoice("claude", "Opus", ("--model", "opus")),
     "claude-fable": DmChoice("claude", "Fable", ("--model", "fable")),
     "claude-sonnet": DmChoice("claude", "Sonnet", ("--model", "sonnet")),
@@ -237,6 +243,36 @@ ONBOARDING_CHOICES = {
 CHARACTER_LIMITS = {"name": 100, "player": 100, "concept": 1500, "details": 1500, "pillar": 500}
 
 
+def read_helper() -> str:
+    return lore_sync.saved_helper()
+
+
+def save_helper(key: str) -> None:
+    """Save where lore_sync reads it (the shared runtime resolver, so DND_RUNTIME_DIR is honoured)."""
+    if key not in HELPER_CHOICES:
+        raise ValueError("Choose a notes helper from the list.")
+    lore_sync.save_helper(key)
+
+
+def read_effort(data: dict) -> str:
+    effort = data.get("effort", DEFAULT_EFFORT)
+    if effort not in CODEX_EFFORTS:
+        raise ValueError("Choose low, medium or high effort.")
+    return effort
+
+
+def session_effort(meta: dict) -> str:
+    """Effort of a running session; sessions saved before the choice existed ran at medium."""
+    effort = meta.get("effort", DEFAULT_EFFORT)
+    return effort if effort in CODEX_EFFORTS else DEFAULT_EFFORT
+
+
+def same_dm(meta: dict, provider: str, effort: str) -> bool:
+    if meta.get("provider") != provider:
+        return False
+    return DM_CHOICES[provider].launcher != "codex" or session_effort(meta) == effort
+
+
 def read_onboarding(data: dict, mode: str) -> dict | None:
     if mode != "new" or "onboarding" not in data:
         return None
@@ -338,14 +374,17 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
     )
 
 
-def model_args(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None) -> list[str]:
+def model_args(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None,
+               effort: str = DEFAULT_EFFORT) -> list[str]:
     choice = DM_CHOICES[provider]
     args = ["bash", str(REPO / "scripts/play-local.sh"), choice.launcher]
     if mode == "resume":
         args += ["--campaign", name]
     prompt = initial_prompt(mode, name, description, onboarding)
     if choice.launcher == "codex":
-        args += [*choice.args,
+        if effort not in CODEX_EFFORTS:
+            raise ValueError("Invalid reasoning effort")
+        args += [*choice.args, "-c", f'model_reasoning_effort="{effort}"',
                  "-c", "sandbox_workspace_write.network_access=true",
                  "-s", "workspace-write",
                  "--add-dir", str(DATA_ROOT), prompt]
@@ -414,7 +453,8 @@ def provider_error(provider: str) -> str | None:
     return None
 
 
-def start_session(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None) -> tuple[bool, str]:
+def start_session(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None,
+                  effort: str = DEFAULT_EFFORT) -> tuple[bool, str]:
     error = selection_error(provider, mode, name, description)
     if error:
         return False, error
@@ -444,14 +484,14 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
         command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}",
                                f"DND_ACTIVE_CAMPAIGN={name}",
-                               *model_args(provider, mode, name, description, onboarding)])
+                               *model_args(provider, mode, name, description, onboarding, effort)])
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
         if result.returncode:
             return False, "Could not start the model session."
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return False, "The M5 model or service did not respond. Check the local service logs."
     RUNTIME.mkdir(parents=True, exist_ok=True)
-    metadata = {"provider": provider, "mode": mode, "campaign": name, "started_at": time.time()}
+    metadata = {"provider": provider, "mode": mode, "campaign": name, "started_at": time.time(), "effort": effort}
     if input_started_at is not None:
         metadata["input_started_at"] = input_started_at
     META_FILE.write_text(json.dumps(metadata), encoding="utf-8")
@@ -588,7 +628,8 @@ def queued_party_input() -> bool:
 
 
 def perform_handoff(provider: str, mode: str, name: str, description: str,
-                    previous: dict, identity: str, token: str, onboarding: dict | None = None) -> None:
+                    previous: dict, identity: str, token: str, onboarding: dict | None = None,
+                    effort: str = DEFAULT_EFFORT) -> None:
     stopped = False
     leased = False
     request_path = ack_path = None
@@ -652,7 +693,7 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             stopped = True
             if running():
                 raise ValueError("Another DM session is active; the replacement was not started")
-            ok, message = start_session(provider, mode, name, description, onboarding)
+            ok, message = start_session(provider, mode, name, description, onboarding, effort)
             if not ok:
                 raise ValueError(message)
         set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider)
@@ -699,7 +740,8 @@ def create_app() -> Flask:
 
     @app.get("/")
     def home():
-        return render_template("campaign_portal.html", token=token, dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS)
+        return render_template("campaign_portal.html", token=token, dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS,
+                               efforts=CODEX_EFFORTS, default_effort=DEFAULT_EFFORT, helpers=HELPER_CHOICES)
 
     @app.get("/icon.png")
     def icon():
@@ -716,7 +758,19 @@ def create_app() -> Flask:
         last_browser_poll = time.monotonic()
         active = running()
         return jsonify(active=active, meta=read_meta() if active else {}, output=output() if active else "",
-                       campaigns=campaigns(), codex_enabled=CODEX_ENABLED, handoff=handoff_state())
+                       campaigns=campaigns(), codex_enabled=CODEX_ENABLED, handoff=handoff_state(),
+                       helper=read_helper())
+
+    @app.post("/api/helper")
+    def helper():
+        data = request.get_json(silent=True) or {}
+        try:
+            save_helper(str(data.get("helper", "")) if isinstance(data, dict) else "")
+        except ValueError as error:
+            return jsonify(ok=False, message=str(error)), 400
+        except OSError:
+            return jsonify(ok=False, message="Could not save the notes helper choice."), 500
+        return jsonify(ok=True, helper=read_helper())
 
     @app.post("/api/start")
     def start():
@@ -729,6 +783,7 @@ def create_app() -> Flask:
         description = str(data.get("description", "")).strip()
         try:
             onboarding = read_onboarding(data, mode)
+            effort = read_effort(data)
         except ValueError as error:
             return jsonify(ok=False, message=str(error)), 400
         if mode == "new" and not name:
@@ -736,7 +791,7 @@ def create_app() -> Flask:
         with lock:
             if handoff_busy():
                 return jsonify(ok=False, message="The current campaign is being saved. Wait for the model change to finish."), 409
-            ok, message = start_session(provider, mode, name, description, onboarding)
+            ok, message = start_session(provider, mode, name, description, onboarding, effort)
         return jsonify(ok=ok, message=message, campaign=name if ok else None), 200 if ok else 409
 
     @app.post("/api/switch")
@@ -750,6 +805,7 @@ def create_app() -> Flask:
         description = str(data.get("description", "")).strip()
         try:
             onboarding = read_onboarding(data, mode)
+            effort = read_effort(data)
         except ValueError as error:
             return jsonify(ok=False, message=str(error)), 400
         if mode == "new" and not name:
@@ -761,14 +817,14 @@ def create_app() -> Flask:
             if error:
                 return jsonify(ok=False, message=error), 409
             if not running():
-                ok, message = start_session(provider, mode, name, description, onboarding)
+                ok, message = start_session(provider, mode, name, description, onboarding, effort)
                 if ok:
                     set_handoff("complete", message, campaign=name, provider=provider)
                 return jsonify(ok=ok, message=message, campaign=name if ok else None), 200 if ok else 409
             previous = read_meta()
             if mode == "new" and previous.get("campaign") == name:
                 return jsonify(ok=False, message="This campaign is already in use. Choose Resume to change its DM, or choose a new name."), 409
-            if mode == "resume" and previous.get("campaign") == name and previous.get("provider") == provider:
+            if mode == "resume" and previous.get("campaign") == name and same_dm(previous, provider, effort):
                 return jsonify(ok=True, message="The selected DM is already running this campaign.", campaign=name,
                                continuing=True), 200
             try:
@@ -790,7 +846,7 @@ def create_app() -> Flask:
             token = secrets.token_hex(16)
             set_handoff("saving", "Saving the current campaign before changing DMs…", campaign=name, provider=provider)
             worker = threading.Thread(target=perform_handoff,
-                                      args=(provider, mode, name, description, previous, identity, token, onboarding),
+                                      args=(provider, mode, name, description, previous, identity, token, onboarding, effort),
                                       daemon=True, name="dnd-model-handoff")
             worker.start()
         return jsonify(ok=True, message="Saving the current campaign before changing DMs…", campaign=name), 202

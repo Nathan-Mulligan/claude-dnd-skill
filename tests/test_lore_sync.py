@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "skills/dnd/display"))
 spec = importlib.util.spec_from_file_location("lore_sync", REPO / "skills/dnd/display/lore_sync.py")
@@ -76,6 +78,12 @@ def test_clean_notes_drops_unknown_names_blanks_and_trims():
     assert len(notes["C"]) == lore_sync.DETAIL_MAX
 
 
+def test_clean_notes_accepts_name_with_copied_status():
+    notes = lore_sync.clean_notes([{"name": "Copper Guild (Neutral)", "detail": "Ferries."},
+                                   {"name": "Other (x)", "detail": "Dropped."}], ["Copper Guild", "Other (x)y"])
+    assert notes == {"Copper Guild": "Ferries."}
+
+
 def test_kick_is_off_when_disabled(monkeypatch):
     called = []
     monkeypatch.setenv("DND_LORE_SYNC", "0")
@@ -105,6 +113,9 @@ class Live:
         self.write_stats(stats or {"factions": [{"name": "Road Wardens", "standing": "Neutral"}], "quests": []})
         monkeypatch.setattr(lore_sync, "_request", self.request)
         monkeypatch.setattr(lore_sync, "ask_model", self.model)
+        self.choice = ("fake", "fake-model")
+        monkeypatch.setattr(lore_sync, "choose_model", lambda: self.choice)
+        monkeypatch.setattr(lore_sync.subprocess, "Popen", lambda *a, **k: pytest.fail("must not start a process"))
         monkeypatch.setattr(lore_sync.time, "sleep", lambda s: None)
 
     def write_stats(self, stats):
@@ -120,7 +131,8 @@ class Live:
         self.posts.append((path, json.loads(data)))
         return {}
 
-    def model(self, prompt):
+    def model(self, prompt, choice=None):
+        assert choice == self.choice
         self.calls.append(prompt)
         if self.on_model:
             self.on_model()
@@ -222,9 +234,149 @@ def test_pending_work_at_pass_limit_is_rescheduled(monkeypatch, tmp_path):
     assert kicks == [1]
 
 
-# ── display endpoint ─────────────────────────────────────────────────────────
+def test_helper_off_skips_model_and_keeps_cache(monkeypatch, tmp_path):
+    live = Live(monkeypatch, tmp_path)
+    live.choice = None
+    assert lore_sync.run(settle_s=0) == "off"
+    assert live.calls == [] and live.posts == []
+    assert not (tmp_path / "lore_notes.json").exists()  # turning it back on still runs
 
-import pytest  # noqa: E402
+
+# ── helper choice and providers ──────────────────────────────────────────────
+
+@pytest.fixture
+def helper_env(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
+    monkeypatch.delenv("DND_LORE_SYNC", raising=False)
+    monkeypatch.delenv("DND_LORE_MODEL", raising=False)
+    return tmp_path
+
+
+def test_settings_default_save_and_read(helper_env):
+    assert lore_sync.saved_helper() == "luna"
+    assert lore_sync.choose_model() == ("codex", "gpt-6-luna")
+    for key, expected in (("terra", ("codex", "gpt-6.1-terra")), ("haiku", ("claude", "haiku")),
+                          ("qwen", ("ollama", "qwen3.6:35b-mlx")), ("off", None)):
+        lore_sync.save_helper(key)
+        assert json.loads((helper_env / "helper-settings.json").read_text(encoding="utf-8")) == {"helper": key}
+        assert lore_sync.choose_model() == expected
+    with pytest.raises(ValueError):
+        lore_sync.save_helper("gpt-9")
+
+
+@pytest.mark.parametrize("content", ["not json", "[]", '{"helper": "nonsense"}', '{"helper": 3}'])
+def test_unreadable_settings_fall_back_to_default(helper_env, content):
+    (helper_env / "helper-settings.json").write_text(content, encoding="utf-8")
+    assert lore_sync.saved_helper() == "luna"
+
+
+def test_env_overrides_win_over_saved_choice(helper_env, monkeypatch):
+    lore_sync.save_helper("haiku")
+    monkeypatch.setenv("DND_LORE_MODEL", "qwen")
+    assert lore_sync.choose_model() == ("ollama", "qwen3.6:35b-mlx")
+    monkeypatch.setenv("DND_LORE_MODEL", "gpt-6-astra")  # a raw Codex model name, as before
+    assert lore_sync.choose_model() == ("codex", "gpt-6-astra")
+    lore_sync.save_helper("off")
+    assert lore_sync.choose_model() == ("codex", "gpt-6-astra")
+    monkeypatch.setenv("DND_LORE_MODEL", "off")
+    assert lore_sync.choose_model() is None
+    monkeypatch.setenv("DND_LORE_MODEL", "terra")
+    monkeypatch.setenv("DND_LORE_SYNC", "0")  # always wins
+    assert lore_sync.choose_model() is None
+
+
+def test_kick_respects_saved_off(helper_env, monkeypatch):
+    called = []
+    monkeypatch.setattr(lore_sync.subprocess, "Popen", lambda *a, **k: called.append(a))
+    lore_sync.save_helper("off")
+    lore_sync.kick()
+    assert called == []
+    lore_sync.save_helper("qwen")
+    lore_sync.kick()
+    assert len(called) == 1
+
+
+GOOD = {"factions": [{"name": "Guild", "detail": "Traders."}], "quests": []}
+
+
+@pytest.mark.parametrize("provider", ["codex", "claude", "ollama"])
+def test_ask_model_routes_to_chosen_provider(monkeypatch, provider):
+    seen = []
+    for name in ("codex", "claude", "ollama"):
+        monkeypatch.setitem(lore_sync._PROVIDERS, name,
+                            lambda prompt, model, name=name: seen.append((name, model)) or GOOD)
+    assert lore_sync.ask_model("p", (provider, "m")) == GOOD
+    assert seen == [(provider, "m")]
+
+
+@pytest.mark.parametrize("reply", [
+    None, [], "text", {"factions": []}, {"factions": [], "quests": [], "extra": 1},
+    {"factions": {}, "quests": []}, {"factions": ["Guild"], "quests": []},
+    {"factions": [{"name": "Guild"}], "quests": []},
+    {"factions": [{"name": "Guild", "detail": 5}], "quests": []},
+    {"factions": [{"name": "Guild", "detail": "x", "secret": "y"}], "quests": []},
+])
+def test_malformed_reply_is_a_failed_run(monkeypatch, reply):
+    monkeypatch.setitem(lore_sync._PROVIDERS, "fake", lambda prompt, model: reply)
+    with pytest.raises(ValueError):
+        lore_sync.ask_model("p", ("fake", "m"))
+
+
+def test_malformed_reply_publishes_nothing(monkeypatch, tmp_path):
+    live = Live(monkeypatch, tmp_path)
+    monkeypatch.setattr(lore_sync, "ask_model", lambda prompt, choice=None: lore_sync.validate({"factions": "x"}))
+    with pytest.raises(ValueError):
+        lore_sync.run(settle_s=0)
+    assert live.posts == [] and not (tmp_path / "lore_notes.json").exists()
+
+
+def test_claude_call_has_no_tools_and_no_api_key(monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(cmd=cmd, **kw)
+        return lore_sync.subprocess.CompletedProcess(cmd, 0, json.dumps({"is_error": False, "structured_output": GOOD}), "")
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")
+    monkeypatch.setattr(lore_sync.subprocess, "run", fake_run)
+    assert lore_sync.ask_model("the prompt", ("claude", "haiku")) == GOOD
+    cmd = seen["cmd"]
+    assert cmd[:2] == ["claude", "-p"] and cmd[cmd.index("--model") + 1] == "haiku"
+    assert cmd[cmd.index("--tools") + 1] == ""
+    assert "ANTHROPIC_API_KEY" not in seen["env"] and seen["input"] == "the prompt"
+
+
+def test_claude_error_reply_fails(monkeypatch):
+    monkeypatch.setattr(lore_sync.subprocess, "run", lambda cmd, **kw: lore_sync.subprocess.CompletedProcess(
+        cmd, 0, json.dumps({"is_error": True, "result": "Not logged in"}), ""))
+    with pytest.raises(ValueError):
+        lore_sync.ask_model("p", ("claude", "haiku"))
+
+
+def test_ollama_call_sends_schema_and_parses_content(monkeypatch):
+    import io
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen.update(url=req.full_url, body=json.loads(req.data), timeout=timeout)
+        return io.BytesIO(json.dumps({"message": {"content": json.dumps(GOOD)}}).encode())
+
+    monkeypatch.setattr(lore_sync.urllib.request, "urlopen", fake_urlopen)
+    assert lore_sync.ask_model("p", ("ollama", "qwen3.6:35b-mlx")) == GOOD
+    assert seen["url"] == "http://127.0.0.1:11434/api/chat" and seen["timeout"] == lore_sync.MODEL_TIMEOUT_S
+    assert seen["body"]["format"] == lore_sync._SCHEMA and seen["body"]["stream"] is False
+    assert seen["body"]["model"] == "qwen3.6:35b-mlx"
+
+
+def test_ollama_non_json_content_fails(monkeypatch):
+    import io
+    monkeypatch.setattr(lore_sync.urllib.request, "urlopen",
+                        lambda req, timeout: io.BytesIO(b'{"message": {"content": "Sure! Here are notes"}}'))
+    with pytest.raises(ValueError):
+        lore_sync.ask_model("p", ("ollama", "qwen3.6:35b-mlx"))
+
+
+# ── display endpoint ─────────────────────────────────────────────────────────
 
 DISPLAY = REPO / "skills/dnd/display"
 

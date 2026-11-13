@@ -23,6 +23,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime" / "portal-session.json")
     monkeypatch.setattr(portal, "prepare_display", lambda name, **kwargs: None)
     monkeypatch.setattr(portal, "notify_party_consumed", lambda *args: None)
+    monkeypatch.setattr(portal.lore_sync, "rt", lambda name: str(tmp_path / ".runtime" / name))
     app = portal.create_app()
     app.testing = True
     test_client = app.test_client()
@@ -475,3 +476,121 @@ def test_page_lists_every_dm_choice(client):
         assert f'value="{key}" data-launcher="{choice.launcher}"' in page
     assert page.index('value="codex-sol" data-launcher') < page.index('value="codex" data-launcher')
     assert '<option value="qwen" data-label="Ollama">' in page
+
+
+# ── DM effort and sidebar notes helper ───────────────────────────────────────
+
+def _effort(argv):
+    flags = [argv[i + 1] for i, arg in enumerate(argv) if arg == "-c" and "model_reasoning_effort" in argv[i + 1]]
+    assert len(flags) == 1
+    return flags[0]
+
+
+@pytest.mark.parametrize("effort", ["low", "medium", "high"])
+def test_codex_dm_runs_at_chosen_effort(effort):
+    argv = portal.model_args("codex-sol", "resume", "Fenmoor", "", None, effort)
+    assert _effort(argv) == f'model_reasoning_effort="{effort}"'
+
+
+def test_codex_dm_effort_defaults_to_medium_and_others_get_none():
+    assert _effort(portal.model_args("codex", "resume", "Fenmoor", "")) == 'model_reasoning_effort="medium"'
+    for provider in ("claude", "qwen"):
+        assert not any("model_reasoning_effort" in a for a in portal.model_args(provider, "resume", "Fenmoor", "", None, "low"))
+    with pytest.raises(ValueError):
+        portal.model_args("codex", "resume", "Fenmoor", "", None, "xhigh")
+
+
+def test_start_passes_effort_to_launch_and_records_it(client, monkeypatch):
+    import shlex
+    calls = []
+    monkeypatch.setattr(portal, "CODEX_ENABLED", True)
+    monkeypatch.setattr(portal, "running", lambda: False)
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: calls.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    response = api(client, "/api/start", method="post", data={
+        "provider": "codex-sol", "mode": "new", "name": "quick", "description": "x", "effort": "low"})
+    assert response.status_code == 200
+    argv = shlex.split(next(args[-1] for args in calls if args[:2] == ("tmux", "new-session")))
+    assert _effort(argv) == 'model_reasoning_effort="low"'
+    assert json.loads(portal.META_FILE.read_text(encoding="utf-8"))["effort"] == "low"
+
+
+@pytest.mark.parametrize("route", ["/api/start", "/api/switch"])
+@pytest.mark.parametrize("effort", ["xhigh", "", 3, None])
+def test_invalid_effort_is_rejected_before_model_operations(client, monkeypatch, route, effort):
+    monkeypatch.setattr(portal, "running", lambda: pytest.fail("Must validate before model operations"))
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: pytest.fail("Must not call a model"))
+    response = api(client, route, method="post", data={"provider": "codex", "mode": "new", "name": "x", "effort": effort})
+    assert response.status_code == 400
+
+
+def test_same_dm_compares_effort_only_for_codex():
+    assert portal.same_dm({"provider": "codex-sol", "effort": "low"}, "codex-sol", "low")
+    assert not portal.same_dm({"provider": "codex-sol", "effort": "low"}, "codex-sol", "medium")
+    assert portal.same_dm({"provider": "codex-sol"}, "codex-sol", "medium")  # older sessions ran at medium
+    assert portal.same_dm({"provider": "claude", "effort": "medium"}, "claude", "low")
+    assert not portal.same_dm({"provider": "claude"}, "qwen", "medium")
+
+
+def test_switch_to_new_effort_on_same_campaign_starts_a_handoff(client, monkeypatch):
+    portal.RUNTIME.mkdir(parents=True, exist_ok=True)
+    (portal.DATA_ROOT / "campaigns" / "Fenmoor").mkdir(parents=True)
+    (portal.DATA_ROOT / "campaigns" / "Fenmoor" / "state.md").write_text("# s", encoding="utf-8")
+    portal.META_FILE.write_text(json.dumps({"provider": "codex-sol", "mode": "resume", "campaign": "Fenmoor",
+                                            "started_at": 1, "effort": "medium"}), encoding="utf-8")
+    monkeypatch.setattr(portal, "CODEX_ENABLED", True)
+    monkeypatch.setattr(portal, "running", lambda: True)
+    body = {"provider": "codex-sol", "mode": "resume", "name": "Fenmoor", "effort": "medium"}
+    assert api(client, "/api/switch", method="post", data=body).json["continuing"] is True
+    started = []
+    monkeypatch.setattr(portal, "tmux_identity", lambda: "$1")
+    monkeypatch.setattr(portal, "provider_error", lambda provider: None)
+    monkeypatch.setattr(portal.threading, "Thread", lambda target, args, **kw: type(
+        "T", (), {"start": lambda self: started.append(args)})())
+    response = api(client, "/api/switch", method="post", data=dict(body, effort="low"))
+    assert response.status_code == 202
+    assert started and started[0][-1] == "low"
+    portal.set_handoff("idle", "")
+
+
+def test_helper_choice_defaults_saves_and_is_read_by_lore_sync(client, monkeypatch):
+    assert api(client, "/api/state").json["helper"] == "luna"
+    for key in ("off", "terra", "haiku", "qwen", "luna"):
+        response = api(client, "/api/helper", method="post", data={"helper": key})
+        assert response.status_code == 200 and response.json["helper"] == key
+        assert api(client, "/api/state").json["helper"] == key
+    api(client, "/api/helper", method="post", data={"helper": "haiku"})
+    assert json.loads((portal.RUNTIME / "helper-settings.json").read_text(encoding="utf-8")) == {"helper": "haiku"}
+    monkeypatch.delenv("DND_LORE_SYNC", raising=False)
+    monkeypatch.delenv("DND_LORE_MODEL", raising=False)
+    assert portal.lore_sync.choose_model() == ("claude", "haiku")
+
+
+@pytest.mark.parametrize("value", ["gpt-9", "", None, ["off"]])
+def test_unknown_helper_is_rejected_and_keeps_choice(client, value):
+    api(client, "/api/helper", method="post", data={"helper": "qwen"})
+    assert api(client, "/api/helper", method="post", data={"helper": value}).status_code == 400
+    assert api(client, "/api/state").json["helper"] == "qwen"
+
+
+def test_helper_requires_token_and_origin(client):
+    assert api(client, "/api/helper", method="post", data={"helper": "off"}, token=False).status_code == 403
+    assert api(client, "/api/helper", method="post", data={"helper": "off"}, origin="http://evil.example").status_code == 403
+    assert api(client, "/api/state").json["helper"] == "luna"
+
+
+def test_page_offers_effort_and_helper_choices(client):
+    page = client[0].get("/", base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    assert '<option value="medium" selected>' in page
+    for key in ("low", "high"):
+        assert f'<option value="{key}">' in page
+    for key, label in (("off", "Off"), ("luna", "GPT-6 Luna"), ("terra", "GPT-6.1 Terra"),
+                       ("haiku", "Claude Haiku"), ("qwen", "Local Qwen")):
+        assert f'<option value="{key}">{label}</option>' in page
+    assert "Off turns it off" in page
+
+
+def test_helper_file_follows_runtime_dir_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("DND_RUNTIME_DIR", str(tmp_path / "rt"))
+    portal.save_helper("qwen")
+    assert json.loads((tmp_path / "rt" / "helper-settings.json").read_text(encoding="utf-8")) == {"helper": "qwen"}
+    assert portal.read_helper() == "qwen" and portal.lore_sync.saved_helper() == "qwen"
