@@ -20,6 +20,9 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import arc_pulse  # noqa: E402
+
 
 REPO = Path(__file__).resolve().parents[1]
 DATA_ROOT = Path(os.environ.get("DND_CAMPAIGN_ROOT", str(Path.home() / ".claude/dnd"))).resolve()
@@ -152,12 +155,18 @@ def _deliver_party_input() -> bool:
     if not content:
         claim.unlink(missing_ok=True)
         return False
+    try:
+        campaign_dir = campaign_path(str(meta.get("campaign", "")))
+        pulse = arc_pulse.plan(campaign_dir)
+    except (OSError, ValueError):
+        pulse = None
     prompt = (
         SCENE_PROTOCOL +
         "Party Input for the current DM turn. During campaign or character setup, treat it as "
         "the answer to your latest question; during play, treat it as the party's action. "
         "Send your next setup question to the cinematic display with send.py --setup-question before waiting. "
-        "Input: " + json.dumps(content, ensure_ascii=True)
+        "Input: " + json.dumps(content, ensure_ascii=True) +
+        (" " + pulse.directive if pulse and pulse.directive else "")
     )
     literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", prompt)
     if literal.returncode:
@@ -167,6 +176,11 @@ def _deliver_party_input() -> bool:
     if enter.returncode:
         return False
     claim.unlink(missing_ok=True)
+    if pulse:
+        try:
+            arc_pulse.commit(campaign_dir, pulse)
+        except OSError:
+            pass
     notify_party_consumed()
     return True
 
