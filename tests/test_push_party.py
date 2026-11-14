@@ -123,3 +123,16 @@ def test_inspiration_written_as_a_word_or_a_tick_is_kept(campaign, written, held
     assert "**Heroic Inspiration:** 1" in text
     path.write_text(text.replace("**Heroic Inspiration:** 1", f"**Heroic Inspiration:** {written}"), encoding="utf-8")
     assert _player(campaign, "nella-reed")["inspiration"] is held
+
+
+def test_a_mid_session_refresh_keeps_the_live_inspiration(campaign, monkeypatch):
+    # send.py --inspiration-spend changes only the display; a refresh after a sheet change must not undo it.
+    import push_stats
+    sent = []
+    monkeypatch.setattr(push_stats, "_send", lambda url, data, token: sent.append(json.loads(data)))
+    monkeypatch.setattr(sys, "argv", ["push_stats.py", "--party", "Duskmoor"])
+    push_stats.main()
+    assert all("inspiration" not in p for p in sent[0]["players"])
+    monkeypatch.setattr(sys, "argv", ["push_stats.py", "--party", "Duskmoor", "--replace-players"])
+    push_stats.main()
+    assert next(p for p in sent[1]["players"] if p["name"] == "Nella Reed")["inspiration"] is True

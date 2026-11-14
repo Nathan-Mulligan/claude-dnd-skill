@@ -156,7 +156,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 
    `--party` selects the campaign and reads every character sheet itself: race, class, level, HP, AC, initiative, speed, hit dice, XP, ability scores, spell slots, Heroic Inspiration, attacks, spells, features, inventory and the coin ledger. Never build the player JSON by hand. `--replace-players` clears stale characters from previous campaigns; leave it off mid-session, when `push_stats.py --party <campaign-name>` refreshes the sidebar after a sheet changes. If `inventory.py show --campaign <campaign-name>` reports `no ledger` for a character, run `inventory.py migrate` for them (dry run), show the player what it understood, and add `--write` only once they confirm.
 
-   **Inspiration** comes from the sheet's `Heroic Inspiration` line. When `state.md → ## Current Situation → Party status` says otherwise, follow with `push_stats.py --player <name> --inspiration true/false`. It persists until spent, not reset by a long rest.
+   **Inspiration** comes from the sheet's `Heroic Inspiration` line at load (`--replace-players`); a mid-session `--party` refresh leaves the sidebar's live Inspiration alone. When `state.md → ## Current Situation → Party status` says otherwise, follow with `push_stats.py --player <name> --inspiration true/false`. It persists until spent, not reset by a long rest.
 
    Push `--world-time`, `--factions` and `--quests` in the **same** call, as above, so the display never receives a partial update.
 

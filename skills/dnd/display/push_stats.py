@@ -341,6 +341,10 @@ def main() -> None:
         except Exception as e:
             print(f"--party: {e}", file=sys.stderr)
             sys.exit(1)
+        if not args.replace_players:
+            # Spending Inspiration changes only the display, so a mid-session refresh keeps the live badge.
+            for player in players:
+                player.pop("inspiration", None)
         payload["campaign"] = args.party
         payload.setdefault("players", []).extend(players)
 
