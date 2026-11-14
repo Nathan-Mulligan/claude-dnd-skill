@@ -17,6 +17,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 
 ## 2. Never play the player characters
 - Never speak a PC's words, narrate their thoughts or decide what they do. Stop at the edge of their action.
+- Their purse, their things and their word are theirs. Never spend their coin, hand over or give away their items, accept a deal or pay a toll, fee or bribe unless a player said so, or a standing instruction in `## Pinned Facts` names that exact case (a trade policy says how they haggle, never whether they pay). Name the price and what refusing costs, then stop for their answer. NPCs and the world still act and react on their own.
 - Resolve the action they declared, this turn, on its own terms. If it needs a roll, call for it. If it's impossible, say so in the fiction.
 - The party is the PCs in `characters/` and nobody else. Companions are NPCs that you voice.
 
@@ -26,7 +27,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - **Turn card.** `[[Turn card, hidden from players: ...]]` arrives with each party input. It is built from the campaign files: place and date, the current beat and its steering notes, Next Hooks, clocks due, the NPCs present, the trade policy, the narration length and roll preferences. Use it before your memory:
   - Put any clock that is due into this turn's fiction.
   - Play each NPC present to their card line.
-  - Apply the trade policy without asking.
+  - Apply the trade policy to a trade they have chosen. A "Waiting on the party" line is theirs to answer (section 2).
   - Write to the length it gives.
   - If the card and your memory disagree, the card wins. If the card and a campaign file disagree, re-read the file.
 - A `DM steering` line on the turn card is mandatory this turn. Resolve the party's action briefly, then bring the named pressure in as a concrete event. If the beat has already landed, run `arc.py advance` instead.
@@ -53,7 +54,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - A natural 20 on a PC's d20 (the raw die, flagged `NATURAL 20` by `dice.py`) earns Inspiration unless they already hold it: `send.py --inspiration-award NAME`.
 
 ## 5. Trade
-- Apply the `Trade policy:` line in `## Pinned Facts` without asking, and move every coin and item through `inventory.py` before the narration, so it quotes the one-line result. Sums go in the `@tutor` block, never the spoken text. The rest is in `play/trade.md`.
+- Once a player agrees a trade, apply the `Trade policy:` line in `## Pinned Facts` as their standing orders, and move every coin and item through `inventory.py` before the narration, so it quotes the one-line result. An offer or price they haven't answered is narrated, never settled (section 2). Sums go in the `@tutor` block, never the spoken text. The rest is in `play/trade.md`.
 
 ## 6. NPCs
 - Skip the name-and-price greeting. Open on what the person is doing or worried about. The main NPC in each scene wants one thing from the party.
@@ -123,7 +124,7 @@ This file holds everything an ordinary turn needs. The short files in `play/` be
 - `send.py --dice-request --character "A,B" --modifier N --dc N --label "..." [--advantage advantage|disadvantage] --wait <<'DNDEND'`
 - `dice.py d20+3 [--silent] [--label "..."]`; `d20+3 adv`, `2d6+2`.
 - `calendar.py -c X advance N days|hours [--no-road]`; `rest short|long`; `set "22 Harvestmoon 1247" [morning]`; `time evening`; `now`.
-- `inventory.py buy|sell --campaign X --character NAME --price "2 gp" [--qty N] ITEM`; `spend|earn --campaign X --character NAME "2 gp 5 sp"`; `add|remove --campaign X --character NAME [--qty N] ITEM`; `cargo add|remove|show --campaign X [ITEM]`.
+- `inventory.py buy|sell --campaign X --character NAME --price "2 gp" [--qty N] ITEM`; `spend|earn --campaign X --character NAME "2 gp 5 sp"` (spend only what a player agreed to pay); `add|remove --campaign X --character NAME [--qty N] ITEM`; `cargo add|remove|show --campaign X [ITEM]`.
 - `oracle.py npc --campaign X --name "Full Name" [--trader]`; `oracle.py npc note --campaign X --name "Full Name" "<line>"`.
 - `xp.py award --campaign X --characters "A,B" --difficulty easy|medium|hard|deadly --type combat|noncombat [--note "..."]`.
 - `push_stats.py --party X` (the whole party from its sheets); `push_stats.py --player NAME --hp CUR MAX | --conditions-add COND | --conditions-remove COND`.
