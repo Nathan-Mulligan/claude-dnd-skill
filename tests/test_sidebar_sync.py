@@ -115,6 +115,17 @@ def test_read_state_refuses_links_and_non_files(tmp_path):
     assert sidebar_sync.read_state(tmp_path / "missing.md") is None
 
 
+def test_hostile_lines_parse_in_linear_time():
+    # Sol review: long whitespace runs made the regexes backtrack for seconds.
+    import time
+    pad = " " * 200_000
+    text = ("## Active Quests\n- " + pad + "\n- x" + pad + "(\n- **A**" + pad + "\n" + "##" + pad + "\n"
+            "## Faction Standings\n- Wardens: Neutral" + pad + "x" + pad + "(\n- **B**:" + pad + "\n")
+    started = time.monotonic()
+    sidebar_sync.lists(text)
+    assert time.monotonic() - started < 1
+
+
 # ── the display keeps the sidebar in step ────────────────────────────────────
 
 @pytest.fixture
@@ -185,6 +196,15 @@ def test_another_campaigns_state_never_reaches_the_sidebar(display):
     assert "quests" not in module._current_stats
     client.post("/clear", json={})  # stats belong to no campaign until one is selected
     state.write_text("## Active Quests\n- Fenmoor quest.\n", encoding="utf-8")
+    assert module._sync_sidebar_from_state() is False
+
+
+def test_a_fifo_campaign_marker_never_hangs_the_sync(display):
+    module, _, state, _, _ = display
+    state.write_text("## Active Quests\n- Find a cargo.\n", encoding="utf-8")
+    marker = Path(module.CAMP_FILE)
+    marker.unlink()
+    os.mkfifo(marker)
     assert module._sync_sidebar_from_state() is False
 
 

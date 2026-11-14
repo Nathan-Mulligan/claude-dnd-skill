@@ -149,6 +149,18 @@ def test_run_skips_model_when_nothing_changed(monkeypatch, tmp_path):
     assert len(live.calls) == 1 and "SECRET" not in live.calls[0]
 
 
+def test_a_linked_state_md_never_reaches_the_model(monkeypatch, tmp_path):
+    # Sol review (#147): the display now starts this helper, outside the DM's sandbox.
+    live = Live(monkeypatch, tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("## Active Quests\n- OUTSIDE-SECRET\n", encoding="utf-8")
+    state = tmp_path / "campaigns" / "Test" / "state.md"
+    state.unlink()
+    state.symlink_to(outside)
+    lore_sync.run(settle_s=0)
+    assert live.calls and "OUTSIDE-SECRET" not in live.calls[0]
+
+
 def test_unreadable_stats_never_publishes_empty_lists(monkeypatch, tmp_path):
     live = Live(monkeypatch, tmp_path)
     live.on_model = lambda: live.write_stats('{"factions": [')  # display mid-write

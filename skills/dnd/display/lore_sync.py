@@ -467,7 +467,8 @@ def sync_once() -> str:
     if not campaign or not root:
         return "no-campaign"
     state = Path(root, "campaigns", campaign, "state.md")
-    public = public_text(state.read_text(encoding="utf-8")) if state.is_file() else ""
+    import sidebar_sync  # the display runs this outside the DM's sandbox: never follow its links
+    public = public_text(sidebar_sync.read_state(state) or "")
     stats = _current_stats()
     if stats is None:
         return "unreadable"

@@ -27,20 +27,17 @@ STATUSES = {"active": "active", "threat": "threat", "resolved": "resolved", "fai
 NAME_MAX = 60
 STATE_MAX_BYTES = 1 << 20
 
-_HEADING = re.compile(r"^##\s+(.*?)\s*$")
-_BULLET = re.compile(r"^[-*]\s+(.*\S)\s*$")
 _BOLD = re.compile(r"^\*\*(.+?)\*\*\s*")
 _STATUS_TAG = re.compile(r"^[\[(]\s*([A-Za-z]+)\s*[\])]\s*")
 _SEPARATOR = re.compile(r"^[:.;—–-]\s*")
-_TRAILING_STATUS = re.compile(r"\s*[\[(]\s*([A-Za-z]+)\s*[\])]\s*$")
-_STANDING_END = re.compile(r"\s[—–-]\s|[;.]\s|\s*\(")
+_STANDING_END = re.compile(r"\s[—–-]\s|[;.]\s|\(")  # no open-ended whitespace runs: parsing stays linear
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _NONBLOCK = getattr(os, "O_NONBLOCK", 0)
 
 
-def read_state(path) -> "str | None":
-    """state.md's text, or None. A sandboxed DM can write the campaign folder, so a link or anything
-    but a plain file (a FIFO would hang the reader) is never read."""
+def read_state(path, limit: int = STATE_MAX_BYTES) -> "str | None":
+    """A file's text, or None. A sandboxed DM can write the campaign and runtime folders, so a link,
+    anything but a plain file (a FIFO would hang the reader) or a file over `limit` bytes is never read."""
     if not _NOFOLLOW and os.path.islink(path):
         return None
     try:
@@ -49,10 +46,10 @@ def read_state(path) -> "str | None":
         return None
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > STATE_MAX_BYTES:
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
             return None
         with os.fdopen(fd, "rb", closefd=False) as stream:
-            return stream.read(STATE_MAX_BYTES).decode("utf-8", errors="replace")
+            return stream.read(limit).decode("utf-8", errors="replace")
     except OSError:
         return None
     finally:
@@ -63,16 +60,13 @@ def _sections(text: str) -> dict:
     """{key: [top-level bullet texts]} for each of SECTIONS present."""
     found, key = {}, None
     for line in text.splitlines():
-        heading = _HEADING.match(line)
-        if heading or line.startswith("# "):
-            title = heading.group(1).lower() if heading else ""
+        if line.startswith(("# ", "## ", "##\t")):
+            title = line[2:].strip().lower() if line.startswith("##") else ""
             key = next((k for k, s in SECTIONS.items() if title.startswith(s)), None)
             if key:
                 found.setdefault(key, [])
-            continue
-        bullet = _BULLET.match(line) if key else None
-        if bullet:
-            found[key].append(bullet.group(1))
+        elif key and line.startswith(("- ", "* ")) and line[2:].strip():
+            found[key].append(line[2:].strip())
     return found
 
 
@@ -80,6 +74,16 @@ def _status(text: str) -> "tuple[str | None, str]":
     tag = _STATUS_TAG.match(text)
     if tag and tag.group(1).lower() in STATUSES:
         return STATUSES[tag.group(1).lower()], text[tag.end():]
+    return None, text
+
+
+def _trailing_status(text: str) -> "tuple[str | None, str]":
+    text = text.rstrip()
+    if text.endswith((")", "]")):
+        start = text.rfind("(" if text.endswith(")") else "[")
+        word = text[start + 1:-1].strip().lower() if start >= 0 else ""
+        if word in STATUSES:
+            return STATUSES[word], text[:start]
     return None, text
 
 
@@ -109,9 +113,8 @@ def quest(text: str) -> "dict | None":
             status = status or tagged
         detail = rest.strip()
     else:
-        trailing = _TRAILING_STATUS.search(text)
-        if status is None and trailing and trailing.group(1).lower() in STATUSES:
-            status, text = STATUSES[trailing.group(1).lower()], text[:trailing.start()]
+        if status is None:
+            status, text = _trailing_status(text)
         text = text.strip()
         name = _short(text)
         detail = text if name != text else ""

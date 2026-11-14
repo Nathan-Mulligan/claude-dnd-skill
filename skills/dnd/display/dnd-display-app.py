@@ -1985,8 +1985,9 @@ SIDEBAR_SYNC_S = 2.0
 def _sync_sidebar_from_state() -> bool:
     """Show the active campaign's state.md quests and factions in the sidebar when they differ (#147)."""
     import sidebar_sync
-    campaign = _active_campaign_name()
-    if not campaign:
+    # The DM can write the runtime folder: a FIFO or a huge file here must not stall this thread.
+    campaign = (sidebar_sync.read_state(CAMP_FILE, limit=256) or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", campaign):
         return False
     found = sidebar_sync.lists(sidebar_sync.read_state(_campaigns_dir() / campaign / "state.md") or "")
     if not found:
