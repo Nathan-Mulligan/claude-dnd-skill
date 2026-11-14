@@ -391,13 +391,16 @@ def one_line(text: object) -> str:
 
 
 def invented(texts: list[str], source: str) -> list[str]:
-    known = {w.lower() for w in re.findall(r"[A-Za-z'’-]+", source)} | OPENERS
+    words = {w.lower() for w in re.findall(r"[A-Za-z'’-]+", source)}
+    known = words | OPENERS
+    # "Tull’s" in the material names Tull exactly; the plural leeway applies only to words as written.
+    owners = {re.sub(r"['’]s$", "", w) for w in words}
     unknown = []
     for text in texts:
         for word in NAME.findall(text):
-            word = re.sub(r"['’]s$", "", word)
+            word = re.sub(r"['’][sS]$", "", word)
             low = word.lower()
-            if not {low, low.rstrip("s"), low + "s"} & known and word not in unknown:
+            if low not in owners and not {low, low.rstrip("s"), low + "s"} & known and word not in unknown:
                 unknown.append(word)
     return unknown
 
