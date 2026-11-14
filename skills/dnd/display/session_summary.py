@@ -90,11 +90,22 @@ DM_LINE = re.compile(r"\b(?:DM|GM)\b|\bsecretly\b|\bsecret\s*[:)\]]|\(\s*secret|
                      r"|unknown to the party|calibration|faction move|party (?:does not|doesn't|did not|didn't) know",
                      re.I)
 NAME = re.compile(r"\b[A-Z][A-Za-z'’-]*[A-Za-z]")
-# Capitalised only because they open a sentence; never treated as names.
-OPENERS = set("""a after afterwards again also an and as at back before but by during each eventually
-finally first for from he her here his however in instead into it its later meanwhile next now of on once
-or our she so soon still that the their then there these they this those to together under we when while
-with without yet you your""".split())
+# Capitalised only because they open a sentence; never treated as names. Closed-class words and the common
+# adverbs a recap opens with (#128). Words that double as names (Will, May, Rose, Dawn) stay out.
+OPENERS = set("""a about above according across after afterwards again against ahead all almost alone along
+already also although always amid among an and another any anybody anyone anything around as at away back
+because before behind being below beneath beside besides between beyond both briefly but by can could days
+despite did do does down during each earlier eight either elsewhere even eventually every everybody everyone
+everything few finally first five for four from had has have having he hence her here herself him himself his
+hours how however i if in initially inside instead into is it its itself just last lastly later least less
+like little luckily many me meanwhile might minutes moments more moreover most much must my near nearby nearly
+neither never nevertheless next nine no nobody none nonetheless nor not nothing now of off often on once one
+only onto or other others otherwise our ourselves outside over overall past perhaps quickly quietly rather
+second seven several shall she should since six slowly so some somebody someone something sometimes soon
+still such suddenly ten than that the their them themselves then there therefore these they third this those
+though three through throughout thus to today together tomorrow tonight toward towards two ultimately under
+unless unlike until up upon us was we weeks were what whatever when where whether which while who whoever
+whom whose why with within without would years yesterday yet you your""".split())
 
 
 class Block(NamedTuple):
