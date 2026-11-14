@@ -28,13 +28,16 @@ fi
 
 mkdir -p "$data_root/.runtime"
 python_bin="$(command -v python3)"
-if [[ -x "$data_root/.venv/bin/python3" ]]; then python_bin="$data_root/.venv/bin/python3"; fi
-if [[ ! -x "$data_root/.venv/bin/python3" && -x "$HOME/.claude/dnd/.venv/bin/python3" ]]; then
-  python_bin="$HOME/.claude/dnd/.venv/bin/python3"
-fi
+# First virtualenv found wins; the ones inside a data root are the old locations.
+for venv in "${DND_VENV:-}" "$HOME/.local/share/dnd/venv" "$data_root/.venv" "$HOME/.claude/dnd/.venv"; do
+  if [[ -n "$venv" && -x "$venv/bin/python3" ]]; then python_bin="$venv/bin/python3"; break; fi
+done
 "$python_bin" -c 'import flask' >/dev/null 2>&1 || { echo 'Flask is needed for the campaign portal.' >&2; exit 1; }
 
-nohup "$python_bin" -u "$repo_root/scripts/campaign_portal.py" > "$data_root/.runtime/portal.log" 2>&1 < /dev/null &
+# The DM can write the runtime dir: replace any file or link there, and never open an existing one.
+log="$data_root/.runtime/portal.log"
+rm -f "$log"
+(set -C; nohup "$python_bin" -u "$repo_root/scripts/campaign_portal.py" > "$log" 2>&1 < /dev/null) &
 for attempt in {1..20}; do
   portal_ready && { printf 'Campaign portal ready: http://127.0.0.1:%s/\n' "$port"; exit 0; }
   sleep 0.5

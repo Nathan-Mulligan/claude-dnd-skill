@@ -24,6 +24,8 @@ import re
 from pathlib import Path
 from typing import Iterable
 
+from runtime_paths import write_file
+
 SOURCES = "_sources"
 DM = "dm"
 AUTO = "auto"
@@ -75,9 +77,7 @@ def write_raw(path: Path, cast: dict, src: dict, comment=None) -> None:
     if src:
         data[SOURCES] = src
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    write_file(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
 def pick_voice(name: str, pool: Iterable[str], *, narrator: str = "",

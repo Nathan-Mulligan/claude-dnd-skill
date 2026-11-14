@@ -13,12 +13,14 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import os
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/dnd/display"))
+from runtime_paths import write_file  # noqa: E402
 
 SPOTLIGHT_LIMITS = {"dm_led": 4, "balanced": 6, "player_led": 10}
 PULSE_FILE = "arc_pulse.json"
@@ -190,8 +192,5 @@ def plan(campaign_dir: Path, party_input: str = "") -> Pulse | None:
 
 
 def commit(campaign_dir: Path, pulse: Pulse) -> None:
-    path = campaign_dir / PULSE_FILE
-    tmp = path.with_name(PULSE_FILE + ".tmp")
-    tmp.write_text(json.dumps({"beat": pulse.beat, "version": pulse.version, "turns": pulse.turns,
-                               "nudges": pulse.nudges}), encoding="utf-8")
-    os.replace(tmp, path)
+    write_file(campaign_dir / PULSE_FILE, json.dumps({"beat": pulse.beat, "version": pulse.version,
+                                                      "turns": pulse.turns, "nudges": pulse.nudges}))

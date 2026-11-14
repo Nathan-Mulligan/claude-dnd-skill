@@ -87,11 +87,17 @@ sleep 0.3
 
 # ── Dependency check (first run) ──────────────────────────────────────────────
 # Homebrew and most distro pythons refuse a bare `pip3 install` (PEP 668), so
-# bootstrap a venv beside the campaign data once and run the display from it.
-# It lives outside the plugin directory so a plugin update doesn't wipe it.
+# bootstrap a venv once and run the display from it. It lives outside the
+# plugin directory, so a plugin update doesn't wipe it, and outside the
+# campaign data, which a sandboxed DM can write. DND_VENV overrides the place;
+# an existing venv at the old place beside the campaign data still works.
 if ! python3 -c "import flask, flask_cors, yaml" 2>/dev/null; then
-  VENV="$(dirname "$RT")/.venv"
+  VENV="${DND_VENV:-$HOME/.local/share/dnd/venv}"
+  if [[ ! -x "$VENV/bin/python" && -x "$(dirname "$RT")/.venv/bin/python" ]]; then
+    VENV="$(dirname "$RT")/.venv"
+  fi
   if [[ ! -x "$VENV/bin/python" ]]; then
+    mkdir -p "$(dirname "$VENV")"
     python3 -m venv "$VENV" \
       || { echo "Error: could not create Python environment at $VENV"; exit 1; }
   fi

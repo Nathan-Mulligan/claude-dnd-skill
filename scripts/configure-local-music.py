@@ -9,7 +9,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE / "skills" / "dnd" / "display"))
-from runtime_paths import rt
+from runtime_paths import config_path, write_file
 
 
 def main() -> None:
@@ -23,10 +23,9 @@ def main() -> None:
         parser.error(f"not an executable file: {cli}")
     if not hf_home.is_dir():
         parser.error(f"weights cache does not exist: {hf_home}")
-    target = Path(rt("music-config.json"))
-    temporary = target.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"cli": str(cli), "hf_home": str(hf_home)}), encoding="utf-8")
-    temporary.replace(target)
+    target = config_path("music-config.json")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    write_file(target, json.dumps({"cli": str(cli), "hf_home": str(hf_home)}))
     print(f"Configured local music runtime at {target}")
 
 

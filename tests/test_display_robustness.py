@@ -27,6 +27,8 @@ from unittest import mock
 REPO = Path(__file__).resolve().parent.parent
 SKILL = REPO / "skills" / "dnd" if (REPO / "skills" / "dnd").is_dir() else REPO
 DISPLAY = SKILL / "display"
+sys.path.insert(0, str(DISPLAY))
+import runtime_paths  # noqa: E402
 
 
 def _load_module(path: Path, name: str):
@@ -171,6 +173,8 @@ class TailLogicTest(unittest.TestCase):
             "sys": __import__("sys"),
             "CAMP_FILE": str(self.camp_file),
             "_find_campaign": (lambda name: self.campaign_root / name),
+            "_campaigns_dir": (lambda: self.campaign_root),
+            "write_file": runtime_paths.write_file,
         }
         exec(block, ns)  # populates _load_tail, _persist_tail, _tail_buffer, etc.
         return ns

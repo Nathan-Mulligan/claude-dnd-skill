@@ -5,14 +5,23 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 data_root="${DND_CAMPAIGN_ROOT:-$HOME/.claude/dnd}"
-if [[ -x "$data_root/.venv/bin/python3" ]]; then
-  export PATH="$data_root/.venv/bin:$PATH"
-fi
+# The display's virtualenv lives outside the data root, where a sandboxed DM cannot change it.
+# The one inside the data root is the old place.
+for venv in "${DND_VENV:-}" "$HOME/.local/share/dnd/venv" "$data_root/.venv"; do
+  if [[ -n "$venv" && -x "$venv/bin/python3" ]]; then export PATH="$venv/bin:$PATH"; break; fi
+done
 
 backend="${1:-}"
 shift || true
 
-if [[ "${1:-}" == "--campaign" ]]; then
+workdir="$repo_root"
+while [[ "${1:-}" == "--campaign" || "${1:-}" == "--workdir" ]]; do
+  if [[ "$1" == "--workdir" ]]; then
+    workdir="${2:-}"
+    [[ -d "$workdir" ]] || { echo "Working folder not found: $workdir" >&2; exit 2; }
+    shift 2
+    continue
+  fi
   campaign_name="${2:-}"
   if [[ ! "$campaign_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ || "$campaign_name" == "." || "$campaign_name" == ".." ]]; then
     echo 'Campaign name must use letters, numbers, dots, dashes or underscores.' >&2
@@ -25,7 +34,7 @@ if [[ "${1:-}" == "--campaign" ]]; then
   fi
   export DND_ACTIVE_CAMPAIGN="$campaign_name"
   shift 2
-fi
+done
 
 case "$backend" in
   codex)
@@ -33,9 +42,11 @@ case "$backend" in
       echo 'Codex CLI is not installed.' >&2
       exit 1
     fi
+    cd "$workdir"
     exec codex "$@"
     ;;
   claude)
+    cd "$workdir"
     exec claude --plugin-dir "$repo_root" "$@"
     ;;
   qwen)
@@ -66,7 +77,7 @@ case "$backend" in
       --model qwen3.6:35b-mlx "${qwen_args[@]}" "$@"
     ;;
   *)
-    echo 'Usage: scripts/play-local.sh {codex|claude|qwen} [--campaign NAME] [CLI arguments]' >&2
+    echo 'Usage: scripts/play-local.sh {codex|claude|qwen} [--campaign NAME] [--workdir DIR] [CLI arguments]' >&2
     exit 2
     ;;
 esac

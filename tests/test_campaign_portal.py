@@ -266,11 +266,13 @@ def test_paste_timeout_still_removes_the_buffer_and_file(monkeypatch):
     assert ("tmux", "delete-buffer", "-b", load[load.index("-b") + 1]) in calls
     assert not Path(load[-2]).exists()
 
-def test_codex_can_write_selected_campaign_root(tmp_path, monkeypatch):
+def test_codex_can_write_selected_campaign_and_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(portal, "RUNTIME", tmp_path / ".runtime")
     args = portal.model_args("codex", "new", "demo", "start")
     assert args[args.index("-m") + 1] == "gpt-6.1-terra"
-    assert args[args.index("--add-dir") + 1] == str(tmp_path)
+    assert args[args.index("--workdir") + 1] == str(tmp_path / "campaigns" / "demo")
+    assert args[args.index("--add-dir") + 1] == str(tmp_path / ".runtime")
     assert args[args.index("-s") + 1] == "workspace-write"
     assert "sandbox_workspace_write.network_access=true" in args
 
