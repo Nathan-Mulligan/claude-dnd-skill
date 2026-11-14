@@ -194,6 +194,28 @@ def test_kick_never_raises_when_the_request_cannot_be_written(lore_env):
     assert "kick failed" in (lore_env / "lore_sync.log").read_text(encoding="utf-8")
 
 
+def test_log_line_never_raises_when_the_disk_is_full(monkeypatch, tmp_path):
+    # The write is buffered, so a full disk shows up only when the file is closed.
+    real_fdopen = os.fdopen
+
+    class FullDisk:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def write(self, text):
+            return len(text)
+
+        def __exit__(self, *exc):
+            self.stream.close()
+            raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(runtime_paths.os, "fdopen", lambda fd, *a, **k: FullDisk(real_fdopen(fd, *a, **k)))
+    runtime_paths.log_line(str(tmp_path / "full.log"), "a line")
+
+
 def test_run_and_log_records_a_failed_run(monkeypatch, tmp_path):
     monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
 
