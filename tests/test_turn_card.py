@@ -103,7 +103,7 @@ def test_missing_sections_are_skipped(tmp_path):
     (folder / "state.md").write_text("# Campaign: Bare\n\n## Current Situation\n- **Location:** a ditch\n", encoding="utf-8")
     lines = card(folder).split(" | ")
     assert lines[0].endswith("Where: a ditch")
-    assert len(lines) == 4
+    assert len(lines) == 5
     assert all(word not in card(folder) for word in ("Beat", "Next hooks", "Clocks", "Trade", "People", "Table"))
 
 
@@ -157,3 +157,11 @@ def test_steering_nudge_takes_the_beat_line(fenmoor):
     text, pulse = turn_card.prepare(fenmoor, "[Corin Ashby]: We load the wagon.")
     assert pulse.directive and "DM steering, mandatory this turn" in text
     assert 'Beat 1b "Broken Ledgers":' not in text
+
+
+def test_every_card_asks_for_narration_first_and_a_one_word_close(fenmoor):
+    text = card(fenmoor)
+    rule = next(part for part in text.split(" | ") if part.startswith("Rule: Turn shape"))
+    assert "one send.py call with every block" in rule
+    assert "bookkeeping in the next call" in rule
+    assert "reply done" in rule

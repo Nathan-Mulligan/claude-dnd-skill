@@ -41,6 +41,23 @@ Usage:
     Warm bread and woodsmoke fill the little shop.
     DNDEND
 
+    # A whole turn in one call: a line holding only @player NAME, @npc NAME [voice=ID],
+    # @dice, @tutor, @action NAME or @narration starts a block; text before the first marker
+    # is narration. Scene, mood, music and stat flags apply to the whole call.
+    python3 send.py --scene "Brackenford: the toll gate at dusk" << 'DNDEND'
+    @player Everybody
+    We hand over the satchel.
+    @narration
+    The clerk breaks the seal.
+    @npc Hessa Varn voice=bf_alice
+    "Twenty silver, or the wagon stays."
+    DNDEND
+
+    # A roll in the same call: the narration naming the DC goes first, then the request
+    python3 send.py --dice-request --character Nella --modifier 3 --dc 13 --label "Persuasion" --wait << 'DNDEND'
+    Hessa folds her arms. DC 13; fail and the price holds.
+    DNDEND
+
     # Short inline string
     echo "Short message" | python3 send.py
 
@@ -73,6 +90,7 @@ import json
 import argparse
 import os
 import re
+import select
 import ssl
 import time
 import uuid
@@ -329,6 +347,76 @@ def bare_question_ending(text: str) -> "str | None":
     return last if _BARE_QUESTION.fullmatch(last) else None
 
 
+_BLOCK_KINDS = {"player": "player", "npc": "npc", "dice": "dice", "tutor": "tutor", "action": "action",
+                "narration": None, "dm": None}
+_NAMED_BLOCKS = {"player", "npc", "action"}
+_MARKER = re.compile(r"^@(player|npc|dice|tutor|action|narration|dm)(?:[ \t]+(.*?))?[ \t]*$")
+_MARKER_VOICE = re.compile(r"^(.*?)[ \t]+voice=(.*)$")
+
+
+def parse_blocks(text: str) -> "list[dict]":
+    """Split one body into display blocks at marker lines; [] when there is no text.
+
+    Each block is {"kind": None|"player"|"npc"|"dice"|"tutor"|"action", "name", "voice", "text"};
+    kind None is narration. Raises ValueError on a marker without its name or with a bad voice.
+    """
+    blocks: "list[dict]" = []
+    current = {"kind": None, "name": None, "voice": None, "lines": []}
+    for line in text.splitlines():
+        marker = _MARKER.match(line.strip()) if line.lstrip().startswith("@") else None
+        if not marker:
+            current["lines"].append(line)
+            continue
+        blocks.append(current)
+        kind, rest = _BLOCK_KINDS[marker.group(1)], (marker.group(2) or "").strip()
+        voice = None
+        if kind == "npc":
+            with_voice = _MARKER_VOICE.match(rest)
+            if with_voice:
+                rest, voice = with_voice.group(1).strip(), with_voice.group(2).strip()
+                if not _VOICE_ID.fullmatch(voice):
+                    raise ValueError(f"@npc {rest}: voice takes an id such as bf_alice, not {voice!r}")
+        if kind in _NAMED_BLOCKS and not rest:
+            raise ValueError(f"@{marker.group(1)} needs a name, for example @{marker.group(1)} Nella")
+        current = {"kind": kind, "name": rest or None, "voice": voice, "lines": []}
+    blocks.append(current)
+    out = []
+    for block in blocks:
+        body = "\n".join(block.pop("lines")).strip()
+        if body:
+            out.append(dict(block, text=body))
+    return out
+
+
+def _flag_block(args, text: str) -> "list[dict]":
+    """The single block a content flag (or none) makes of the whole body."""
+    if not text.strip():
+        return []
+    for kind in ("action", "player", "npc"):
+        if getattr(args, kind):
+            return [{"kind": kind, "name": getattr(args, kind), "text": text,
+                     "voice": args.npc_voice.strip() if kind == "npc" and args.npc_voice else None}]
+    for kind in ("dice", "tutor"):
+        if getattr(args, kind):
+            return [{"kind": kind, "name": None, "voice": None, "text": text}]
+    return [{"kind": None, "name": None, "voice": None, "text": text}]
+
+
+def _waiting_stdin() -> str:
+    """Piped text, or "" when stdin is a terminal or an open, empty pipe. Never blocks."""
+    if sys.stdin.isatty():
+        return ""
+    try:
+        if os.name != "nt" and not select.select([sys.stdin], [], [], 0.05)[0]:
+            return ""
+    except (ValueError, OSError, TypeError):  # no file descriptor to wait on: read it directly
+        pass
+    try:
+        return sys.stdin.read()
+    except OSError:
+        return ""
+
+
 def _build_stats_payload(args) -> "dict | None":
     """Build a push_stats-compatible payload from --stat-* flags."""
     players: "dict[str, dict]" = {}
@@ -453,6 +541,78 @@ def _build_stats_payload(args) -> "dict | None":
     if not players:
         return None
     return {"players": list(players.values())}
+
+
+def _dice_request(args) -> None:
+    """Ask the phones for a roll; with --wait, block until it lands and print each roll line."""
+    # Comma-split character list so the DM can address multiple players at once,
+    # e.g. --character "Piper,Mira,Aldric"  → all three must roll before --wait returns.
+    chars = [c.strip() for c in (args.character or "any").split(",") if c.strip()] or ["any"]
+    body = {
+        "characters": chars,
+        "spec": args.spec,
+        "modifier": args.modifier,
+        "advantage": args.advantage,
+    }
+    if args.label: body["label"] = args.label
+    if args.dc is not None: body["dc"] = args.dc
+    _token = _read_token()
+
+    # Direct urllib call (rather than _post) because we need the JSON response body.
+    headers = {"Content-Type": "application/json"}
+    if _token: headers["X-DND-Token"] = _token
+    try:
+        req = urllib.request.Request(
+            DICE_REQ_URL, data=json.dumps(body).encode(),
+            headers=headers, method="POST",
+        )
+        resp = urllib.request.urlopen(req, timeout=TIMEOUT, context=_SSL_CTX)
+        resp_body = json.loads(resp.read().decode("utf-8") or "{}")
+    except Exception as e:
+        print(f"send.py: dice-request failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    request_id = resp_body.get("request_id", "")
+    pending    = list(resp_body.get("pending") or [])
+    # Machine-readable on stdout so callers can correlate (cancel, log, etc.).
+    # flush=True because Python block-buffers stdout when redirected, and
+    # callers want the id immediately to dispatch rolls / cancellation.
+    print(request_id, flush=True)
+
+    if args.wait:
+        if not pending:
+            # "any" targets aren't tracked, so --wait is a no-op there.
+            print(f"send.py: --wait with no trackable characters (target={chars}) — nothing to wait for.",
+                  file=sys.stderr)
+        else:
+            status_url = f"{DICE_REQ_URL}/{request_id}"
+            poll_headers = {"X-DND-Token": _token} if _token else {}
+            deadline = time.time() + max(1, args.wait_timeout)
+            last_pending: list = list(pending)
+            print(f"send.py: waiting for rolls from: {', '.join(pending)}", file=sys.stderr)
+            while time.time() < deadline:
+                try:
+                    sreq = urllib.request.Request(status_url, headers=poll_headers, method="GET")
+                    s = urllib.request.urlopen(sreq, timeout=TIMEOUT, context=_SSL_CTX)
+                    st = json.loads(s.read().decode("utf-8") or "{}")
+                except Exception as e:
+                    print(f"send.py: poll error ({e}) — retrying", file=sys.stderr)
+                    time.sleep(1.0)
+                    continue
+                if st.get("complete"):
+                    print(f"send.py: all rolls received.", file=sys.stderr)
+                    for line in st.get("results") or []:
+                        print(line, flush=True)
+                    break
+                remaining = st.get("pending") or []
+                if remaining != last_pending:
+                    print(f"send.py: still waiting on: {', '.join(remaining)}", file=sys.stderr)
+                    last_pending = list(remaining)
+                time.sleep(0.5)
+            else:
+                print(f"send.py: timeout after {args.wait_timeout}s — still pending: "
+                      f"{', '.join(last_pending)}", file=sys.stderr)
+                sys.exit(2)
 
 
 def main() -> None:
@@ -654,90 +814,32 @@ def main() -> None:
     # Award flags (--inspiration-*/--xp-*/--milestone-*) fall into category 2:
     # reading piped stdin under the isatty() gate lets bundled narration flow
     # through to the text-send block while bare award calls don't block.
-    # ── Dice request (DM → phones) — broadcast + optional blocking wait ──────
-    if args.dice_request:
-        # Comma-split character list so the DM can address multiple players at once,
-        # e.g. --character "Piper,Mira,Aldric"  → all three must roll before --wait returns.
-        chars = [c.strip() for c in (args.character or "any").split(",") if c.strip()] or ["any"]
-        body = {
-            "characters": chars,
-            "spec": args.spec,
-            "modifier": args.modifier,
-            "advantage": args.advantage,
-        }
-        if args.label: body["label"] = args.label
-        if args.dc is not None: body["dc"] = args.dc
-        _token = _read_token()
-
-        # Direct urllib call (rather than _post) because we need the JSON response body.
-        headers = {"Content-Type": "application/json"}
-        if _token: headers["X-DND-Token"] = _token
-        try:
-            req = urllib.request.Request(
-                DICE_REQ_URL, data=json.dumps(body).encode(),
-                headers=headers, method="POST",
-            )
-            resp = urllib.request.urlopen(req, timeout=TIMEOUT, context=_SSL_CTX)
-            resp_body = json.loads(resp.read().decode("utf-8") or "{}")
-        except Exception as e:
-            print(f"send.py: dice-request failed: {e}", file=sys.stderr)
-            sys.exit(1)
-
-        request_id = resp_body.get("request_id", "")
-        pending    = list(resp_body.get("pending") or [])
-        # Machine-readable on stdout so callers can correlate (cancel, log, etc.).
-        # flush=True because Python block-buffers stdout when redirected, and
-        # callers want the id immediately to dispatch rolls / cancellation.
-        print(request_id, flush=True)
-
-        if args.wait:
-            if not pending:
-                # "any" targets aren't tracked, so --wait is a no-op there.
-                print(f"send.py: --wait with no trackable characters (target={chars}) — nothing to wait for.",
-                      file=sys.stderr)
-            else:
-                status_url = f"{DICE_REQ_URL}/{request_id}"
-                poll_headers = {"X-DND-Token": _token} if _token else {}
-                deadline = time.time() + max(1, args.wait_timeout)
-                last_pending: list = list(pending)
-                print(f"send.py: waiting for rolls from: {', '.join(pending)}", file=sys.stderr)
-                while time.time() < deadline:
-                    try:
-                        sreq = urllib.request.Request(status_url, headers=poll_headers, method="GET")
-                        s = urllib.request.urlopen(sreq, timeout=TIMEOUT, context=_SSL_CTX)
-                        st = json.loads(s.read().decode("utf-8") or "{}")
-                    except Exception as e:
-                        print(f"send.py: poll error ({e}) — retrying", file=sys.stderr)
-                        time.sleep(1.0)
-                        continue
-                    if st.get("complete"):
-                        print(f"send.py: all rolls received.", file=sys.stderr)
-                        for line in st.get("results") or []:
-                            print(line, flush=True)
-                        break
-                    remaining = st.get("pending") or []
-                    if remaining != last_pending:
-                        print(f"send.py: still waiting on: {', '.join(remaining)}", file=sys.stderr)
-                        last_pending = list(remaining)
-                    time.sleep(0.5)
-                else:
-                    print(f"send.py: timeout after {args.wait_timeout}s — still pending: "
-                          f"{', '.join(last_pending)}", file=sys.stderr)
-                    sys.exit(2)
-
-        # If no other action requested, exit clean (don't fall through to stdin read).
+    _has_content_flag = bool(args.player or args.npc or args.dice or args.tutor or args.action)
+    # Plain narration piped with --dice-request goes out first, so the table hears the DC and the
+    # stake before the phones ask for the roll.
+    narration_first = bool(args.dice_request) and not _has_content_flag
+    if args.dice_request and not narration_first:
+        _dice_request(args)
         _other = (args.player or args.npc or args.dice or args.tutor or args.action
                   or args.inspiration_award or args.inspiration_spend
                   or args.milestone_award or args.milestone_spend or args.xp_award
                   or args.verify)
         if not _other:
             return
-
-    _has_content_flag = bool(args.player or args.npc or args.dice or args.tutor or args.action)
     if _has_content_flag:
         text = sys.stdin.read()
+    elif narration_first:
+        text = _waiting_stdin()
     else:
         text = "" if sys.stdin.isatty() else sys.stdin.read()
+    if _has_content_flag or args.opener:
+        blocks = _flag_block(args, text)
+    else:
+        try:
+            blocks = parse_blocks(text)
+        except ValueError as error:
+            print(f"send.py: {error}", file=sys.stderr)
+            sys.exit(2)
     token = _read_token()
 
     # ── Inspiration award/spend ──────────────────────────────────────────────
@@ -814,7 +916,8 @@ def main() -> None:
         sys.exit(2)
 
     if not (_has_content_flag or args.opener):
-        ending = bare_question_ending(text)
+        narration = [b["text"] for b in blocks if b["kind"] is None]
+        ending = bare_question_ending(narration[-1]) if narration else None
         if ending:
             print(f"send.py: warning: the narration ends on a bare question ({ending!r}). "
                   "End the turn on something in motion: a person who wants something now, "
@@ -822,29 +925,27 @@ def main() -> None:
 
     # ── Text send ─────────────────────────────────────────────────────────────
     chunks_sent = 0
-    if text.strip():
-        chunks = _split_paragraphs(text)
-        for chunk in chunks:
+    # The scene cue rides on the first narration, never on the player's echoed action.
+    music_from = next((i for i, b in enumerate(blocks) if b["kind"] is None), 0)
+    music_pending = bool(music_id)
+    for index, block in enumerate(blocks):
+        kind = block["kind"]
+        for chunk in _split_paragraphs(block["text"]):
             payload: dict = {"text": chunk}
-            if music_id and chunks_sent == 0:
+            with_music = music_pending and index >= music_from
+            if with_music:
                 payload["music"] = {"event": music_event.replace("-", "_"),
                                     "id": music_id, "setting": music_setting}
                 if music_mood is not None:
                     payload["music"]["mood"] = music_mood
                 if scene:
                     payload["music"]["scene"] = scene.to_dict()
-            if args.action:
-                payload["action"] = args.action
-            elif args.player:
-                payload["player"] = args.player
-            elif args.npc:
-                payload["npc"] = args.npc
-                if args.npc_voice:
-                    payload["npc_voice"] = args.npc_voice.strip()
-            elif args.dice:
-                payload["dice"] = True
-            elif args.tutor:
-                payload["tutor"] = True
+            if kind in ("action", "player", "npc"):
+                payload[kind] = block["name"]
+                if kind == "npc" and block["voice"]:
+                    payload["npc_voice"] = block["voice"]
+            elif kind in ("dice", "tutor"):
+                payload[kind] = True
             elif args.opener:
                 payload["opener"] = True
 
@@ -856,6 +957,7 @@ def main() -> None:
             ok = _post(FLASK_URL, json.dumps(payload).encode("utf-8"), token)
             if ok:
                 chunks_sent += 1
+                music_pending = music_pending and not with_music
 
     if music_event and chunks_sent == 0:
         print("send.py: music cue requires successfully sent narration", file=sys.stderr)
@@ -906,6 +1008,9 @@ def main() -> None:
                   file=sys.stderr)
             sys.exit(4)
 
+
+    if narration_first:
+        _dice_request(args)
 
 if __name__ == "__main__":
     main()
