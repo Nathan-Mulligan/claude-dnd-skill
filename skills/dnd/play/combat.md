@@ -8,7 +8,8 @@ Read once when a fight starts. Commands are shortened as in DM-CORE.md; `X` is t
   - `encounter_state.py start --campaign X --combatants '[{"name":"Nella Reed","type":"pc","dex_mod":0,"hp":12,"ac":14,"attack_bonus":4,"damage":"1d8+2"},{"name":"Bandit","type":"npc","dex_mod":1,"hp":11,"ac":12,"attack_bonus":3,"damage":"1d6+1"}]'`
   - Two or more fixed strikes: `"attacks":[{"name":"Claw","attack_bonus":4,"damage":"1d6+2"},{"name":"Bite","attack_bonus":3,"damage":"1d4+1"}]` in place of `attack_bonus` and `damage`. Only strikes the sheet or brief grants.
   - Each turn: `encounter_state.py attack --campaign X --token '<turn_token>' --target '<name>'`, or `pass --campaign X --token '<turn_token>'`. Use each token once and narrate from the saved result.
-  - After a restart, `encounter_state.py status --campaign X` before anything else. When one side is down: `push_stats.py --turn-clear`, then `encounter_state.py archive --campaign X`.
+  - After a restart, `encounter_state.py status --campaign X` before anything else. When one side is down: `encounter_state.py archive --campaign X`.
+  - A fight that ends by flight, surrender or a deal can't be archived (archive needs one side down). Move `<campaign>/encounter.json` into `<campaign>/encounters/` by hand, named like the others there, so the next fight can start.
 - Anything else (spells, reactions, Sneak Attack, Action Surge, conditional damage) is manual: `combat.py init '<JSON>'` for initiative, `push_stats.py --turn-order '{"order":[...],"current":"NAME","round":1}'`, the state JSON under `## Active Combat`, and `dice.py` for each roll.
 - Monster stats: `lookup.py monster "<name>"`. Never invent a stat block when the lookup has one.
 
@@ -23,4 +24,5 @@ Read once when a fight starts. Commands are shortened as in DM-CORE.md; `X` is t
 ## After the fight
 - Narrate the aftermath in one call with `--music-event combat-end`.
 - Award combat XP in the bookkeeping call: `xp.py award --campaign X --characters "A,B" --difficulty easy|medium|hard|deadly --type combat [--monsters "bandit:1/8:2"] --note "..."`, then `send.py --xp-award '<json>'`.
+- Clear the display's turn order with `push_stats.py --turn-clear`, whichever way the fight ran.
 - Update the sheets' HP if `encounter_state.py` didn't, then `push_stats.py --party X`. Clear `## Active Combat` and run `tracker.py -c X clear`.

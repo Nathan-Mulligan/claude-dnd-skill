@@ -197,3 +197,21 @@ def test_a_fight_on_the_road_names_only_the_combat_file(fenmoor):
     line = next(p for p in card(fenmoor, "On the road two men step out; Corin draws his dagger and stabs the nearer one.")
                 .split(" | ") if p.startswith("Situation"))
     assert "combat.md" in line and "travel.md" not in line
+
+
+@pytest.mark.parametrize("said,situation", [
+    ("How much do you charge for a room?", "trade"),
+    ("We strike a bargain with the miller.", None),
+    ("We head to the market and look around.", "travel"),
+    ("Corin charges at the bandit.", "combat"),
+])
+def test_the_card_does_not_mistake_ordinary_words_for_a_fight(fenmoor, said, situation):
+    line = next((p for p in card(fenmoor, said).split(" | ") if p.startswith("Situation")), "")
+    assert (situation is None and not line) or f"play/{situation}.md" in line
+
+
+@pytest.mark.parametrize("combat", ["No active combat.", "- None", "*(none)*",
+                                    "**Status:** Finished in round 3. Bandits fled."])
+def test_a_closed_fight_in_the_state_is_not_an_open_one(fenmoor, combat):
+    edit_state(fenmoor, "## Active Combat\nNone.", f"## Active Combat\n{combat}")
+    assert "combat.md" not in card(fenmoor, "Corin asks Rosa how her daughter is.")
