@@ -640,12 +640,14 @@ def road_day(rng=None, pacing: str = "mixed", context=None, recent=(), journey=(
     return day
 
 
-def roll_road(days: int, rng=None, context=None, recent=(), party=None, first_day=None) -> list:
-    """`first_day` is the day number of the first travel day; without one, this call is the whole journey."""
+def roll_road(days: int, rng=None, context=None, recent=(), party=None, first_day=None, earlier=()) -> list:
+    """`first_day` is the day number of the first travel day; without one, this call (with `earlier`, days
+    already used on it) is the whole journey."""
     rng = rng or random.Random()
     context = context or {}
     recent = list(recent)
-    journey = _journey(recent, first_day, first_day + days - 1 if first_day is not None else None)
+    journey = (_journey(recent, first_day, first_day + days - 1) if first_day is not None
+               else [_log_entry(d) for d in earlier])
     rolled = []
     for i in range(days):
         number = first_day + i if first_day is not None else None
@@ -830,7 +832,7 @@ def campaign_road(folder, days: int, rng=None, start=None) -> list:
             rolled.append(day)
         rolled += roll_road(days - len(rolled), rng=rng, context=context,
                             recent=log + [_log_entry(d) for d in rolled], party=read_party(folder),
-                            first_day=first + len(rolled) if first is not None else None)
+                            first_day=first + len(rolled) if first is not None else None, earlier=rolled)
         log += [_log_entry(d) for d in rolled]
         _write_atomic(folder / ROAD_LOG, json.dumps(log[-ROAD_LOG_KEEP:], indent=2, ensure_ascii=False) + "\n")
         later = isinstance(date, list) and isinstance(kept and kept.get("for"), list) and kept["for"] > date

@@ -387,3 +387,15 @@ def test_a_calendar_without_month_names_still_dates_its_clocks():
     cal = {"day": 9, "month": 1, "year": 900, "months": [], "month_length": 30}
     assert oracle.date_number("12 Month 1 900", cal) == oracle.day_number({**cal, "day": 12})
     assert oracle.date_number("3 Month 2", cal) == oracle.day_number({**cal, "day": 3, "month": 2})
+
+
+def test_without_a_calendar_a_used_prepared_hazard_still_caps_the_call(tmp_path):
+    folder = tmp_path / "campaigns" / "Roadstory"
+    folder.mkdir(parents=True)
+    (folder / "state.md").write_text(state(), encoding="utf-8")
+    for seed in range(60):
+        (folder / oracle.ROAD_LOG).unlink(missing_ok=True)
+        (folder / oracle.ROAD_NEXT).write_text(json.dumps({"for": None, "day": {
+            "kind": "discovery", "text": "Tracks.", "guidance": "Choose.", "prep": f"p{seed}"}}), encoding="utf-8")
+        rolled = oracle.campaign_road(folder, 4, rng=random.Random(seed))
+        assert rolled[0]["prep"] == f"p{seed}" and sum(d["kind"] in HAZARDS for d in rolled) == 1, seed

@@ -259,4 +259,3 @@ def test_skill_files_keep_the_sidebar_lists_in_state_md_not_in_pushes():
     assert "- **Short name** (active|threat|resolved|failed)" in load
     assert "- **Faction**: Standing" in load
     assert "--factions" not in load.split("push_stats.py --party", 1)[1].split("```", 1)[0]
-
