@@ -561,9 +561,7 @@ def _read_road_log(folder) -> list:
 
 
 def _write_atomic(path, text: str) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    npc_entries.write_atomic(path, text)
 
 
 def calendar_day(cal) -> "list | None":
@@ -589,14 +587,17 @@ def road_lock(folder):
     if fcntl is None or key in _HELD or not os.path.isdir(key):
         yield
         return
-    with open(os.path.join(key, ROAD_LOCK), "a", encoding="utf-8") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+    fd = npc_entries.open_lock(os.path.join(key, ROAD_LOCK))
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
         _HELD.add(key)
         try:
             yield
         finally:
             _HELD.discard(key)
-            fcntl.flock(handle, fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def _road_context(folder) -> dict:
