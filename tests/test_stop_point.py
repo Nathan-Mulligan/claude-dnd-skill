@@ -39,7 +39,7 @@ def test_wrap_up_keeps_the_last_exchanges_verbatim_and_the_resumed_dm_reads_them
     root = fenmoor.parent.parent
     turns = exchanges(6) + [{"who": "DM", "text": "Rosa slides the ledger across. Wren, roll Insight."}]
     result = stop_point(root, "write", "--campaign", "Fenmoor",
-                        "--where", "In Rosa’s bakery, Brinewick, morning of 16 Leaffall; Rosa has just shown the ledger.",
+                        "--where", "In Rosa's bakery, Brinewick, morning of 16 Leaffall; Rosa has just shown the ledger.",
                         "--waiting", "Wren's Insight roll on Rosa (DC 13)", stdin=json.dumps(turns))
     assert result.returncode == 0, result.stderr
     text = (fenmoor / "session-tail.md").read_text(encoding="utf-8")
