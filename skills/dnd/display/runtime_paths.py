@@ -66,9 +66,9 @@ def log_line(path: str, msg: str) -> None:
         fd = _open_no_link(path, os.O_WRONLY | os.O_APPEND)
     except OSError:
         return
-    with os.fdopen(fd, "a", encoding="utf-8") as f:
-        try:
+    try:
+        with os.fdopen(fd, "a", encoding="utf-8") as f:  # the write is buffered: a full disk fails at close
             if os.fstat(fd).st_nlink == 1:
                 f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
-        except OSError:
-            pass
+    except OSError:
+        pass
