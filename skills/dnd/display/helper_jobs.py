@@ -1,24 +1,26 @@
-"""helper_jobs.py — start the background helpers from the display server, outside the DM's sandbox.
+"""helper_jobs.py — run the background helpers in the display server, outside the DM's sandbox.
 
 Why
   A Codex DM runs in a sandbox, and every process it starts stays inside it. The Codex CLI
   cannot start there, so a helper the DM's scripts started themselves always failed. The
-  display server is started by the launcher, never inside the DM, so it starts them instead.
+  display server is started by the launcher, never inside the DM, so it runs them instead.
 
 How it runs
   A script the DM runs calls `request(kind)`, which leaves an empty file in
-  runtime/helper-jobs/. The display calls `run_due()` every POLL_S seconds and starts each
-  requested helper as `<script> --run`, one at a time per kind. A request made while that kind
-  is running stays until it has finished, then starts it again, so no change is missed.
+  runtime/helper-jobs/. The display calls `start()` once; from then on it checks every POLL_S
+  seconds and runs each requested helper on its own thread, one at a time per kind. A request
+  made while that kind is running stays until it has finished, then runs it again, so no
+  change is missed.
 
 Rules
-  * Only the scripts in HELPERS can start, always with `--run` alone. A request file's
-    contents are never read, so the DM cannot choose what runs or pass it anything.
-  * Each helper reads its own work from the runtime dir and keeps its own log
-    (runtime/<kind>.log). A helper that cannot start is logged there; nothing is raised.
+  * The display runs the helper code it loaded when it started. The DM can edit the files in
+    its sandbox, so a helper is never loaded or started from them again while the display runs.
+  * Only the helpers `start()` lists can run, with no arguments. A request file's contents
+    are never read.
+  * The DM can also place links in the runtime dir, so nothing here writes through one.
+  * Each helper keeps its own log (runtime/<kind>.log); nothing is raised.
 """
 import os
-import subprocess
 import sys
 import threading
 import time
@@ -26,67 +28,62 @@ import time
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-from runtime_paths import rt  # noqa: E402
+from runtime_paths import log_line, rt, touch  # noqa: E402
 
-HELPERS = {"lore_sync": os.path.join(_HERE, "lore_sync.py")}
+KINDS = ("lore_sync",)
 POLL_S = 1.0
 
-_running: "dict[str, subprocess.Popen]" = {}
+_running: "dict[str, threading.Thread]" = {}
 
 
-def _request_path(kind: str) -> str:
-    return os.path.join(rt("helper-jobs"), kind)
+def _folder() -> str:
+    return rt("helper-jobs")
 
 
 def request(kind: str) -> None:
-    """Ask the display to run this helper. Raises OSError when the runtime dir can't be written."""
-    if kind not in HELPERS:
+    """Ask the display to run this helper. Raises OSError when the request can't be written."""
+    if kind not in KINDS:
         raise ValueError(f"unknown helper {kind!r}")
-    os.makedirs(rt("helper-jobs"), exist_ok=True)
-    with open(_request_path(kind), "a", encoding="utf-8"):
-        pass
+    os.makedirs(_folder(), exist_ok=True)
+    touch(os.path.join(_folder(), kind))
 
 
-def _log(kind: str, msg: str) -> None:
-    try:
-        with open(rt(f"{kind}.log"), "a", encoding="utf-8") as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
-    except OSError:
-        pass
-
-
-def run_due() -> None:
-    """Start every requested helper that isn't already running."""
-    for kind, script in HELPERS.items():
-        proc = _running.get(kind)
-        if proc is not None and proc.poll() is None:
+def run_due(helpers: dict) -> None:
+    """Start every requested helper in `helpers` ({kind: function}) that isn't already running."""
+    if os.path.islink(_folder()):
+        return
+    for kind, run in helpers.items():
+        thread = _running.get(kind)
+        if thread is not None and thread.is_alive():
             continue
         _running.pop(kind, None)
         try:
-            os.unlink(_request_path(kind))  # before the start, so a later request means a later run
+            os.unlink(os.path.join(_folder(), kind))  # before the run, so a later request means a later run
         except FileNotFoundError:
             continue
         except OSError as e:
-            _log(kind, f"could not take the request for {kind}: {type(e).__name__}: {e}")
+            log_line(rt(f"{kind}.log"), f"could not take the request for {kind}: {type(e).__name__}")
             continue
-        try:
-            _running[kind] = subprocess.Popen(
-                [sys.executable, script, "--run"],
-                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True, close_fds=True)
-        except Exception as e:  # noqa: BLE001 — the display must keep serving
-            _log(kind, f"could not start {kind}: {type(e).__name__}: {e}")
+        thread = threading.Thread(target=run, daemon=True, name=f"dnd-helper-{kind}")
+        _running[kind] = thread
+        thread.start()
 
 
-def _loop() -> None:
+def _helpers() -> dict:
+    import lore_sync
+    import push_stats  # noqa: F401 — lore_sync imports it on its first run; load it now instead
+    return {"lore_sync": lore_sync.run_and_log}
+
+
+def _loop(helpers: dict) -> None:
     while True:
         try:
-            run_due()
-        except Exception:  # noqa: BLE001
+            run_due(helpers)
+        except Exception:  # noqa: BLE001 — the display must keep serving
             pass
         time.sleep(POLL_S)
 
 
 def start() -> None:
-    """Run requested helpers in the background for as long as this process lives."""
-    threading.Thread(target=_loop, daemon=True, name="dnd-helper-jobs").start()
+    """Load the helpers now and run requested ones for as long as this process lives."""
+    threading.Thread(target=_loop, args=(_helpers(),), daemon=True, name="dnd-helper-jobs").start()

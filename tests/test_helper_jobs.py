@@ -1,8 +1,9 @@
 """Background helpers run outside the DM's sandbox: scripts the DM runs only leave a request,
-and the display server starts the helper."""
+and the display server runs the helper it loaded at start."""
 import importlib.util
+import os
 import sys
-import time
+import threading
 from pathlib import Path
 
 import pytest
@@ -21,36 +22,41 @@ def _load(name):
 
 helper_jobs = _load("helper_jobs")
 lore_sync = _load("lore_sync")
+runtime_paths = _load("runtime_paths")
 
 
-class FakeProc:
+class Helper:
+    """A helper that records each run and holds until released."""
+
     def __init__(self):
-        self.code = None
+        self.runs, self.release = 0, threading.Event()
 
-    def poll(self):
-        return self.code
+    def __call__(self):
+        self.runs += 1
+        self.release.wait(5)
+
+    def finish(self):
+        self.release.set()
+        for thread in list(helper_jobs._running.values()):
+            thread.join(5)
+        self.release.clear()
 
 
 @pytest.fixture
 def jobs(monkeypatch, tmp_path):
     monkeypatch.setattr(helper_jobs, "rt", lambda name: str(tmp_path / name))
     monkeypatch.setattr(helper_jobs, "_running", {})
-    started = []
-
-    def popen(cmd, **kwargs):
-        proc = FakeProc()
-        started.append((cmd, kwargs, proc))
-        return proc
-    monkeypatch.setattr(helper_jobs.subprocess, "Popen", popen)
-    return tmp_path, started
+    helper = Helper()
+    yield tmp_path, helper
+    helper.release.set()
 
 
-def test_request_leaves_a_file_and_starts_nothing(jobs):
-    tmp, started = jobs
+def test_request_leaves_a_file_and_runs_nothing(jobs):
+    tmp, helper = jobs
     helper_jobs.request("lore_sync")
     helper_jobs.request("lore_sync")  # asking twice is one request
     assert [p.name for p in (tmp / "helper-jobs").iterdir()] == ["lore_sync"]
-    assert started == []
+    assert helper.runs == 0
 
 
 def test_unknown_helper_cannot_be_requested(jobs):
@@ -58,72 +64,104 @@ def test_unknown_helper_cannot_be_requested(jobs):
         helper_jobs.request("../../bin/sh")
 
 
-def test_runner_starts_a_requested_helper_once(jobs):
-    tmp, started = jobs
-    helper_jobs.run_due()
-    assert started == []
+def test_runner_runs_a_requested_helper_once(jobs):
+    tmp, helper = jobs
+    helpers = {"lore_sync": helper}
+    helper_jobs.run_due(helpers)
+    assert helper.runs == 0
     helper_jobs.request("lore_sync")
-    helper_jobs.run_due()
-    helper_jobs.run_due()
-    assert len(started) == 1
-    cmd, kwargs, _ = started[0]
-    assert cmd == [sys.executable, str(DISPLAY / "lore_sync.py"), "--run"]
-    assert kwargs["start_new_session"] is True and kwargs["stdin"] is helper_jobs.subprocess.DEVNULL
+    helper_jobs.run_due(helpers)
+    helper_jobs.run_due(helpers)
+    helper.finish()
+    assert helper.runs == 1
     assert not (tmp / "helper-jobs" / "lore_sync").exists()
 
 
 def test_request_while_running_waits_then_runs_again(jobs):
-    _, started = jobs
+    _, helper = jobs
+    helpers = {"lore_sync": helper}
     helper_jobs.request("lore_sync")
-    helper_jobs.run_due()
+    helper_jobs.run_due(helpers)
     helper_jobs.request("lore_sync")  # the DM pushes again while the first pass is busy
-    helper_jobs.run_due()
-    assert len(started) == 1
-    started[0][2].code = 0
-    helper_jobs.run_due()
-    assert len(started) == 2
-    started[1][2].code = 1
-    helper_jobs.run_due()
-    assert len(started) == 2  # nothing new was asked for
+    helper_jobs.run_due(helpers)
+    assert helper.runs == 1
+    helper.finish()
+    helper_jobs.run_due(helpers)
+    helper.finish()
+    assert helper.runs == 2
+    helper_jobs.run_due(helpers)
+    helper.finish()
+    assert helper.runs == 2  # nothing new was asked for
 
 
 def test_only_listed_helpers_run_whatever_the_folder_holds(jobs):
-    tmp, started = jobs
+    tmp, helper = jobs
     folder = tmp / "helper-jobs"
     folder.mkdir()
     (folder / "evil").write_text("rm -rf ~", encoding="utf-8")
     (folder / "lore_sync").write_text("--anything /etc/passwd", encoding="utf-8")
-    helper_jobs.run_due()
-    assert [cmd for cmd, _, _ in started] == [[sys.executable, str(DISPLAY / "lore_sync.py"), "--run"]]
+    helper_jobs.run_due({"lore_sync": helper})
+    helper.finish()
+    assert helper.runs == 1
+    assert (folder / "evil").exists()
 
 
-def test_a_helper_that_cannot_start_is_logged_not_raised(jobs, monkeypatch):
+def test_display_runs_the_helper_code_it_loaded_at_start():
+    helpers = helper_jobs._helpers()
+    assert set(helpers) == set(helper_jobs.KINDS)
+    run = helpers["lore_sync"]
+    assert run.__name__ == "run_and_log" and Path(run.__code__.co_filename).name == "lore_sync.py"
+    assert "push_stats" in sys.modules  # lore_sync's lazy import is already done
+
+
+def test_display_server_starts_the_runner():
+    source = (DISPLAY / "dnd-display-app.py").read_text(encoding="utf-8")
+    main = source[source.index('if __name__ == "__main__":'):]
+    assert "helper_jobs.start()" in main
+
+
+# ── nothing outside the runtime dir is written through a link the DM placed ──
+
+def test_a_linked_request_folder_is_ignored(jobs, tmp_path):
+    tmp, helper = jobs
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "lore_sync").write_text("keep me", encoding="utf-8")
+    (tmp / "helper-jobs").symlink_to(outside)
+    helper_jobs.run_due({"lore_sync": helper})
+    assert helper.runs == 0
+    assert (outside / "lore_sync").read_text(encoding="utf-8") == "keep me"
+
+
+def test_a_request_is_never_written_through_a_link(jobs, tmp_path):
     tmp, _ = jobs
+    (tmp / "helper-jobs").mkdir()
+    target = tmp_path / "elsewhere"
+    (tmp / "helper-jobs" / "lore_sync").symlink_to(target)
+    with pytest.raises(OSError):
+        helper_jobs.request("lore_sync")
+    assert not target.exists()
 
-    def broken(*a, **k):
-        raise OSError("no python")
-    monkeypatch.setattr(helper_jobs.subprocess, "Popen", broken)
-    helper_jobs.request("lore_sync")
-    helper_jobs.run_due()
-    assert "could not start lore_sync: OSError: no python" in (tmp / "lore_sync.log").read_text(encoding="utf-8")
+
+def test_log_line_never_writes_through_a_link(tmp_path):
+    target = tmp_path / "config.toml"
+    target.write_text("model = 'x'\n", encoding="utf-8")
+    (tmp_path / "soft.log").symlink_to(target)
+    os.link(target, tmp_path / "hard.log")
+    runtime_paths.log_line(str(tmp_path / "soft.log"), "injected")
+    runtime_paths.log_line(str(tmp_path / "hard.log"), "injected")
+    assert target.read_text(encoding="utf-8") == "model = 'x'\n"
+    runtime_paths.log_line(str(tmp_path / "plain.log"), "written")
+    assert (tmp_path / "plain.log").read_text(encoding="utf-8").endswith(" written\n")
 
 
-def test_runner_really_starts_the_helper_script(monkeypatch, tmp_path):
-    script = tmp_path / "fake_helper.py"
-    out = tmp_path / "ran.txt"
-    script.write_text(
-        "import pathlib, sys\n"
-        f"pathlib.Path({str(out)!r}).write_text(' '.join(sys.argv[1:]), encoding='utf-8')\n",
-        encoding="utf-8")
-    monkeypatch.setattr(helper_jobs, "rt", lambda name: str(tmp_path / name))
-    monkeypatch.setattr(helper_jobs, "_running", {})
-    monkeypatch.setitem(helper_jobs.HELPERS, "lore_sync", str(script))
-    helper_jobs.request("lore_sync")
-    helper_jobs.run_due()
-    deadline = time.monotonic() + 10
-    while not out.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-    assert out.read_text(encoding="utf-8") == "--run"
+def test_busy_flag_is_never_written_through_a_link(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
+    (tmp_path / "lore_sync.lock").touch()
+    target = tmp_path / "elsewhere"
+    (tmp_path / "lore_sync.pending").symlink_to(target)
+    assert lore_sync.run(settle_s=0) == "busy"
+    assert not target.exists()
 
 
 # ── lore_sync asks; the display runs ─────────────────────────────────────────
@@ -156,7 +194,11 @@ def test_kick_never_raises_when_the_request_cannot_be_written(lore_env):
     assert "kick failed" in (lore_env / "lore_sync.log").read_text(encoding="utf-8")
 
 
-def test_display_server_runs_the_helper_jobs():
-    source = (DISPLAY / "dnd-display-app.py").read_text(encoding="utf-8")
-    main = source[source.index('if __name__ == "__main__":'):]
-    assert "helper_jobs.start()" in main
+def test_run_and_log_records_a_failed_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
+
+    def broken():
+        raise OSError("display down")
+    monkeypatch.setattr(lore_sync, "run", broken)
+    lore_sync.run_and_log()
+    assert "run failed: OSError: display down" in (tmp_path / "lore_sync.log").read_text(encoding="utf-8")
