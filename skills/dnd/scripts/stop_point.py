@@ -5,12 +5,13 @@
       Reads the last exchanges as JSON on stdin, [{"who": "Players", "text": "..."}, ...],
       oldest first, and writes <campaign>/session-tail.md with the last eight, verbatim.
   stop_point.py show --campaign X
-      Prints that note. Without one, prints the last eight entries of the display's
-      session_tail.json instead.
+      Prints that note, plus any display lines shown after it was written. Without a note,
+      prints the last eight entries of the display's session_tail.json instead.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -21,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from paths import campaigns_dir  # noqa: E402
 
 HEADING = "# Where we stopped"
+MARK = "<!-- display-mark: "
 KEEP = 8
 TEXT_LIMIT = 3000
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -58,11 +60,32 @@ def render(where: str, waiting: str, turns: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def display_entries(folder: Path) -> list[dict]:
+    try:
+        entries = json.loads((folder / "session_tail.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return [entry for entry in (entries if isinstance(entries, list) else [])
+            if isinstance(entry, dict) and isinstance(entry.get("text"), str) and entry["text"].strip()]
+
+
+def fingerprint(entry: dict) -> str:
+    return hashlib.sha256(json.dumps(entry, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def as_turns(entries: list[dict]) -> list[dict]:
+    return [{"who": str(entry.get("player") or entry.get("npc") or ("Dice" if entry.get("dice") else "DM")),
+             "text": entry["text"]} for entry in entries[-KEEP:]]
+
+
 def write(folder: Path, where: str, waiting: str, raw: str) -> None:
     where = one_line(where)
     if not where:
         raise SystemExit("--where needs one line saying where play stopped.")
     text = render(where, one_line(waiting) or "nothing", read_exchanges(raw))
+    shown = display_entries(folder)
+    if shown:
+        text += f"{MARK}{fingerprint(shown[-1])} -->\n"
     target = folder / "session-tail.md"
     temporary = target.with_suffix(".md.writing")
     temporary.write_text(text, encoding="utf-8")
@@ -70,18 +93,21 @@ def write(folder: Path, where: str, waiting: str, raw: str) -> None:
     print(f"Saved where play stopped to {target}.")
 
 
-def display_tail(folder: Path) -> list[dict]:
-    try:
-        entries = json.loads((folder / "session_tail.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    turns = []
-    for entry in entries if isinstance(entries, list) else []:
-        if not isinstance(entry, dict) or not isinstance(entry.get("text"), str) or not entry["text"].strip():
-            continue
-        who = entry.get("player") or entry.get("npc") or ("Dice" if entry.get("dice") else "DM")
-        turns.append({"who": str(who), "text": entry["text"]})
-    return turns[-KEEP:]
+def since(text: str, entries: list[dict]) -> str:
+    """Display lines shown after the note was written, e.g. when a DM stopped without saving."""
+    mark = re.search(re.escape(MARK) + r"([0-9a-f]{16}) -->", text)
+    if not mark or not entries:
+        return ""
+    prints = [fingerprint(entry) for entry in entries]
+    if mark.group(1) in prints:
+        newer = entries[len(prints) - prints[::-1].index(mark.group(1)):]
+        heading = "## Since then, the display showed (newer than the note above; trust these)"
+    else:
+        newer = entries
+        heading = "## Since then, the display moved on past its last thirty lines; the latest (trust these)"
+    if not newer:
+        return ""
+    return "\n".join([heading, ""] + [f"**{turn['who']}:** {turn['text'].strip()[:TEXT_LIMIT]}\n" for turn in as_turns(newer)])
 
 
 def show(folder: Path) -> str:
@@ -89,12 +115,13 @@ def show(folder: Path) -> str:
         text = (folder / "session-tail.md").read_text(encoding="utf-8")
     except OSError:
         text = ""
+    entries = display_entries(folder)
     if text.startswith(HEADING + "\n"):
-        return text
-    turns = display_tail(folder)
-    if not turns:
+        newer = since(text, entries)
+        return text + ("\n" + newer if newer else "")
+    if not entries:
         return "No stop point saved. Rebuild the moment from state.md's Recent Events and Current Situation.\n"
-    return render("Not recorded; these are the last lines the display showed.", "not recorded", turns)
+    return render("Not recorded; these are the last lines the display showed.", "not recorded", as_turns(entries))
 
 
 def main() -> None:

@@ -664,6 +664,7 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
                     previous: dict, identity: str, token: str, onboarding: dict | None = None,
                     effort: str = DEFAULT_EFFORT, close: bool = False) -> None:
     """Have the running DM save, verify the files, then stop it and start the next DM (or none, on close)."""
+    action = "close" if close else "switch"
     stopped = False
     leased = False
     request_path = ack_path = None
@@ -720,25 +721,27 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             if ack.get("files") != checkpoint_files(old_campaign, requested_at_ns):
                 raise ValueError("Campaign files changed after the save was confirmed. Save again")
             if not close:
-                set_handoff("starting", "Campaign saved. Starting a fresh DM…", campaign=name, provider=provider)
+                set_handoff("starting", "Campaign saved. Starting a fresh DM…", campaign=name, provider=provider,
+                            action=action)
             result = run("tmux", "kill-session", "-t", identity)
             if result.returncode:
                 raise ValueError("Could not close the saved DM session")
             stopped = True
             if close:
                 set_handoff("complete", "Session saved and the DM closed. Resume the campaign to start a fresh DM.",
-                            campaign=name, provider=provider)
+                            campaign=name, provider=provider, action=action)
                 return
             if running():
                 raise ValueError("Another DM session is active; the replacement was not started")
             ok, message = start_session(provider, mode, name, description, onboarding, effort)
             if not ok:
                 raise ValueError(message)
-        set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider)
+        set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider,
+                    action=action)
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         suffix = (" Your campaign is saved. Reopen it to try the new DM again." if stopped else
                   " The DM was left running." if close else " The original DM was not stopped.")
-        set_handoff("failed", str(error) + suffix, campaign=name, provider=provider)
+        set_handoff("failed", str(error) + suffix, campaign=name, provider=provider, action=action)
     finally:
         if leased:
             notify_display("/campaign-handoff", {"campaign": previous["campaign"], "token": token, "active": False})
@@ -875,7 +878,7 @@ def create_app() -> Flask:
             if error:
                 return jsonify(ok=False, message=error), 409
             token = secrets.token_hex(16)
-            set_handoff("saving", SAVING_MESSAGE, campaign=name, provider=provider)
+            set_handoff("saving", SAVING_MESSAGE, campaign=name, provider=provider, action="switch")
             worker = threading.Thread(target=perform_handoff,
                                       args=(provider, mode, name, description, previous, identity, token, onboarding, effort),
                                       daemon=True, name="dnd-model-handoff")
@@ -897,7 +900,7 @@ def create_app() -> Flask:
             if queued_party_input():
                 return jsonify(ok=False, message="A party reply is still queued. Let the DM answer it, then save and close."), 409
             name, provider = previous["campaign"], previous["provider"]
-            set_handoff("saving", CLOSING_MESSAGE, campaign=name, provider=provider)
+            set_handoff("saving", CLOSING_MESSAGE, campaign=name, provider=provider, action="close")
             threading.Thread(target=perform_handoff,
                              args=(provider, "resume", name, "", previous, identity, secrets.token_hex(16)),
                              kwargs={"close": True}, daemon=True, name="dnd-session-close").start()

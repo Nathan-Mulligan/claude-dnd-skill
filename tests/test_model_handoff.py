@@ -529,6 +529,7 @@ def test_save_and_close_starts_a_background_wrap_up(setup, monkeypatch):
     response = api("/api/close")
     assert response.status_code == 202
     assert portal.handoff_state()["status"] == "saving"
+    assert api("/api/state", method="get").json["handoff"]["action"] == "close"
     [(target, args, kwargs)] = workers
     assert target is portal.perform_handoff
     assert args[:5] == ("qwen", "resume", "old", "", previous) and args[5] == "$7"
@@ -552,6 +553,7 @@ def test_save_and_close_wraps_up_then_closes_without_a_new_dm(setup, monkeypatch
     portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
     state = portal.handoff_state()
     assert state["status"] == "complete" and "closed" in state["message"]
+    assert state["action"] == "close"
     assert ("tmux", "kill-session", "-t", "$7") in calls
     assert not alive["value"]
     [prompt] = prompts
@@ -566,7 +568,7 @@ def test_save_and_close_keeps_the_dm_when_the_save_is_not_confirmed(setup, monke
     monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: None)
     portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", "9" * 32, close=True)
     state = portal.handoff_state()
-    assert state["status"] == "failed"
+    assert state["status"] == "failed" and state["action"] == "close"
     assert "left running" in state["message"]
     assert alive["value"]
     assert not any(args[:2] == ("tmux", "kill-session") for args in calls)

@@ -129,7 +129,6 @@
     let initialized = false;
     let busy = false;
     let switching = false;
-    let closingSession = false;
     let keepDisplayDuringSwitch = false;
     let refreshing = false;
     let savingHelper = false;
@@ -260,19 +259,17 @@
         if (handoff.status === 'failed') {
           switching=false;
           busy=false;
-          closingSession=false;
           message(handoff.message || 'The switch could not finish. You can try again.', true);
         } else if (handoff.status === 'complete') {
           switching=false;
           busy=false;
           message(handoff.message || 'Your campaign is ready.');
-          if (closingSession) closingSession=false;
+          if (handoff.action === 'close') updateControls();
           else if (keepDisplayDuringSwitch) closeDialog();
           else enterCampaign();
         } else if (handoff.status === 'idle' || !handoff.status) {
           switching=false;
           busy=false;
-          closingSession=false;
           message('The campaign controls reconnected. Check the current DM, then continue or try the switch again.', true);
         } else message(handoff.message || 'Saving your campaign before switching…');
       }
@@ -313,7 +310,6 @@
     $('save-close').addEventListener('click', async () => {
       if (busy || !state || !state.active) return;
       busy=true;
-      closingSession=true;
       updateControls();
       message('Wrapping up the session, then closing the DM…');
       try {
@@ -321,7 +317,7 @@
         switching=true;
         message(data.message || 'Wrapping up the session, then closing the DM…');
         await refresh();
-      } catch (error) { busy=false; closingSession=false; message(error.message, true); updateControls(); }
+      } catch (error) { busy=false; message(error.message, true); updateControls(); }
     });
     const display = $('display');
     const displayOrigin = new URL(display.src).origin;

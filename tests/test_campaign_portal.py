@@ -608,3 +608,4 @@ def test_portal_page_offers_save_and_close_and_always_reloads_on_resume(client):
     assert 'id="save-close"' in page and "Save &amp; close session" in page
     assert "api('/api/close', 'POST'" in page
     assert "data.continuing" not in page and "Save & reload campaign" in page
+    assert "handoff.action === 'close'" in page and "closingSession" not in page

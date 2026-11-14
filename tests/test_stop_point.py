@@ -90,3 +90,20 @@ def test_bad_input_leaves_the_previous_stop_point_alone(fenmoor, stdin, where):
 def test_unknown_campaign_is_refused(tmp_path):
     result = stop_point(tmp_path, "show", "--campaign", "../escape")
     assert result.returncode != 0
+
+
+def test_display_lines_after_the_stop_point_are_shown_as_newer(fenmoor):
+    root = fenmoor.parent.parent
+    tail = [{"text": "Rosa slides the ledger across. Wren, roll Insight."}]
+    (fenmoor / "session_tail.json").write_text(json.dumps(tail), encoding="utf-8")
+    turns = [{"who": "DM", "text": "Rosa slides the ledger across. Wren, roll Insight."}]
+    assert stop_point(root, "write", "--campaign", "Fenmoor", "--where", "At the bakery.",
+                      "--waiting", "Wren's Insight roll", stdin=json.dumps(turns)).returncode == 0
+    shown = stop_point(root, "show", "--campaign", "Fenmoor").stdout
+    assert "Since then" not in shown
+    tail += [{"dice": True, "text": "Wren rolls Insight: 17"}, {"text": "Rosa's eyes flick to the door."}]
+    (fenmoor / "session_tail.json").write_text(json.dumps(tail), encoding="utf-8")
+    shown = stop_point(root, "show", "--campaign", "Fenmoor").stdout
+    newer = shown.split("## Since then")[1]
+    assert "**Dice:** Wren rolls Insight: 17" in newer and "**DM:** Rosa's eyes flick to the door." in newer
+    assert "Rosa slides the ledger" not in newer
