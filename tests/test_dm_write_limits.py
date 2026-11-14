@@ -167,6 +167,20 @@ def test_new_campaign_folder_exists_before_its_dm_starts(data_root, monkeypatch,
     assert argv[argv.index("--workdir") + 1] == str(data_root / "campaigns" / "fresh")
 
 
+@pytest.mark.parametrize("venv", ["", "/opt/dnd-venv"])
+def test_dm_uses_the_portals_chosen_venv(data_root, monkeypatch, venv):
+    calls = []
+    monkeypatch.setenv("DND_VENV", venv)
+    monkeypatch.setattr(portal, "running", lambda: False)
+    monkeypatch.setattr(portal, "prepare_display", lambda name, **kwargs: None)
+    monkeypatch.setattr(portal, "notify_party_consumed", lambda *args: None)
+    monkeypatch.setattr(portal, "run", lambda *a, **k: calls.append(a) or subprocess.CompletedProcess(a, 0, "", ""))
+    ok, message = portal.start_session("qwen", "new", "fresh", "a story")
+    assert ok, message
+    argv = shlex.split(next(args[-1] for args in calls if args[:2] == ("tmux", "new-session")))
+    assert [a for a in argv if a.startswith("DND_VENV=")] == ([f"DND_VENV={venv}"] if venv else [])
+
+
 @posix_only
 def test_new_campaign_refuses_a_linked_campaign_folder(data_root, monkeypatch):
     elsewhere = data_root / "elsewhere"

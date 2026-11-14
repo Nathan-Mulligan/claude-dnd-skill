@@ -37,7 +37,7 @@ done
 # The DM can write the runtime dir: replace any file or link there, and never open an existing one.
 log="$data_root/.runtime/portal.log"
 rm -f "$log"
-(set -C; nohup "$python_bin" -u "$repo_root/scripts/campaign_portal.py" > "$log" 2>&1 < /dev/null) &
+(set -C; exec nohup "$python_bin" -u "$repo_root/scripts/campaign_portal.py" > "$log" 2>&1 < /dev/null) &
 for attempt in {1..20}; do
   portal_ready && { printf 'Campaign portal ready: http://127.0.0.1:%s/\n' "$port"; exit 0; }
   sleep 0.5

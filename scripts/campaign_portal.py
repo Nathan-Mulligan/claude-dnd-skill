@@ -559,7 +559,8 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
         except (OSError, ValueError):
             return False, "Could not prepare a clean display for this campaign. No model session was started."
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
-        command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}",
+        venv = [f"DND_VENV={os.environ['DND_VENV']}"] if os.environ.get("DND_VENV") else []
+        command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", *venv,
                                f"DND_ACTIVE_CAMPAIGN={name}",
                                *model_args(provider, mode, name, description, onboarding, effort)])
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
