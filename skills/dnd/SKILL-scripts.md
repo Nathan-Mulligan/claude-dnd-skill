@@ -234,11 +234,9 @@ python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --player Flerb --slot-restore 
 
 # Items and coins: scripts/inventory.py (it pushes for you). Not --inventory-add.
 
-# Faction standings (party-wide — REQUIRED at /dm:dnd load to show faction panel):
-python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py \
-  --factions '[{"name":"Pale Court","standing":"Allied"},{"name":"Watch","standing":"Neutral"}]'
-python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --factions '[]'   # clear all
-# Optional "detail" on a faction or quest: shown when a player clicks it. Party-known facts only, no DM secrets.
+# Quests and factions: no push. The display shows state.md's ## Active Quests and ## Faction Standings
+# within seconds (format in DM-CORE section 16), and puts a pushed list back to them.
+# --factions / --quests only matter for a campaign whose state.md lacks the section; add it instead.
 
 # Combat turn order (on /dm:dnd combat start):
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --turn-order \
@@ -285,7 +283,7 @@ If `check_input.py` returns output, prepend it to the player's terminal input wh
 ---
 
 **When to push stats:**
-- `/dm:dnd load` → `--replace-players --json` (full stats) + `--spell-slots` + `--world-time` + `--factions`
+- `/dm:dnd load` → `--party <campaign> --replace-players` (full stats from the sheets) + `--world-time`
 - HP change → `--player NAME --hp <current> <max>`
 - Temp HP gained/lost → `--player NAME --temp-hp N` (0 to clear)
 - XP awarded → `--player NAME --xp <current> <next>`
@@ -297,7 +295,7 @@ If `check_input.py` returns output, prepend it to the player's terminal input wh
 - Item or coin change → `scripts/inventory.py` (it updates the sheet and the display)
 - Timed effect starts → `--effect-start "NAME:SPELL:DURATION[:conc]"` bundled with narration send
 - Timed effect ends → `--effect-end "NAME:SPELL"` bundled with narration send
-- Faction standing changes → `--factions '[...]'` (full replace)
+- Quest or faction standing changes → edit `state.md`'s `## Active Quests` / `## Faction Standings` (no push)
 - Combat start → `--turn-order`; each turn → `--turn-current`; end → `--turn-clear`
 - Level up → push updated full stats
 - Long rest → restore HP, hit dice, spell slots, second wind; push `--world-time` with updated time
