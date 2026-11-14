@@ -26,7 +26,7 @@ acts:
     title: The Narrow Road
     beats:
       - {{id: 1a, label: The Cost of Passage, what_changes: Corin's trade becomes entangled in the shortage, world_pressure: Ilsa enforces the posted rate while Garrick seeks salt, status: current}}
-      - {{id: 1b, label: Broken Ledgers, what_changes: The disruption has interests beyond one gate, world_pressure: The Wardens and Compact dispute records, status: pending}}
+      - {{id: 1b, label: Broken Ledgers, what_changes: The disruption has interests beyond one gate, world_pressure: The Reeves and Guild dispute records, status: pending}}
 current_act: 1
 current_beat: {beat}
 ```

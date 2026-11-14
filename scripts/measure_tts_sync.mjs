@@ -39,7 +39,7 @@ const DEFAULT_SCENE = [
   [3000, [], 'Three riders wait there, cloaks dark with water, and the eldest raises a gloved hand. ' +
     'Behind them a wagon sits axle-deep in the mud, its team steaming in the cold. ' +
     'Somewhere downstream a heron cries once and is still.'],
-  [3600, ['--dice'], 'Perception (Elbane): d20+3 = 17'],
+  [3600, ['--dice'], 'Perception (Corin): d20+3 = 17'],
   [4200, ['--npc', 'Captain Oren Vale', '--npc-voice', 'am_michael'],
     'Hold there. Nobody crosses tonight without the warden\'s mark, and I see none on you.'],
   [4800, [], 'The captain\'s eyes flick to the wagon, then back to you.'],

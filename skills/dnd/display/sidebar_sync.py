@@ -9,8 +9,8 @@ so the sidebar never depends on the DM remembering a push:
   - Collect the hoops from the forge; ...   no bold name: a short name is cut from the text
 
   ## Faction Standings            one bullet per faction the party knows
-  - **Road Wardens**: Suspicious — they doubled the toll.
-  - Millers' Compact: Friendly
+  - **Toll Reeves**: Suspicious — they doubled the toll.
+  - Bakers' Guild: Friendly
 
 A missing section leaves that list as the DM last pushed it. Only these two sections are read;
 both are in lore_sync.PUBLIC_SECTIONS, so DM-only sections never reach the screen.

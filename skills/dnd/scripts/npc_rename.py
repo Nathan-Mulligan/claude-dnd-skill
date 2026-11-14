@@ -86,7 +86,7 @@ _LAST = [
 
 
 def _pc_files(camp_dir: pathlib.Path, old: str, new: str) -> tuple[pathlib.Path, pathlib.Path]:
-    """The PC sheet to move: `nella_reed.md`, or the hyphenated `nella-reed.md` other tools write."""
+    """The PC sheet to move: `wren_talley.md`, or the hyphenated `wren-talley.md` other tools write."""
     for style in (lambda n: slug(n), lambda n: slug(n).replace("_", "-")):
         old_pc = camp_dir / "characters" / f"{style(old)}.md"
         if old_pc.exists():

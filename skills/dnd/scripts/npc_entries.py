@@ -64,7 +64,7 @@ def entry_span(lines: list, name: str, first_word: bool = False):
     """(start, end) line span of the person's entry, or None.
 
     With first_word, a name with no entry of its own finds the one entry whose first word it is
-    ("Hessa" finds "Hessa Varn"), as the display's voice list does.
+    ("Odile" finds "Odile Varn"), as the display's voice list does.
     """
     for exact in (True, False):
         for i, heading in _entry_headings(lines):

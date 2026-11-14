@@ -433,7 +433,7 @@ def _match_place(place: str, world: WorldNotes,
     """Return the saved place path that `place` names best, and whether words are left over.
 
     Paths naming more of their ancestors win, then paths in the current region,
-    then deeper paths: "Saltmere mill" is Saltmere's mill, not Brackenford's.
+    then deeper paths: "Brinewick mill" is Brinewick's mill, not Ashbridge's.
     """
     words = _norm(place)
     best = None
