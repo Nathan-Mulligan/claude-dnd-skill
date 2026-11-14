@@ -132,12 +132,12 @@ def _trade(campaign: Path, said: str, lookup, inventory) -> str:
         if ledger:
             name = inventory.sheet_name(sheet.read_text(encoding="utf-8"), sheet.stem)
             purses.append(f"{name} {inventory.format_coins(ledger['coins'])}")
-    parts = []
-    if priced:
-        parts.append("list prices (before the trade policy's margin): " + "; ".join(priced))
+    if not priced:
+        return ""  # purses alone don't help price a haggle over a fee or a favour
+    parts = ["list prices (before the trade policy's margin): " + "; ".join(priced)]
     if purses:
         parts.append("purses: " + "; ".join(purses))
-    return "Prepared trade: " + ". ".join(parts) + "." if parts else ""
+    return "Prepared trade: " + ". ".join(parts) + "."
 
 
 _ACTION = re.compile(r"^(?:Action|Bonus Action) — (.+)$", re.M)

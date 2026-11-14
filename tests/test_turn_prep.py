@@ -167,6 +167,14 @@ def test_no_signal_leaves_the_card_as_it_was(fenmoor):
     assert not (fenmoor / oracle.ROAD_NEXT).exists()
 
 
+def test_a_haggle_with_no_listed_item_preps_nothing(fenmoor):
+    (fenmoor / "characters").mkdir()
+    shutil.copy(SHEETS / "nella-reed.md", fenmoor / "characters/nella-reed.md")
+    ledger = {"version": 1, "coins": {"pp": 0, "gp": 32, "ep": 0, "sp": 8, "cp": 7}, "items": []}
+    (fenmoor / "characters/nella-reed.inventory.json").write_text(json.dumps(ledger), encoding="utf-8")
+    assert prepared(card(fenmoor, "We'll do it, but we haggle for two more silver, paid up front")) == []
+
+
 def keep(folder, day, when=None):
     when = when if when is not None else oracle._today(folder)
     (folder / oracle.ROAD_NEXT).write_text(json.dumps({"for": when, "day": day}), encoding="utf-8")
