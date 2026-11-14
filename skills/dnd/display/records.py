@@ -12,7 +12,7 @@ turn-log.md (in the campaign folder; this module is its only writer)
     **Hessa Varn:** "Twenty silver, or the wagon stays."
   Speakers: DM (narration), DM hint (tutor), Dice, XP, Inspiration, Milestone, else the
   player, action or NPC name. The session number is one more than the newest `## Session N`
-  in session-log.md. A send whose blocks were all logged moments ago (a replay) is skipped.
+  in session-log.md. A replay (every block long and among the last RECENT_KEEP logged) is skipped.
 
 npcs.md (shared with the DM and oracle.py, through npc_entries.edit and its lock)
   For each `@npc NAME` speaker: `- **Met:** <place>, session N (<in-world date>)` and
@@ -44,6 +44,7 @@ LOG_HEADER = ("# Turn log\n\nWritten by send.py: what the table was shown, word 
               "Not edited by hand.\n")
 SESSION_GAP_S = 3 * 3600
 RECENT_KEEP = 40
+REPLAY_MIN_CHARS = 40  # shorter lines ("Yes.") can honestly be said twice
 LOOK_LABELS = ("As seen", "Look", "Looks", "Appearance", "Description")
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _SESSION_HEADING = re.compile(r"^#{2,3}\s+Session\s+(\d+)\b", re.MULTILINE)
@@ -146,7 +147,8 @@ def _append_turn(folder: Path, blocks: list, place: str, date: str, now: float) 
         prints = [_fingerprint(b) for b in blocks]
         recent = mine.get("recent") or []
         new_session = not log.exists() or now - float(mine.get("last") or 0) >= SESSION_GAP_S
-        if not new_session and all(p in recent for p in prints):
+        replay = all(b.get("kind") != "award" and len(b["text"].strip()) >= REPLAY_MIN_CHARS for b in blocks)
+        if not new_session and replay and all(p in recent for p in prints):
             return int(mine.get("session") or session_number(folder))
         out = "" if log.exists() else LOG_HEADER
         if new_session:
@@ -193,10 +195,16 @@ def _add_lines(path: Path, name: str, fields: list, only_existing: bool = False)
 
 
 def _record_npcs(folder: Path, blocks: list, place: str, date: str, session: int) -> None:
-    for name, description in npc_describe.take_results(folder).items():
-        path = _npc_file(folder, name)
-        if not _has_look(path, name):
-            _add_lines(path, name, [("As seen", description)], only_existing=True)
+    applied = []
+    for name, description in npc_describe.results(folder).items():
+        try:
+            path = _npc_file(folder, name)
+            if not _has_look(path, name):
+                _add_lines(path, name, [("As seen", description)], only_existing=True)
+            applied.append(name)
+        except Exception as error:  # noqa: BLE001 — kept, and tried again on the next send
+            npc_describe.log(f"{name}: not added to the NPC file yet: {type(error).__name__}: {error}")
+    npc_describe.acknowledge(folder, applied)
     narration = "\n\n".join(b["text"] for b in blocks if b.get("kind") is None)
     seen = set()
     for block in blocks:

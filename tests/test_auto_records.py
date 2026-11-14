@@ -354,3 +354,76 @@ def test_the_worker_drains_the_queue_and_a_second_one_stands_aside(camp, monkeyp
         assert npc_describe.run() == "busy" and kicks == [1]
     finally:
         os.close(fd)
+
+
+# ── from Sol's review ────────────────────────────────────────────────────────
+
+def test_a_held_lock_delays_the_send_only_briefly(camp, monkeypatch):
+    fcntl = pytest.importorskip("fcntl")
+    import npc_entries
+    monkeypatch.setattr(npc_entries, "LOCK_WAIT_S", 0.2)
+    with npc_entries.locked("records-state"):
+        holder = os.open(next((Path(os.environ["DND_RUNTIME_DIR"]) / "locks").glob("*.lock")), os.O_RDWR)
+    try:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        problem = records.record_send(blocks(), now=NOW)
+    finally:
+        os.close(holder)
+    assert problem and "not written" in problem
+
+
+def test_identical_awards_are_both_logged(camp):
+    records.record_send([], awards=[("XP", "Nella — 50 XP (Toll paid)")], now=NOW)
+    records.record_send([], awards=[("XP", "Nella — 50 XP (Toll paid)")], now=NOW + 60)
+    assert log_text(camp).count("**XP:** Nella — 50 XP") == 2
+
+
+def test_short_lines_said_twice_are_both_logged(camp):
+    records.record_send(blocks("@player Nella\nYes.\n"), now=NOW)
+    records.record_send(blocks("@player Nella\nYes.\n"), now=NOW + 60)
+    assert log_text(camp).count("**Nella:** Yes.") == 2
+
+
+def test_the_shown_part_of_a_long_block_is_logged_when_its_last_chunk_fails(camp):
+    first, second = "A" * 3000, "B" * 1000
+    _send([], f"{first}\n\n{second}\n", ok=lambda payload: not payload["text"].startswith("B"))
+    assert first in log_text(camp) and second not in log_text(camp)
+
+
+def test_a_description_survives_a_failed_npc_write(camp, monkeypatch):
+    monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
+    import lore_sync
+    monkeypatch.setattr(lore_sync, "ask", _answer(["broad-shouldered and grey at the temples"]))
+    records.record_send(blocks(), now=NOW)
+    npc_describe.process(npc_describe._take_queue())
+    real = records._add_lines
+
+    def flaky(path, name, fields, only_existing=False):
+        if fields[0][0] == "As seen":
+            raise PermissionError("busy")
+        return real(path, name, fields, only_existing)
+
+    monkeypatch.setattr(records, "_add_lines", flaky)
+    records.record_send(blocks("The gate creaks.\n"), now=NOW + 60)
+    monkeypatch.setattr(records, "_add_lines", real)
+    records.record_send(blocks("The gate groans.\n"), now=NOW + 120)
+    assert "- **As seen:** broad-shouldered and grey at the temples" in (camp / "npcs.md").read_text(encoding="utf-8")
+
+
+def test_a_phrase_must_be_whole_words_from_the_narration():
+    narration = "Hessa is unscarred and unarmed, with Grey eyes."
+    kept = npc_describe.copied_phrases({"phrases": ["scarred", "armed", "grey eyes"]}, narration, "Hessa")
+    assert kept == ["Grey eyes"]
+
+
+def test_the_claude_helper_sends_utf8_whatever_the_locale(monkeypatch):
+    import lore_sync
+    seen = {}
+
+    def run(cmd, **kwargs):
+        seen.update(kwargs)
+        return lore_sync.subprocess.CompletedProcess(cmd, 0, json.dumps({"structured_output": {"phrases": []}}), "")
+
+    monkeypatch.setattr(lore_sync.subprocess, "run", run)
+    lore_sync._ask_claude("Hessa wears 羊毛 — and a scarf.", "haiku", npc_describe.SCHEMA)
+    assert seen.get("encoding") == "utf-8"

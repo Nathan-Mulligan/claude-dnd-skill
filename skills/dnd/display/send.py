@@ -963,7 +963,7 @@ def main() -> None:
     delivered = []
     for block in blocks:
         kind = block["kind"]
-        shown = True
+        shown = []
         for chunk in _split_paragraphs(block["text"]):
             payload: dict = {"text": chunk}
             with_music = music_pending and kind in music_kinds
@@ -989,12 +989,12 @@ def main() -> None:
                       file=sys.stderr)
                 sys.exit(2)
             ok = _post(FLASK_URL, json.dumps(payload).encode("utf-8"), token)
-            shown = shown and ok
             if ok:
+                shown.append(chunk)
                 chunks_sent += 1
                 music_pending = music_pending and not with_music
         if shown:
-            delivered.append(block)
+            delivered.append(dict(block, text="\n\n".join(shown)))
     _record(delivered, awards, place)
 
     if music_event and chunks_sent == 0:

@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
@@ -23,6 +24,8 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 BULLET_RE = re.compile(r"^\s*[-*]\s+(.*\S)")
 _SUBSECTIONS = {"personality", "relationships", "notes"}
 _ANNOTATION_STARTS = (" (", " —", " –", " - ", ",", ":")
+# Writers hold a lock for milliseconds; past this, something is stuck and the caller gives up.
+LOCK_WAIT_S = 3.0
 
 
 def norm_name(name: str) -> str:
@@ -133,14 +136,24 @@ def write_atomic(path: Path, text: str) -> None:
 
 @contextmanager
 def locked(key: str):
-    """Hold an exclusive lock named after `key` until the block ends (the OS drops it if we die)."""
+    """Hold an exclusive lock named after `key` until the block ends (the OS drops it if we die).
+
+    Raises TimeoutError when another holder keeps it longer than LOCK_WAIT_S.
+    """
     folder = runtime_dir() / "locks"
     folder.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     fd = os.open(folder / f"{digest}.lock", os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        if fcntl is not None:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+        deadline = time.monotonic() + LOCK_WAIT_S
+        while fcntl is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"lock held elsewhere for over {LOCK_WAIT_S:g}s") from None
+                time.sleep(0.02)
         yield
     finally:
         os.close(fd)
