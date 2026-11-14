@@ -118,16 +118,19 @@ def paste_into_dm(text: str) -> bool:
     target = f"{SESSION}:0.0"
     buffer = f"dnd-input-{secrets.token_hex(8)}"
     handle, path = tempfile.mkstemp(prefix="dnd-input-", suffix=".txt")
+    loaded = pasted = False
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as file:
             file.write(text)
-        if run("tmux", "load-buffer", "-b", buffer, path).returncode:
-            return False
-        if run("tmux", "paste-buffer", "-p", "-d", "-b", buffer, "-t", target).returncode:
-            run("tmux", "delete-buffer", "-b", buffer)
-            return False
-        return True
+        loaded = run("tmux", "load-buffer", "-b", buffer, path).returncode == 0
+        pasted = loaded and run("tmux", "paste-buffer", "-p", "-d", "-b", buffer, "-t", target).returncode == 0
+        return pasted
     finally:
+        if loaded and not pasted:
+            try:
+                run("tmux", "delete-buffer", "-b", buffer)
+            except (OSError, subprocess.SubprocessError):
+                pass
         Path(path).unlink(missing_ok=True)
 
 

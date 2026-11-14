@@ -250,6 +250,22 @@ def test_paste_into_a_closed_pane_cleans_up_and_keeps_the_reply(client, monkeypa
     assert "Keep me" in (portal.RUNTIME / ".portal-input-claim").read_text(encoding="utf-8")
 
 
+def test_paste_timeout_still_removes_the_buffer_and_file(monkeypatch):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(record(args))
+        if args[1] == "paste-buffer":
+            raise subprocess.TimeoutExpired(args, 15)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(portal, "run", fake_run)
+    with pytest.raises(subprocess.TimeoutExpired):
+        portal.submit_to_dm("hello")
+    load = calls[0]
+    assert ("tmux", "delete-buffer", "-b", load[load.index("-b") + 1]) in calls
+    assert not Path(load[-2]).exists()
+
 def test_codex_can_write_selected_campaign_root(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
     args = portal.model_args("codex", "new", "demo", "start")
