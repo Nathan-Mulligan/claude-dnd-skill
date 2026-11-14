@@ -554,3 +554,23 @@ def test_the_display_and_portal_never_write_through_a_link_the_dm_placed(camp, m
     npc_describe.log("a line")
     assert target.read_text(encoding="utf-8") == "keep\n"
     assert not (tmp_path / "made-by-the-lock").exists()
+
+
+def test_shared_writes_never_change_permissions_through_a_path(camp, monkeypatch):
+    import npc_entries
+    monkeypatch.setattr(npc_entries.os, "chmod", lambda *a, **k: pytest.fail("chmod by path"))
+    npc_entries.write_atomic(camp / "notes.md", "text\n")
+    if os.name != "nt":
+        assert (camp / "notes.md").stat().st_mode & 0o777 == 0o644
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="no O_NOFOLLOW on this platform")
+def test_a_linked_locks_folder_is_never_followed(camp, tmp_path):
+    import npc_entries
+    runtime = Path(os.environ["DND_RUNTIME_DIR"])
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (runtime / "locks").symlink_to(elsewhere, target_is_directory=True)
+    with npc_entries.locked("npc-describe"):
+        pass
+    assert list(elsewhere.iterdir()) == []
