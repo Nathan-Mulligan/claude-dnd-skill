@@ -211,6 +211,18 @@ def test_codex_can_write_selected_campaign_root(tmp_path, monkeypatch):
     assert "sandbox_workspace_write.network_access=true" in args
 
 
+def test_codex_dm_has_no_screen_control(tmp_path, monkeypatch):
+    monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
+    args = portal.model_args("codex-sol", "resume", "demo", "")
+    assert args[args.index("--disable") + 1] == "computer_use"
+    for setting in ('plugins."computer-use@openai-bundled".enabled=false',
+                    'plugins."unified-computer-use@openai-bundled".enabled=false',
+                    'mcp_servers.cua_repl={command="true",enabled=false}',
+                    "mcp_servers.node_repl.enabled=false"):
+        assert setting in args
+    assert args.index("--disable") < len(args) - 1
+
+
 def test_codex_can_be_disabled_explicitly(client, monkeypatch):
     monkeypatch.setattr(portal, "CODEX_ENABLED", False)
     response = api(client, "/api/start", method="post", data={

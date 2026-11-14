@@ -45,6 +45,12 @@ LAUNCHER_LABELS = {"codex": "Codex", "claude": "Claude", "qwen": "Ollama"}
 # Codex DMs run at the reasoning effort chosen in the portal; lower is faster.
 CODEX_EFFORTS = {"low": "Low · fastest", "medium": "Medium", "high": "High · slowest"}
 DEFAULT_EFFORT = "medium"
+# The DM must never drive the screen: a test DM screenshotted the live game window unprompted.
+CODEX_NO_SCREEN = ("--disable", "computer_use",
+                   "-c", 'plugins."computer-use@openai-bundled".enabled=false',
+                   "-c", 'plugins."unified-computer-use@openai-bundled".enabled=false',
+                   "-c", 'mcp_servers.cua_repl={command="true",enabled=false}',
+                   "-c", "mcp_servers.node_repl.enabled=false")
 # Sidebar-notes helper (display/lore_sync.py); the choice is saved where lore_sync reads it.
 HELPER_CHOICES = {key: label for key, (_, _, label) in lore_sync.HELPERS.items()}
 # Keys are stored in portal-session.json as "provider"; "codex" and "claude" keep their original meaning.
@@ -384,7 +390,7 @@ def model_args(provider: str, mode: str, name: str, description: str, onboarding
     if choice.launcher == "codex":
         if effort not in CODEX_EFFORTS:
             raise ValueError("Invalid reasoning effort")
-        args += [*choice.args, "-c", f'model_reasoning_effort="{effort}"',
+        args += [*choice.args, *CODEX_NO_SCREEN, "-c", f'model_reasoning_effort="{effort}"',
                  "-c", "sandbox_workspace_write.network_access=true",
                  "-s", "workspace-write",
                  "--add-dir", str(DATA_ROOT), prompt]
