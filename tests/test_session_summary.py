@@ -469,3 +469,55 @@ def test_send_and_summary_agree_on_the_session_number(tmp_path, monkeypatch):
     assert "## Session 8 — 2026-11-14" in read(folder, "session-log.md")
     assert summary.records.record_send([{"text": "Next week, the road."}], now=now + 4 * 3600) is None
     assert "\n## Session 9 · " in read(folder, "turn-log.md")
+
+
+# ── from Sol's review of the stack ──────────────────────────────────────────
+
+def test_a_session_reopened_soon_after_save_and_close_gets_its_own_number(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    (root / "campaigns").mkdir(parents=True)
+    folder = campaign(root / "campaigns", lines=[])
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(root))
+    monkeypatch.setenv("DND_ACTIVE_CAMPAIGN", "test")
+    monkeypatch.setattr(summary.records.npc_describe, "kick", lambda: None)
+    now = 1_800_000_000.0
+    summary.records.record_send([{"text": "The mill wheel turns."}], now=now)
+    summary.records.record_send([{"text": "A model switch keeps the session open."}], now=now + 60)
+    assert read(folder, "turn-log.md").count("## Session 8 · ") == 1
+    (folder / "session-log.md").write_text(LOG + "\n## Session 8 — 2026-11-14\n### Recap\nThe mill wheel turned.\n",
+                                           encoding="utf-8")
+    summary.records.end_session(folder)  # the portal, after Save & close
+    summary.records.record_send([{"text": "An hour later, the road."}], now=now + 3600)
+    assert "\n## Session 9 · " in read(folder, "turn-log.md")
+    assert summary.session_number(folder) == 9
+
+
+def test_mid_session_key_events_are_replaced_with_the_whole_sessions(tmp_path, monkeypatch):
+    switched = LOG + "\n## Session 8 — 2026-11-14\n### Recap\nDM-SWITCH-RECAP.\n\n### Key Events\n- DM-SWITCH-EVENT\n"
+    folder = campaign(tmp_path, log=switched, lines=[])
+    turn_log(folder, TURNS_7, TURNS_8)
+    run(folder, monkeypatch)
+    entry = read(folder, "session-log.md").split("## Session 8")[1]
+    assert "DM-SWITCH-EVENT" not in entry and entry.count("### Key Events") == 1
+    assert "- Corwin Ash charges 3 gp a wagon." in entry
+
+
+def test_a_failed_write_puts_back_what_it_already_wrote(tmp_path, monkeypatch):
+    folder = campaign(tmp_path, log=LOG_TWO, lines=[])
+    turn_log(folder, TURNS_8)
+    stub_helper(monkeypatch, dict(GOOD, archived=[ARCHIVED]))
+    plan = summary.prepare(folder, summary.display_mark(folder), ("codex", "m"))
+    real_replace = summary.os.replace
+
+    def failing(src, dst):
+        if Path(dst).name == "state.md":
+            raise PermissionError("state.md is locked")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(summary.os, "replace", failing)
+    with pytest.raises(PermissionError):
+        summary.write(folder, plan)
+    assert read(folder, "session-log.md") == LOG_TWO and read(folder, "state.md") == STATE
+    assert not (folder / "session-log-archive.md").exists()
+    assert not [p.name for p in folder.iterdir() if p.name.startswith(".")]
+    assert summary.session_number(folder) == 8  # the DM's fallback writes the same session

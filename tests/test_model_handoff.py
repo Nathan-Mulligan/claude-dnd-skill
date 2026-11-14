@@ -713,6 +713,7 @@ def test_save_and_close_leaves_the_summary_to_the_helper(setup, monkeypatch):
 
     monkeypatch.setattr(portal, "run", recording_run)
     monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    monkeypatch.setattr(portal.records, "end_session", lambda folder: events.append(("end_session", folder.name)))
     portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
     state = portal.handoff_state()
     assert state["status"] == "complete" and "closed" in state["message"], state
@@ -723,7 +724,7 @@ def test_save_and_close_leaves_the_summary_to_the_helper(setup, monkeypatch):
     assert "Write this session's entry" not in prompt
     assert "\n" not in prompt
     assert events == [("prepare", mark, ("codex", "gpt-6-luna")), ("write", {"session-log.md": ("old", "new")}),
-                      ("kill",)]
+                      ("kill",), ("end_session", "old")]
 
 
 def test_a_failed_helper_summary_falls_back_to_the_dm(setup, monkeypatch):
