@@ -235,3 +235,18 @@ def test_preparing_waits_while_the_calendar_holds_the_road(fenmoor):
     oracle.prepare_road(fenmoor)
     assert time.monotonic() - began > 1.0
     holder.wait(timeout=10)
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="no O_NOFOLLOW on this platform")
+def test_the_portal_never_writes_the_road_prep_through_a_link_the_dm_placed(fenmoor, tmp_path):
+    # The portal builds the turn card outside the DM's sandbox, in the campaign folder the DM can write.
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    target = elsewhere / "code.py"
+    target.write_text("keep\n", encoding="utf-8")
+    (fenmoor / (oracle.ROAD_NEXT + ".tmp")).symlink_to(target)
+    (fenmoor / oracle.ROAD_LOCK).symlink_to(elsewhere / "made-by-the-lock")
+    prepared(card(fenmoor, "We set out for Ashbridge at first light"))
+    oracle.prepare_road(fenmoor)
+    assert target.read_text(encoding="utf-8") == "keep\n"
+    assert not (elsewhere / "made-by-the-lock").exists()
