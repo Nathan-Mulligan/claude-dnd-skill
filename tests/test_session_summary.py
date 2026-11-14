@@ -1,6 +1,7 @@
 """The notes helper writes the Save & close summary: only what happened, nothing lost."""
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -363,3 +364,108 @@ def test_a_number_the_material_never_gives_is_refused(tmp_path, monkeypatch):
     stub_helper(monkeypatch, dict(GOOD, key_events=["Corwin Ash charges 300 gp a wagon."]))
     with pytest.raises(ValueError, match="300"):
         summary.prepare(folder, summary.display_mark(folder), ("codex", "m"))
+
+
+# ── this session's turns from turn-log.md (kept by send.py) ─────────────────
+
+TURNS_7 = "## Session 7 · 2026-11-08\n\n### 20:00 · The fen\n\n**DM:** TURNLOG-SEVEN Hobb poles the ferry.\n"
+TURNS_8 = """## Session 8 · 2026-11-14
+
+### 21:04 · Brackenford mill · 18 Duskfall 1247
+
+**Elbane:** I ask the miller about the toll.
+
+**DM:** The miller, Corwin Ash, wipes flour from his hands and names the price: 3 gp a wagon.
+
+**Corwin Ash:** Three gold, and the Wardens take a third.
+
+**DM hint:** TUTOR-LINE a check would help.
+"""
+TURNS_8_LATER = "## Session 8 · 2026-11-14\n\n### 23:30 · Brackenford mill\n\n**DM:** AFTER-THE-BREAK the mill falls quiet.\n"
+
+
+def turn_log(folder, *sections, older_than_log=False):
+    path = folder / "turn-log.md"
+    path.write_text("# Turn log\n\n" + "\n".join(sections), encoding="utf-8")
+    log = folder / "session-log.md"
+    if log.exists():
+        stamp = log.stat().st_mtime_ns + (-10 if older_than_log else 10) * 1_000_000_000
+        os.utime(path, ns=(stamp, stamp))
+
+
+def test_this_sessions_turns_come_from_the_turn_log(tmp_path, monkeypatch):
+    folder = campaign(tmp_path, lines=[])  # the display's own log shows nothing new
+    turn_log(folder, TURNS_7, TURNS_8)
+    [prompt], _ = run(folder, monkeypatch)
+    assert "Corwin Ash: Three gold, and the Wardens take a third." in prompt
+    assert "Elbane: I ask the miller about the toll." in prompt
+    assert "TURNLOG-SEVEN" not in prompt and "TUTOR-LINE" not in prompt
+    log = read(folder, "session-log.md")
+    assert log.count("## Session 8") == 1 and "## Session 8 — 2026-11-14\n\n### Recap\nElbane asked" in log
+    assert summary.records.session_number(folder) == 9  # send.py's next section follows the summary
+
+
+def test_a_session_split_by_a_long_break_is_read_whole(tmp_path, monkeypatch):
+    folder = campaign(tmp_path, lines=[])
+    turn_log(folder, TURNS_7, TURNS_8, TURNS_8_LATER)
+    [prompt], _ = run(folder, monkeypatch)
+    assert "Corwin Ash: Three gold" in prompt and "AFTER-THE-BREAK" in prompt
+    assert read(folder, "session-log.md").count("## Session 8") == 1
+
+
+def test_a_recap_written_mid_session_is_replaced_by_the_whole_session(tmp_path, monkeypatch):
+    switched = LOG + "\n## Session 8 — 2026-11-14\n### Recap\nDM-SWITCH-RECAP before the model change.\n"
+    folder = campaign(tmp_path, log=switched, lines=[])
+    turn_log(folder, TURNS_7, TURNS_8)  # turns went on after the DM's recap
+    run(folder, monkeypatch)
+    log = read(folder, "session-log.md")
+    assert log.count("## Session 8") == 1 and "## Session 9" not in log
+    entry = log[log.index("## Session 8"):]
+    assert "### Recap\nElbane asked Corwin Ash" in entry and "DM-SWITCH-RECAP" not in entry
+
+
+def test_a_turn_log_older_than_the_last_summary_is_not_reused(tmp_path, monkeypatch):
+    folder = campaign(tmp_path)  # the display showed this session's lines
+    turn_log(folder, TURNS_7, older_than_log=True)
+    [prompt], _ = run(folder, monkeypatch)
+    assert "TURNLOG-SEVEN" not in prompt and "Elbane: I ask the miller" in prompt
+    assert "## Session 8 — 2026-11-14" in read(folder, "session-log.md")
+
+
+def test_the_import_entry_is_not_taken_for_this_session(tmp_path, monkeypatch):
+    state = STATE[:STATE.index("## Continuity Archive")] + STATE[STATE.index("## Recent Events"):]
+    state = state.replace("**Session count:** 7", "**Session count:** 0")
+    imported = "# Session Log — Test\n\n## Session 0 — Import — 2026-11-01\nSource: module.pdf\n"
+    folder = campaign(tmp_path, state=state, log=imported, lines=[])
+    turn_log(folder, TURNS_8.replace("Session 8", "Session 1"))
+    run(folder, monkeypatch)
+    log = read(folder, "session-log.md")
+    assert log.startswith(imported) and "## Session 1 — 2026-11-14\n\n### Recap\nElbane asked" in log
+
+
+def test_session_numbers_agree_with_the_archive(tmp_path):
+    folder = campaign(tmp_path, log=None)  # only the Continuity Archive (Sessions 1 and 2) remains
+    assert summary.records.session_number(folder) == summary.session_number(folder) == 3
+
+
+def test_send_and_summary_agree_on_the_session_number(tmp_path, monkeypatch):
+    root = tmp_path / "data"
+    (root / "campaigns").mkdir(parents=True)
+    folder = campaign(root / "campaigns", lines=[])
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(root))
+    monkeypatch.setenv("DND_ACTIVE_CAMPAIGN", "test")
+    monkeypatch.setattr(summary.records.npc_describe, "kick", lambda: None)
+    now = 1_800_000_000.0
+    shown = [{"kind": "player", "name": "Elbane", "text": "I ask the miller about the toll."},
+             {"text": "The miller, Corwin Ash, names the price: 3 gp a wagon."}]
+    assert summary.records.record_send(shown, place="Brackenford mill", now=now) is None
+    assert "\n## Session 8 · " in read(folder, "turn-log.md")
+    assert summary.session_number(folder) == 8
+    stamp = (folder / "session-log.md").stat().st_mtime_ns + 10_000_000_000
+    os.utime(folder / "turn-log.md", ns=(stamp, stamp))
+    reply = dict(GOOD, recap="Elbane asked Corwin Ash about the toll. Corwin named 3 gp a wagon.",
+                 key_events=["Corwin Ash charges 3 gp a wagon."])
+    run(folder, monkeypatch, reply)
+    assert "## Session 8 — 2026-11-14" in read(folder, "session-log.md")
+    assert summary.records.record_send([{"text": "Next week, the road."}], now=now + 4 * 3600) is None
+    assert "\n## Session 9 · " in read(folder, "turn-log.md")
