@@ -378,6 +378,18 @@ def test_with_no_free_voice_a_new_npc_never_takes_a_player_characters_or_the_nar
     assert client.get('/cast').json['corin ash'] == 'bm_lewis'
 
 
+def test_when_the_narrator_and_party_hold_every_catalogue_voice_an_npc_voice_is_shared(cast_display, monkeypatch):
+    module, client, sent = cast_display
+    monkeypatch.setattr(module, '_voice_ok', lambda voice: all(p in KOKORO for p in voice.split('+')))
+    monkeypatch.setattr(module, '_cast_voice_genders', lambda narrator: (['bm_fable', 'bm_lewis'], ['bf_alice']))
+    with module._stats_lock:
+        module._current_stats['players'] = [{'name': 'Corin Ash'}]
+    client.post('/cast', json={'name': 'Corin Ash', 'voice': 'bm_lewis'})
+    client.post('/cast', json={'name': 'Garrow Pike', 'voice': 'am_onyx'})
+    _npc(client, 'Harl Brenn', npc_voice='bm_lewis')
+    assert client.get('/cast').json['harl brenn'] == 'am_onyx'
+
+
 def test_send_prints_the_displays_note_once(monkeypatch, capsys):
     sys.path.insert(0, str(DISPLAY))
     import importlib

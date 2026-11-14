@@ -216,8 +216,8 @@ def dm_voice(cast: dict, name: str, voice: str, *, narrator: str, party: Iterabl
                       own=own, male=male, female=female)
     if not free and want in {_canon(v) for v in protected}:
         gender = voice_gender(voice, male, female)
-        free = pick_voice(name, [v for v in dict.fromkeys(pool)
-                                 if v and v not in own and voice_gender(v, male, female) == gender])
+        free = pick_voice(name, [v for v in dict.fromkeys([*pool, *others.values()])
+                                 if v and not own & set(v.split("+")) and voice_gender(v, male, female) == gender])
     return free or voice, holder
 
 
