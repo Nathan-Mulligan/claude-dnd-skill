@@ -40,7 +40,7 @@ sys.path.insert(0, str(_HERE.parent / "scripts"))
 import lore_sync  # noqa: E402
 import records  # noqa: E402
 import stop_point  # noqa: E402
-from runtime_paths import rt  # noqa: E402
+from runtime_paths import log_line, rt  # noqa: E402
 
 KEEP_LOG_ENTRIES = 2
 KEEP_ARCHIVE = 5
@@ -111,11 +111,7 @@ def helper() -> "tuple[str, str] | None":
 
 
 def log(message: str) -> None:
-    try:
-        with open(rt("session_summary.log"), "a", encoding="utf-8") as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + message + "\n")
-    except OSError:
-        pass
+    log_line(rt("session_summary.log"), message)
 
 
 def _read(path: Path) -> "str | None":
