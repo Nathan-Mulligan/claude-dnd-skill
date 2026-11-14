@@ -53,14 +53,17 @@ You decide what comes at the party. The players decide how to answer it. A table
 - A natural 20 on a PC's d20 (the raw die, flagged `NATURAL 20` by `dice.py`) earns Inspiration unless they already hold it: `send.py --inspiration-award NAME`.
 
 ## 5. Trade
-- When the party buys, sells or haggles, read `play/trade.md` once this session. Apply the `Trade policy:` line in `## Pinned Facts` without asking, and move every coin and item through `inventory.py` before the narration.
+- Apply the `Trade policy:` line in `## Pinned Facts` without asking, and move every coin and item through `inventory.py` before the narration, so it quotes the one-line result. Sums go in the `@tutor` block, never the spoken text. The rest is in `play/trade.md`.
 
 ## 6. NPCs
-- Open on what the person is doing or worried about, never a name-and-price greeting. A person who is asked gives a usable answer: a price, a name or a condition.
-- When a named NPC first matters, read `play/npcs.md` once this session: `oracle.py npc` for new people, voices, and notes after the scene.
+- Skip the name-and-price greeting. Open on what the person is doing or worried about. The main NPC in each scene wants one thing from the party.
+- A person who is asked gives a usable answer, with a price, a name or a condition. Don't pass the party from person to person.
+- For a new named NPC in an improvised campaign, run `oracle.py npc --campaign X --name "Full Name"` before the narration (add `--trader` for anyone buying or selling). Play their one trait lightly; when their want is marked as an ask, they put it to the party.
+- The first time a new NPC speaks, give their block a voice: `@npc Full Name voice=<id>`, from `bm_george`, `bm_lewis`, `am_fenrir`, `am_onyx` (men), `af_heart`, `af_bella`, `bf_alice`, `bf_emma`, `af_sky` (women), not one already in the scene.
+- After a scene with an NPC, in the bookkeeping call: `oracle.py npc note --campaign X --name "Full Name" "<one line>"`. The rest is in `play/npcs.md`.
 
 ## 7. Travel, the road and errands (improvised campaigns)
-- When the party travels or time passes, read `play/travel.md` once this session. Travel always goes through `calendar.py -c X advance N days` (`--no-road` when not travelling) before the narration, and `## Next Hooks` and `## Clocks` are refreshed on every arrival and departure.
+- Travel always goes through `calendar.py -c X advance N days` before the narration (`--no-road` when time passes without travel). Play each road day it prints; never compress a journey into one sentence. Refresh `## Next Hooks` and `## Clocks` on every arrival and departure. The rest is in `play/travel.md`.
 
 ## 8. The arc
 - `arc.py status --campaign X` shows the current beat.
@@ -85,7 +88,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`.
 - Send the whole narration, word for word. Never send probe or debug text.
 - Put stat changes on the narration send, for example `--stat-hp "NAME:CUR:MAX"` or `--stat-condition-add "NAME:Poisoned"`. The full list is under Display sync in SKILL.md.
-- A new place, or a place whose mood truly changes, adds `--scene "<place>: <what is happening>"` to the narration call; a fight adds `--music-event combat-start`. `play/scene-media.md` has the details.
+- When the party reaches a new place, or a place's mood truly changes, add `--scene "<place>: <what is happening>"` to the narration call, describing the actual view and atmosphere (it drives the music and background), plus `--mood calm|curious|ominous|tense|warm` only when the feel differs from the place. A fight's first narration adds `--music-event combat-start`, the first one after it `--music-event combat-end`.
 
 ## 11. Opening a session
 The `load` procedure ends here. Every resume starts a fresh DM with no memory of play, so rebuild from the files and keep the reading lean.
@@ -111,7 +114,7 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 - At the end of a scene, quietly update `state.md` in the bookkeeping call: location, quests, `## Live State Flags`, `## Recent Events`, Next Hooks and Clocks.
 
 ## 16. Situation files
-One short read each, in `play/` beside this file, once per session when the situation starts. The turn card names the file when it sees the situation coming.
+This file holds everything an ordinary turn needs. The short files in `play/` beside it hold the detail for one situation each. Read one only when the turn card names it, when your own narration has just set that situation up (the prep in section 10), or `save.md` when the portal asks you to save; once a session each, and never the others ahead.
 - `combat.md`: a fight. `travel.md`: travel, rests and passing time, hooks and clocks. `trade.md`: buying, selling, haggling. `npcs.md`: a named NPC who matters. `scene-media.md`: scene, music and image cues. `save.md`: saving and Save & close. `new-campaign.md`: campaign or character setup only.
 
 ## 17. Exact flags (complete: never run `--help`)
