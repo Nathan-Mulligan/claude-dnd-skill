@@ -255,6 +255,14 @@ class Wiring(unittest.TestCase):
         self.assertRegex(self.src, r"renderNPCBlock\(payload\.npc, payload\.text, false, _sync\)")
         self.assertIn("_syncMark(_mdParse(cleaned), sync)", self.src)
 
+    def test_a_long_wait_rechecks_so_stop_wakes_the_text(self):
+        loop = re.search(r"function typeNextChar\(\) \{(.*?)\n\}", self.src, re.S)
+        self.assertIn("Math.min(wait, 250)", loop.group(1))
+
+    def test_an_opener_still_waiting_for_audio_keeps_its_joining_space(self):
+        fn = re.search(r"function handleIncomingText\(text, opener, sync\) \{(.*?)\n\}", self.src, re.S)
+        self.assertRegex(fn.group(1), r"\} else if \(held\) \{")
+
     def test_the_typewriter_reads_the_audio_clock(self):
         loop = re.search(r"function typeNextChar\(\) \{(.*?)\n\}", self.src, re.S)
         self.assertIsNotNone(loop)

@@ -13,10 +13,12 @@
 // --mode off        Auto Narrate off
 // --mode fail       Auto Narrate on, every /tts request answers 502
 // --mode suspended  Auto Narrate on, audio blocked until a click (never given)
+// --scene FILE replaces the scene, as a JSON list of [ms after start, [flags], text].
 //
 // Use a throwaway display: the scene is written into its campaign log.
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const arg = (name, dflt) => {
   const i = process.argv.indexOf('--' + name);
@@ -30,7 +32,9 @@ const CHROME = arg('chrome', '/Applications/Google Chrome.app/Contents/MacOS/Goo
 
 const { chromium } = createRequire(import.meta.url)(PW);
 
-const SCENE = [
+// --scene FILE: a JSON list of [ms after start, [send.py flags], text] to use instead.
+const SCENE_FILE = arg('scene', '');
+const DEFAULT_SCENE = [
   [0, ['--opener'], 'The rain eases as you reach the ford. Lanterns bob on the far bank.'],
   [3000, [], 'Three riders wait there, cloaks dark with water, and the eldest raises a gloved hand. ' +
     'Behind them a wagon sits axle-deep in the mud, its team steaming in the cold. ' +
@@ -40,6 +44,7 @@ const SCENE = [
     'Hold there. Nobody crosses tonight without the warden\'s mark, and I see none on you.'],
   [4800, [], 'The captain\'s eyes flick to the wagon, then back to you.'],
 ];
+const SCENE = SCENE_FILE ? JSON.parse(readFileSync(SCENE_FILE, 'utf-8')) : DEFAULT_SCENE;
 
 function send(flags, text) {
   return new Promise((resolve, reject) => {

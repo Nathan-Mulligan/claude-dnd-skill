@@ -4982,7 +4982,8 @@ function typeNextChar() {
     if (item && typeof item === 'object' && 'sync' in item) { _typeItem(charQueue.shift()); continue; }
     const wait = _syncWait(item);
     if (wait === null) break;
-    if (wait > 4) { _typeTimer = setTimeout(typeNextChar, wait); return; }
+    // Re-check often: Stop or a failure can end the wait early.
+    if (wait > 4) { _typeTimer = setTimeout(typeNextChar, Math.min(wait, 250)); return; }
     _typeItem(charQueue.shift());
   }
   _typeItem(charQueue.shift());
@@ -5754,7 +5755,8 @@ function handleIncomingText(text, opener, sync) {
     // that line still starts its own block, after this one finishes.
     if (charQueue.length === 0 && !isTyping) flushNewBlock();
     else charQueue.push({ brk: true });
-  } else if (held && currentEl) {
+  } else if (held) {
+    // The opener may still be queued behind its audio, with no block on the page yet.
     charQueue.push(' ');
   }
   lastChunkTime = now;
