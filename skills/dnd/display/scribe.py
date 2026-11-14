@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-"""scribe.py — the turn log and Recent Events, written in the background while the table reads.
+"""scribe.py — the turn log, written in the background while the table reads.
 
 How it runs
-  send.py calls `record()` after every narration send. It appends what the table heard to
-  runtime/scribe-queue.jsonl and starts this file detached; the DM never waits. One run at a
-  time: a run started while another is busy leaves a pending flag, and the busy run goes round
-  again. A run waits a few seconds so a roll and its result land as one turn, takes the queue,
-  asks the helper model for one line per turn and writes them.
+  send.py calls `record()` after a narration send. It appends what the table heard to
+  runtime/scribe-queue.jsonl and starts this file detached; the DM never waits. One worker
+  at a time, under a lock the operating system drops when the worker exits. The worker waits
+  a few seconds so a roll and its result land together, summarises the queued turns with the
+  helper model, appends them to `<campaign>/turn-log.md` and only then removes them from the
+  queue, so a crash loses nothing.
 
 What it writes
-  * `<campaign>/turn-log.md`: one dated line per turn. The scribe is its only writer.
-  * `## Recent Events` in `<campaign>/state.md`: the newest RECENT_MAX lines. The DM writes the
-    rest of state.md, so the edit is an atomic replace that starts again if state.md changed
-    while it was being made.
+  * `<campaign>/turn-log.md` only. The scribe is its only writer and never touches state.md,
+    so it can never overwrite the DM or encounter_state.py.
+  * A `## Session from <date time>` heading before the first line after each save (when
+    session-tail.md is newer than the last line logged).
 
 Rules
-  * A turn starts at a send with a player block; sends without one join the turn before.
-  * The model summarises only text the table heard. With the helper off or failing, the line is
-    the turn's opening words instead, and runtime/scribe.log says why.
+  * A turn starts at a send with a player block. A send without one continues the turn
+    before it; when that turn is already logged, it is logged as an indented continuation.
+  * The model summarises only text the table heard. With the helper off or failing, the line
+    is the turn's opening words, and runtime/scribe.log says why.
   * The model is the sidebar-notes helper's choice (lore_sync.py: Luna by default, set in the
-    portal). DND_SCRIBE=0 switches the scribe off.
+    portal), on the subscription only. DND_SCRIBE=0 switches the scribe off.
 """
 from __future__ import annotations
 
@@ -28,8 +30,9 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import time
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,11 +40,14 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from runtime_paths import rt  # noqa: E402
 
-RECENT_MAX = 6
+try:
+    import fcntl
+except ImportError:  # Windows: no flock; the queue lock falls back to an exclusive lock file
+    fcntl = None
+
 SETTLE_S = 8.0
-LOCK_STALE_S = 600
-NEW_SESSION_GAP_S = 3 * 3600
-LOG_HEADER = "# Turn log\n\nOne line per turn, written by the scribe. The DM reads it when writing the session recap.\n"
+MAX_PASSES = 6
+LOG_HEADER = "# Turn log\n\nOne line per turn, written by the scribe from what the table heard.\n"
 _SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["lines"],
     "properties": {"lines": {"type": "array", "items": {"type": "string"}}},
@@ -63,10 +69,6 @@ def log_path() -> str:
     return rt("scribe.log")
 
 
-def _pending_path() -> str:
-    return rt("scribe.pending")
-
-
 def _state_path() -> str:
     return rt("scribe-state.json")
 
@@ -83,15 +85,35 @@ def log(msg: str) -> None:
         pass
 
 
+@contextmanager
+def _locked(name: str, wait: bool = True):
+    """Hold runtime/<name> exclusively; yields False when wait=False and another holder has it."""
+    os.makedirs(os.path.dirname(rt(name)), exist_ok=True)
+    fd = os.open(rt(name), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        if fcntl is None:
+            yield True
+            return
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+    finally:
+        os.close(fd)  # closing drops the lock, and so does the process exiting
+
+
 def record(campaign_dir: "Path | str", blocks: list) -> None:
-    """Queue one send's blocks for the scribe and start a run. Never raises, never blocks."""
+    """Queue one send's delivered blocks for the scribe and start a worker. Never raises or blocks."""
     try:
         if not enabled() or not blocks:
             return
-        row = {"campaign_dir": str(campaign_dir), "at": time.time(), "blocks": [list(b) for b in blocks]}
-        os.makedirs(os.path.dirname(queue_path()), exist_ok=True)
-        with open(queue_path(), "a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        row = {"id": uuid.uuid4().hex, "campaign_dir": str(campaign_dir), "at": time.time(),
+               "starts_turn": str(blocks[0][0]).startswith("player"), "blocks": [list(b) for b in blocks]}
+        with _locked("scribe-queue.lock"):
+            with open(queue_path(), "a", encoding="utf-8") as f:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
         kick()
     except Exception as e:  # noqa: BLE001 — the narration already reached the table
         log(f"record failed: {e}")
@@ -106,58 +128,54 @@ def kick() -> None:
         log(f"kick failed: {e}")
 
 
-def _acquire_lock() -> "int | None":
-    lock = rt("scribe.lock")
-    try:
-        if time.time() - os.path.getmtime(lock) > LOCK_STALE_S:
-            os.unlink(lock)
-    except OSError:
-        pass
-    try:
-        return os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        return None
-
-
-def _release(fd: int) -> None:
-    os.close(fd)
-    try:
-        os.unlink(rt("scribe.lock"))
-    except OSError:
-        pass
-
-
-def _take_queue() -> list[dict]:
-    path = queue_path()
-    taken = path + ".taking"
-    try:
-        os.replace(path, taken)
-    except FileNotFoundError:
-        return []
+def _read_queue() -> list[dict]:
     rows = []
-    with open(taken, encoding="utf-8") as f:
-        for line in f:
-            try:
-                rows.append(json.loads(line))
-            except ValueError:
-                continue
-    os.unlink(taken)
+    with _locked("scribe-queue.lock"):
+        try:
+            with open(queue_path(), encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rows.append(json.loads(line))
+                    except ValueError:
+                        continue
+        except FileNotFoundError:
+            pass
     return rows
 
 
+def _drop_from_queue(ids: set) -> None:
+    with _locked("scribe-queue.lock"):
+        try:
+            with open(queue_path(), encoding="utf-8") as f:
+                keep = [line for line in f if line.strip() and _row_id(line) not in ids]
+        except FileNotFoundError:
+            return
+        tmp = queue_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.writelines(keep)
+        os.replace(tmp, queue_path())
+
+
+def _row_id(line: str) -> "str | None":
+    try:
+        return json.loads(line).get("id")
+    except ValueError:
+        return None
+
+
 def group_turns(rows: list[dict]) -> list[dict]:
-    """[{campaign_dir, at, blocks}] -> one entry per turn, per campaign, in order."""
+    """Queue rows -> turns, per campaign, in order; a first row that continues a logged turn is marked."""
     turns: list[dict] = []
     for row in rows:
         blocks = [b for b in row.get("blocks") or [] if isinstance(b, list) and len(b) == 2]
         if not blocks:
             continue
-        starts = str(blocks[0][0]).startswith("player")
-        last = turns[-1] if turns else None
-        if last and not starts and last["campaign_dir"] == row.get("campaign_dir"):
+        last = next((t for t in reversed(turns) if t["campaign_dir"] == row.get("campaign_dir")), None)
+        if last and not row.get("starts_turn"):
             last["blocks"].extend(blocks)
         else:
-            turns.append({"campaign_dir": row.get("campaign_dir"), "at": row.get("at") or time.time(), "blocks": blocks})
+            turns.append({"campaign_dir": row.get("campaign_dir"), "at": row.get("at") or time.time(),
+                          "blocks": blocks, "continues": not row.get("starts_turn")})
     return turns
 
 
@@ -181,53 +199,33 @@ def plain_line(turn: dict) -> str:
     return line if len(line) <= 240 else line[:240].rsplit(" ", 1)[0] + "..."
 
 
-def edit_file(path: Path, edit, tries: int = 4) -> bool:
-    """Apply edit(text) -> text by atomic replace, starting again if the file changed meanwhile."""
-    for _ in range(tries):
-        try:
-            before = path.stat()
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            return False
-        new = edit(text)
-        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(new)
-        os.chmod(tmp, before.st_mode & 0o777)
-        now = path.stat()
-        if (now.st_mtime_ns, now.st_size) == (before.st_mtime_ns, before.st_size):
-            os.replace(tmp, path)
-            return True
-        os.unlink(tmp)
-    return False
-
-
-def with_recent_events(text: str, lines: list[str]) -> str:
-    heading = re.search(r"(?m)^## Recent Events[ \t]*\n", text)
-    if not heading:
-        return text.rstrip("\n") + "\n\n## Recent Events\n" + "".join(f"- {x}\n" for x in lines[-RECENT_MAX:])
-    end = re.search(r"(?m)^## ", text[heading.end():])
-    body_end = heading.end() + end.start() if end else len(text)
-    old = [line for line in text[heading.end():body_end].splitlines() if re.match(r"\s*[-*]\s+\S", line)]
-    keep = (old + [f"- {x}" for x in lines])[-RECENT_MAX:]
-    return text[:heading.end()] + "\n".join(keep) + "\n\n" + text[body_end:].lstrip("\n")
-
-
-def _append_log(folder: Path, entries: list[tuple[float, str]]) -> None:
-    path = folder / "turn-log.md"
+def _load_state() -> dict:
     try:
-        state = json.loads(Path(_state_path()).read_text(encoding="utf-8"))
+        return json.loads(Path(_state_path()).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        state = {}
+        return {}
+
+
+def _append_log(folder: Path, entries: list[tuple[dict, str]]) -> None:
+    path = folder / "turn-log.md"
+    state = _load_state()
     last = float(state.get(str(folder), 0))
+    try:
+        saved = (folder / "session-tail.md").stat().st_mtime
+    except OSError:
+        saved = 0.0
     out = "" if path.exists() else LOG_HEADER
-    if entries[0][0] - last > NEW_SESSION_GAP_S:
-        out += "\n## Play from " + time.strftime("%Y-%m-%d %H:%M", time.localtime(entries[0][0])) + "\n"
-    out += "".join(f"- {time.strftime('%H:%M', time.localtime(at))} {line}\n" for at, line in entries)
+    if not last or saved > last:
+        out += "\n## Session from " + time.strftime("%Y-%m-%d %H:%M", time.localtime(entries[0][0]["at"])) + "\n"
+    for turn, line in entries:
+        stamp = time.strftime("%H:%M", time.localtime(turn["at"]))
+        out += f"  - {stamp} (continued) {line}\n" if turn["continues"] and last else f"- {stamp} {line}\n"
     with open(path, "a", encoding="utf-8") as f:
         f.write(out)
-    state[str(folder)] = entries[-1][0]
-    Path(_state_path()).write_text(json.dumps(state), encoding="utf-8")
+    state[str(folder)] = max(t["at"] for t, _ in entries)
+    tmp = _state_path() + ".tmp"
+    Path(tmp).write_text(json.dumps(state), encoding="utf-8")
+    os.replace(tmp, _state_path())
 
 
 def write_turns(turns: list[dict]) -> int:
@@ -238,7 +236,7 @@ def write_turns(turns: list[dict]) -> int:
     for folder, group in by_campaign.items():
         folder_path = Path(folder)
         if not (folder_path / "state.md").is_file():
-            log(f"skipped {len(group)} turn(s): no state.md in {folder}")
+            log(f"dropped {len(group)} turn(s): no state.md in {folder}")
             continue
         prompt = _PROMPT.format(n=len(group), turns="\n\n".join(f"Turn {i + 1}:\n{_render(t)}" for i, t in enumerate(group)))
         try:
@@ -246,37 +244,26 @@ def write_turns(turns: list[dict]) -> int:
         except Exception as e:  # noqa: BLE001
             log(f"model failed, wrote plain lines: {str(e)[:300]}")
             lines = [plain_line(t) for t in group]
-        _append_log(folder_path, [(t["at"], line) for t, line in zip(group, lines)])
-        if not edit_file(folder_path / "state.md", lambda text: with_recent_events(text, lines)):
-            log("state.md kept changing; Recent Events left for the next turn")
+        _append_log(folder_path, list(zip(group, lines)))
         written += len(group)
     return written
 
 
-def run(settle_s: float = SETTLE_S, max_passes: int = 4) -> str:
-    fd = _acquire_lock()
-    if fd is None:
-        try:
-            Path(_pending_path()).touch()
-        except OSError:
-            pass
-        return "busy"
-    total = 0
-    try:
-        for _ in range(max_passes):
-            try:
-                os.unlink(_pending_path())
-            except OSError:
-                pass
+def run(settle_s: float = SETTLE_S) -> str:
+    with _locked("scribe.lock", wait=False) as held:
+        if not held:
+            return "busy"  # the holder re-checks the queue after it lets go
+        total = 0
+        for _ in range(MAX_PASSES):
             time.sleep(settle_s)
-            total += write_turns(group_turns(_take_queue()))
-            if not os.path.exists(_pending_path()) and not os.path.exists(queue_path()):
+            rows = _read_queue()
+            if not rows:
                 break
-        return f"written {total}"
-    finally:
-        _release(fd)
-        if os.path.exists(queue_path()) and os.path.exists(_pending_path()):
-            kick()
+            total += write_turns(group_turns(rows))
+            _drop_from_queue({r.get("id") for r in rows})
+    if _read_queue():
+        kick()
+    return f"written {total}"
 
 
 if __name__ == "__main__":

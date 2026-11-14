@@ -215,17 +215,23 @@ def _table(section: str) -> list[list[str]]:
     return [r for r in rows[1:] if not all(set(c) <= set("-: ") for c in r)]
 
 
+_SPELL_LABELS = (("prepared", r"Prepared(?: spells)?|Known spells|Spells known"), ("cantrips", r"Cantrips"))
+
+
 def _spells(section: str) -> dict:
-    flat = " ".join(section.split())
+    """Spell lists by label, each read from its own line up to the end of its sentence."""
     spells: dict = {}
-    for key, label in (("prepared", r"Prepared|Known spells|Spells known"), ("cantrips", r"Cantrips")):
-        m = re.search(rf"(?:\*\*)?(?:{label}):?(?:\*\*)?:?\s*([^.]*)", flat, re.I)
-        if m:
-            spells[key] = [s.strip() for s in m.group(1).split(",") if s.strip()]
-    if re.search(r"\bno cantrips\b", flat, re.I):
-        spells["cantrips"] = []
+    for line in section.splitlines():
+        text = re.sub(r"^\s*[-*]\s*", "", line).replace("**", "")
+        for key, label in _SPELL_LABELS:
+            m = re.search(rf"(?:^|\.\s+)(?:{label})\s*:\s*([^.]*)", text, re.I)
+            if m and key not in spells:
+                spells[key] = [s.strip() for s in m.group(1).split(",") if s.strip() and s.strip().lower() != "none"]
+        if re.search(r"\bno cantrips\b", text, re.I):
+            spells["cantrips"] = []
+    flat = " ".join(section.split())
     dc = re.search(r"save DC\s*(\d+)", flat, re.I)
-    attack = re.search(r"spell attack\s*([+-]\d+)", flat, re.I)
+    attack = re.search(r"spell attack(?: bonus)?\s*([+-]\d+)", flat, re.I)
     if dc:
         spells["save_dc"] = int(dc.group(1))
     if attack:

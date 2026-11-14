@@ -333,7 +333,22 @@ def failure_reason(e: BaseException) -> str:
     return f"{type(e).__name__}: {e}"[:300]
 
 
+_API_KEY_VARS = ("CODEX_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def _codex_subscription() -> bool:
+    """True only when Codex is signed in with a ChatGPT subscription, never an API key."""
+    home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    try:
+        auth = json.loads((home / "auth.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(auth, dict) and auth.get("auth_mode") == "chatgpt" and not auth.get("OPENAI_API_KEY")
+
+
 def _ask_codex(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
+    if not _codex_subscription():
+        raise RuntimeError("codex is not signed in with a subscription; refusing a call that could bill an API key")
     with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
         schema_file = Path(work, "schema.json")
         out = Path(work, "out.json")
@@ -342,7 +357,8 @@ def _ask_codex(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
                "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
                "-s", "read-only", "-C", work, "--output-schema", str(schema_file),
                "-o", str(out), prompt]
-        env = dict(os.environ, AGENT_TASK="1")
+        env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
+        env["AGENT_TASK"] = "1"
         done = subprocess.run(cmd, cwd=work, env=env, stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, encoding="utf-8", errors="replace",
                               timeout=MODEL_TIMEOUT_S, check=False)
