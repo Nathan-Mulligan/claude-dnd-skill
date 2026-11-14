@@ -27,7 +27,7 @@ def display(tmp_path, monkeypatch):
     for name in ('one', 'two'):
         folder = tmp_path / 'campaigns' / name
         folder.mkdir(parents=True)
-        (folder / 'state.md').write_text('# State\n\n## Session Flags\nroll_mode: players\n', encoding='utf-8')
+        (folder / 'state.md').write_bytes(b'# State\n\n## Session Flags\nroll_mode: players\n')
     Path(module.CAMP_FILE).write_text('one', encoding='utf-8')
     module._dice_pending.clear()
     module._dice_finished.clear()
@@ -192,3 +192,14 @@ def test_a_reconnecting_screen_learns_the_dice_input(display):
             first.append(queue.get_nowait())
         response.close()
     assert {'dice_input': 'real'} in first
+
+
+def test_a_windows_state_file_keeps_its_line_endings(display):
+    module, client, _, tmp_path = display
+    state = tmp_path / 'campaigns' / 'one' / 'state.md'
+    state.write_bytes(b'# State\r\n\r\n## Session Flags\r\nroll_mode: players\r\n')
+    assert client.post('/dice-input', json={'mode': 'real'}).json['persisted'] is True
+    assert state.read_bytes() == b'# State\r\n\r\n## Session Flags\r\ndice_input: real\r\nroll_mode: players\r\n'
+    assert client.get('/dice-input').json == {'mode': 'real'}
+    client.post('/dice-input', json={'mode': 'click'})
+    assert state.read_bytes() == b'# State\r\n\r\n## Session Flags\r\ndice_input: click\r\nroll_mode: players\r\n'

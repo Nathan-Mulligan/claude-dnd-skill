@@ -2238,6 +2238,7 @@ def _write_session_flag(pattern: "re.Pattern", new_line: str) -> bool:
     except (OSError, ValueError):
         return False
 
+    nl = "\r\n" if "\r\n" in text else "\n"    # keep a Windows file's line endings
     if pattern.search(text):
         text = pattern.sub(new_line, text, count=1)
     else:
@@ -2246,17 +2247,17 @@ def _write_session_flag(pattern: "re.Pattern", new_line: str) -> bool:
             # Insert right after the header line. Keep the existing template
             # comment if present, but place the flag immediately under it.
             text = re.sub(
-                r"(## Session Flags\n(?:\*\(.*?\)\*\n)?)",
-                lambda m: m.group(1) + new_line + "\n",
+                r"(## Session Flags\r?\n(?:\*\(.*?\)\*\r?\n)?)",
+                lambda m: m.group(1) + new_line + nl,
                 text,
                 count=1,
             )
         else:
-            sep = "" if text.endswith("\n") else "\n"
-            text = f"{text}{sep}\n## Session Flags\n{new_line}\n"
+            sep = "" if text.endswith("\n") else nl
+            text = f"{text}{sep}{nl}## Session Flags{nl}{new_line}{nl}"
 
     try:
-        state.write_text(text, encoding="utf-8")
+        state.write_text(text, encoding="utf-8", newline="")
         return True
     except OSError:
         return False
@@ -2280,7 +2281,7 @@ def _write_narrator_voice(voice: str) -> bool:
 # How the players' dice are rolled: "click" (the on-screen tray rolls) or
 # "real" (physical dice at the table, faces typed in). A table preference, so
 # it lives with the campaign and every display and phone follows it.
-_DICE_INPUT_PAT = re.compile(r"^[ \t]*dice_input:[ \t]*(\S+)[ \t]*$", re.MULTILINE)
+_DICE_INPUT_PAT = re.compile(r"^[ \t]*dice_input:[ \t]*(\S+)[ \t]*(?=\r?$)", re.MULTILINE)
 _DICE_INPUTS = ("click", "real")
 
 
