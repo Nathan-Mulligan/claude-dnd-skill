@@ -96,3 +96,19 @@ def test_phone_punctuation_in_a_reply_reaches_the_dm(display):
     said = "We fetch Corin’s crates — “quietly”…"
     assert client.post("/player-input/stage", json={"character": "Everybody", "text": said}).status_code == 204
     assert module._party_feedback_snapshot()["responses"][0]["text"] == said
+
+
+def test_the_cli_wrapper_keeps_phone_punctuation_too(tmp_path, monkeypatch):
+    pytest.importorskip("termios")
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(tmp_path))
+    monkeypatch.setenv("DND_RUNTIME_DIR", str(tmp_path / ".runtime"))
+    monkeypatch.syspath_prepend(str(DISPLAY))
+    spec = importlib.util.spec_from_file_location("_wrapper_punctuation_test", DISPLAY / "wrapper.py")
+    wrapper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(wrapper)
+    campaign = tmp_path / "active"
+    campaign.write_text("Test", encoding="utf-8")
+    monkeypatch.setattr(wrapper, "CAMP_FILE", str(campaign))
+    monkeypatch.setattr(wrapper, "_known_chars", lambda: set())
+    line = "[Everybody]: We fetch Corin’s crates — “quietly”…"
+    assert wrapper._sanitize(line) == line
