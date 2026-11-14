@@ -110,6 +110,7 @@ if _DISPLAY_DIR not in sys.path:
     sys.path.insert(0, _DISPLAY_DIR)
 from runtime_paths import rt          # writable runtime dir (update-safe)
 from scene_engine import MOODS, SETTINGS, SETTING_ALIASES, SceneContext, WorldNotes, derive, is_continuation
+import scribe                         # background turn log; never blocks a send
 _SCHEME_FILE = os.path.join(_DISPLAY_DIR, ".scheme")   # launch marker → code dir
 _SCHEME = open(_SCHEME_FILE, encoding="utf-8").read().strip() if os.path.exists(_SCHEME_FILE) else "http"
 BASE_URL    = f"{_SCHEME}://localhost:5001"
@@ -269,10 +270,11 @@ def _derive_scene(cue: str, mood: "str | None"):
     return derived, is_continuation(derived, current, mood)
 
 
-def _ensure_active_campaign() -> None:
+def _ensure_active_campaign() -> "Path | None":
+    """Check the display shows the portal's campaign; return that campaign's folder."""
     name = os.environ.get("DND_ACTIVE_CAMPAIGN", "").strip()
     if not name:
-        return
+        return None
     if not _CAMPAIGN_NAME.fullmatch(name):
         raise SystemExit("send.py: invalid DND_ACTIVE_CAMPAIGN")
     scripts_dir = os.path.abspath(os.path.join(_DISPLAY_DIR, "..", "scripts"))
@@ -295,6 +297,7 @@ def _ensure_active_campaign() -> None:
         health = _verify_health()
     if health is None or health.get("tail_path") != expected_tail:
         raise SystemExit("send.py: display campaign root differs from DND_CAMPAIGN_ROOT")
+    return campaign_dir(name)
 
 
 def _split_paragraphs(text: str, limit: int = CHUNK_LIMIT) -> list:
@@ -601,7 +604,10 @@ def _dice_request(args) -> None:
             poll_headers = {"X-DND-Token": _token} if _token else {}
             deadline = time.time() + max(1, args.wait_timeout)
             last_pending: list = list(pending)
-            print(f"send.py: waiting for rolls from: {', '.join(pending)}", file=sys.stderr)
+            print(f"send.py: waiting for rolls from: {', '.join(pending)}. This command returns by itself "
+                  "the moment they roll. If your shell hands it back early, wait on it once with a long "
+                  "timeout (yield_time_ms 120000); polling every few seconds only delays the result.",
+                  file=sys.stderr, flush=True)
             while time.time() < deadline:
                 try:
                     sreq = urllib.request.Request(status_url, headers=poll_headers, method="GET")
@@ -833,7 +839,7 @@ def main() -> None:
             print(f"send.py: {error}", file=sys.stderr)
             sys.exit(2)
     music_event, music_setting, music_mood = args.music_event, args.music_setting, args.music_mood
-    _ensure_active_campaign()
+    campaign_folder = _ensure_active_campaign()
     if args.dice_request and not narration_first:
         _dice_request(args)
         _other = (args.player or args.npc or args.dice or args.tutor or args.action
@@ -975,6 +981,9 @@ def main() -> None:
     if music_event and chunks_sent == 0:
         print("send.py: music cue requires successfully sent narration", file=sys.stderr)
         sys.exit(2)
+    if chunks_sent and campaign_folder is not None:
+        scribe.record(campaign_folder, [[" ".join(filter(None, (b["kind"] or "narration", b["name"]))), b["text"]]
+                                        for b in blocks])
     if scene_note:
         print(scene_note, file=sys.stderr if args.dice_request else sys.stdout)
 

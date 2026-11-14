@@ -166,7 +166,10 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/character.py xp --level 1 --gained 150
 Pushes character and combat stats to the sidebar. Players merged by name; partial updates work.
 
 ```bash
-# Full stats push (on /dm:dnd load — use --replace-players to clear stale characters):
+# The whole party, read from the campaign's sheet files (use this at load and after sheet changes):
+python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign> [--replace-players]
+
+# Full stats push by hand (only for a field the sheet doesn't hold):
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --replace-players --json '{
   "players": [{
     "name": "Flerb", "race": "Tiefling", "class": "Fighter", "level": 1, "background": "Soldier",
@@ -303,6 +306,9 @@ If `check_input.py` returns output, prepend it to the player's terminal input wh
 **Keep the clock honest.** The world clock is continuity, not decoration. Narrate consistently with the time you last pushed, and advance it *deliberately* when an action costs time — a brief exchange is a few minutes, a search or a shopping trip is longer, a rest or a journey longer still. Never let the time of day drift on its own or silently reset between scenes. If the clock and the fiction ever disagree, reconcile it to the truth with a fresh `--world-time` push rather than compounding the error; setting it *backward* to the correct time is fine and undoes nothing, since timed effects run on their own round/minute/hour durations in `tracker.py`, independent of the wall clock.
 
 ---
+
+## Turn Log Scribe — `display/scribe.py`
+`send.py` hands every narration send to the scribe, which runs in the background. It summarises what the table heard, one line per turn, into `<campaign>/turn-log.md`, and keeps the newest six lines as `## Recent Events` in `state.md`. A turn starts at a send with an `@player` block. The model is the sidebar-notes helper chosen in the portal (Luna by default); when it is off or fails, the line is the turn's opening words, and `runtime/scribe.log` says why. `DND_SCRIBE=0` switches it off. The DM never calls it.
 
 ## Tracker Script — `scripts/tracker.py`
 Tracks conditions, concentration, timed effects, and death saves. State persists at `~/.claude/dnd/campaigns/<name>/tracker.json`.
