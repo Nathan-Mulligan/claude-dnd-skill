@@ -5,15 +5,16 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import signal
 import struct
 import subprocess
-import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from runtime_paths import config_path, scratch_dir, write_file
 from scene_engine import (  # noqa: F401  (re-exported for callers of backgrounds)
     ENVIRONMENTS, MOODS, SETTINGS, SceneContext, image_prompt as prompt_for,
 )
@@ -93,8 +94,9 @@ def valid_png(path: Path) -> bool:
 
 
 def render_local(job: SceneJob, config: LocalConfig) -> None:
-    with tempfile.TemporaryDirectory(prefix="render-", dir=job.path.parent) as temporary:
-        directory = Path(temporary)
+    # Rendered outside the runtime dir: the renderer would follow a link the DM put there.
+    directory = Path(scratch_dir(".image-render-"))
+    try:
         prompt = directory / "prompt.txt"
         prompt.write_text(prompt_for(job.setting, job.mood, config.reference is not None, config.density_map,
                                      job.scene), encoding="utf-8")
@@ -135,7 +137,9 @@ def render_local(job: SceneJob, config: LocalConfig) -> None:
         output = directory / ("edit.png" if config.reference else "source.png")
         if not valid_png(output):
             raise RuntimeError("local renderer did not produce a PNG")
-        output.replace(job.path)
+        write_file(job.path, output.read_bytes(), root=job.path.parent.parent)
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
 
 
 class BackgroundDirector:
@@ -195,12 +199,10 @@ class BackgroundDirector:
 
     def _persist_unlocked(self) -> None:
         data = self._snapshot_unlocked()
-        temporary = self.directory / "current.json.tmp"
         try:
-            temporary.write_text(json.dumps(data), encoding="utf-8")
-            temporary.replace(self.directory / "current.json")
+            write_file(self.directory / "current.json", json.dumps(data), root=self.directory.parent)
         except OSError:
-            temporary.unlink(missing_ok=True)
+            pass
 
     def _publish(self, state: dict) -> None:
         if self.broadcast:
@@ -305,7 +307,6 @@ class BackgroundDirector:
 
 if __name__ == "__main__":
     import argparse
-    from runtime_paths import rt
 
     parser = argparse.ArgumentParser(description="Configure the display's local background renderer.")
     parser.add_argument("--python", required=True)
@@ -317,8 +318,7 @@ if __name__ == "__main__":
     os.environ.update(settings)
     if runtime_config() is None:
         parser.error("Renderer paths are not usable; no settings were saved.")
-    target = Path(rt("image-config.json"))
-    temporary = target.with_suffix(f".{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(target)
+    target = config_path("image-config.json")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    write_file(target, json.dumps(settings, indent=2) + "\n")
     print("Local backgrounds configured. Restart the display to use them.")

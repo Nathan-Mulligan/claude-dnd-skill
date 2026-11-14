@@ -12,6 +12,7 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import subprocess
 import threading
 import uuid
@@ -22,6 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 from music_filter import lowpass_wav
+from runtime_paths import scratch_dir, write_file
 from scene_engine import (  # noqa: F401  (re-exported for callers of music)
     MOOD_PROFILES, MOODS, SETTING_ALIASES, SETTINGS, SceneContext, music_prompt as prompt_for, theme_mood,
 )
@@ -59,7 +61,9 @@ def runtime_config(config_path: Path) -> tuple[Path | None, Path | None]:
 
 
 def render_cli(job: Job, cli: Path, hf_home: Path | None) -> None:
-    temp_path = job.path.with_suffix(".partial.wav")
+    # Rendered outside the runtime dir: the renderer and the filter would follow a link the DM put there.
+    work = Path(scratch_dir(".music-render-"))
+    temp_path = work / "partial.wav"
     env = os.environ.copy()
     env["PATH"] = "/opt/homebrew/bin:" + env.get("PATH", "")
     if hf_home:
@@ -71,7 +75,7 @@ def render_cli(job: Job, cli: Path, hf_home: Path | None) -> None:
         "--prompt", job.prompt, "--out", str(temp_path),
     ]
     cmd.extend(["--negative-prompt", NEGATIVE_PROMPT])
-    filtered_path = job.path.with_suffix(".filtered.wav")
+    filtered_path = work / "filtered.wav"
     try:
         subprocess.run(cmd, cwd=cli.parent, env=env, check=True,
                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -82,10 +86,9 @@ def render_cli(job: Job, cli: Path, hf_home: Path | None) -> None:
             lowpass_wav(temp_path, filtered_path)
         except (wave.Error, EOFError, ValueError, ImportError) as exc:
             raise RuntimeError(f"music filtering failed: {type(exc).__name__}") from exc
-        filtered_path.replace(job.path)
+        write_file(job.path, filtered_path.read_bytes(), root=job.path.parent.parent)
     finally:
-        temp_path.unlink(missing_ok=True)
-        filtered_path.unlink(missing_ok=True)
+        shutil.rmtree(work, ignore_errors=True)
 
 
 class MusicDirector:
@@ -189,13 +192,10 @@ class MusicDirector:
             "scene_revision": self.scene_revision,
             "seen": list(self.seen_order),
         }
-        target = self.directory / "current.json"
-        temporary = self.directory / "current.json.tmp"
         try:
-            temporary.write_text(json.dumps(data), encoding="utf-8")
-            temporary.replace(target)
+            write_file(self.directory / "current.json", json.dumps(data), root=self.directory.parent)
         except OSError:
-            temporary.unlink(missing_ok=True)
+            pass
 
     def _make_job(self, kind: str) -> Job:
         assert self.entry is not None

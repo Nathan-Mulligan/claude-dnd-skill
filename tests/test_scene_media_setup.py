@@ -17,13 +17,16 @@ import backgrounds
 def test_local_renderer_configuration_survives_without_launch_environment(tmp_path):
     runner = tmp_path / "runner.py"
     runner.write_text("", encoding="utf-8")
-    runtime = tmp_path / "runtime"
+    data_root = tmp_path / "data"
     env = {name: value for name, value in os.environ.items() if not name.startswith("DND_IMAGE_")}
-    env["DND_RUNTIME_DIR"] = str(runtime)
+    env["DND_CAMPAIGN_ROOT"] = str(data_root)
+    env["DND_RUNTIME_DIR"] = str(tmp_path / "runtime")
     command = [sys.executable, str(DISPLAY / "backgrounds.py"), "--python", sys.executable,
                "--runner", str(runner), "--model", str(tmp_path)]
     subprocess.run(command, env=env, capture_output=True, text=True, check=True)
-    target = runtime / "image-config.json"
+    # The DM can write the runtime dir, so settings that name programs to run live in the data root.
+    assert not (tmp_path / "runtime" / "image-config.json").exists()
+    target = data_root / "image-config.json"
     saved = target.read_bytes()
     with mock.patch.dict(os.environ, {}, clear=True):
         config = backgrounds.runtime_config(target)

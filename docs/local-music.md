@@ -12,7 +12,7 @@ python3 scripts/configure-local-music.py \
   --hf-home /Users/agencyastro/Desktop/Agents/outputs/dnd-stable-audio3-trial-20261107/hf-cache
 ```
 
-The command writes only `music-config.json` in the display runtime directory, resolved from `DND_RUNTIME_DIR` or `DND_CAMPAIGN_ROOT` (default `~/.claude/dnd/.runtime`). `DND_MUSIC_CLI` and `DND_MUSIC_HF_HOME` environment variables override that file. Start or restart the display after configuration; do not restart an active display during a campaign. The installed model and weights stay outside the repository. The current trial paths are local M5 paths, not portable project defaults.
+The command writes only `music-config.json` in the campaign data root, `DND_CAMPAIGN_ROOT` (default `~/.claude/dnd`). It is not kept in the runtime directory, because a sandboxed DM can write there and this file names a program the display runs. `DND_MUSIC_CLI` and `DND_MUSIC_HF_HOME` environment variables override that file. Start or restart the display after configuration; do not restart an active display during a campaign. The installed model and weights stay outside the repository. The current trial paths are local M5 paths, not portable project defaults.
 
 On the main display, turn on **Music** in settings and adjust its volume. Player phone views do not play music. The toggle is off until clicked because browsers require a user gesture to unlock audio.
 
