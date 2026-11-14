@@ -30,7 +30,9 @@ def test_qwen_named_campaign_uses_one_system_prompt(tmp_path):
         script = bin_dir / name
         script.write_text(body, encoding="utf-8")
         script.chmod(0o755)
-    env = dict(os.environ, DND_CAMPAIGN_ROOT=str(tmp_path), PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    env = dict(os.environ, DND_CAMPAIGN_ROOT=str(tmp_path), HOME=str(tmp_path / "home"),
+               PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    env.pop("DND_VENV", None)
     result = subprocess.run(
         ["bash", "scripts/play-local.sh", "qwen", "--campaign", "trial", "--yolo"],
         cwd=REPO, env=env, capture_output=True, text=True,

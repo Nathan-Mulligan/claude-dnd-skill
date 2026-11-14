@@ -52,11 +52,12 @@ import argparse
 import datetime
 import json
 import pathlib
-import shutil
 import sys
 from typing import Optional
 
 from paths import find_campaign
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "display"))
+from runtime_paths import write_file  # noqa: E402
 from utf8io import read_text, TextDecodeError
 
 
@@ -70,7 +71,8 @@ def _backup_corrupt(p: pathlib.Path) -> pathlib.Path:
     """Copy an unreadable graph aside before any write-back can flatten it."""
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     target = p.with_name(f"graph.json.corrupt-{ts}")
-    shutil.copy2(p, target)
+    # The display's help button runs this outside the DM's sandbox: never write through a link it planted.
+    write_file(target, p.read_bytes())
     return target
 
 

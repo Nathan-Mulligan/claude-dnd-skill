@@ -44,6 +44,8 @@ SCRIPTS_DIR   = os.path.join(_ROOT, "scripts")
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from runtime_paths import rt          # resolves <data-root>/.runtime
+# The DM can write the runtime dir and its campaign; these never write through its links.
+from runtime_paths import append_text, config_path, write_file
 LOG_FILE      = rt("text_log.json")
 
 # SRD lookup module — degrades silently if dataset not built
@@ -147,9 +149,7 @@ def _get_or_create_token() -> str:
     except FileNotFoundError:
         pass
     token = secrets.token_hex(32)   # 64-char hex — brute force infeasible
-    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
-        f.write(token)
-    os.chmod(TOKEN_FILE, 0o600)
+    write_file(TOKEN_FILE, token, mode=0o600)
     return token
 
 
@@ -244,9 +244,7 @@ def _persist_approved_devices() -> None:
     try:
         with _devices_lock:
             data = list(_approved_devices)
-        with open(DEVICES_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-        os.chmod(DEVICES_FILE, 0o600)
+        write_file(DEVICES_FILE, json.dumps(data), mode=0o600)
     except Exception:
         pass
 
@@ -267,9 +265,7 @@ def _persist_pending_devices() -> None:
     try:
         with _devices_lock:
             data = list(_pending_devices.values())
-        with open(PENDING_DEVICES_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-        os.chmod(PENDING_DEVICES_FILE, 0o600)
+        write_file(PENDING_DEVICES_FILE, json.dumps(data), mode=0o600)
     except Exception:
         pass
 
@@ -441,13 +437,7 @@ def _check_auto_trigger() -> None:
         lines = [f'[{c}]: {e["text"]}' for c, e in _staged.items()]
         content = "\n".join(lines)
         try:
-            with open(QUEUE_FILE, "a+", encoding="utf-8") as f:
-                f.seek(0, os.SEEK_END)
-                if f.tell():
-                    f.write("\n")
-                f.write(content)
-                f.flush()
-                os.fsync(f.fileno())
+            append_text(QUEUE_FILE, content, separator="\n", durable=True)
         except OSError:
             return
         _staged.clear()
@@ -1046,15 +1036,7 @@ def _persist_tail() -> None:
                     return
             except OSError:
                 pass
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except OSError:
-                pass
-        os.replace(tmp, path)
+        write_file(path, json.dumps(data), root=_campaigns_dir(), durable=True)
     except Exception as e:
         print(f"_persist_tail: write failed: {e}", file=sys.stderr)
 
@@ -1125,8 +1107,7 @@ def _set_campaign(name: str) -> None:
         _persist_tail()
         with _tail_lock:
             _tail_buffer.clear()
-    with open(CAMP_FILE, "w", encoding="utf-8") as f:
-        f.write(name)
+    write_file(CAMP_FILE, name)
     _load_tail()
 
 
@@ -1138,8 +1119,7 @@ def _persist_log() -> None:
     try:
         with _text_log_lock:
             data = list(_text_log)
-        with open(LOG_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f)
+        write_file(LOG_FILE, json.dumps(data))
     except Exception:
         pass
 
@@ -1183,9 +1163,11 @@ _persist_lock = threading.Lock()  # keeps snapshot order and write order the sam
 
 def _active_campaign_name() -> Optional[str]:
     try:
-        return open(CAMP_FILE, encoding="utf-8").read().strip() or None
+        name = open(CAMP_FILE, encoding="utf-8").read().strip()
     except OSError:
         return None
+    # The DM can write CAMP_FILE; a name must never lead out of the campaigns folder.
+    return name if name and name not in {".", ".."} and not re.search(r"[/\\]", name) else None
 
 
 def _party_file(campaign: str) -> Optional[Path]:
@@ -1212,13 +1194,10 @@ def _persist_stats() -> None:
             with _stats_lock:
                 data = dict(_current_stats)
                 owner = _stats_owner
-            with open(STATS_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f)
+            write_file(STATS_FILE, json.dumps(data))
             party = _party_file(owner) if owner else None
             if party:
-                tmp = party.with_name(party.name + ".tmp")
-                tmp.write_text(json.dumps(data), encoding="utf-8")
-                os.replace(tmp, party)
+                write_file(party, json.dumps(data), root=_campaigns_dir())
         except Exception:
             pass
 
@@ -1311,8 +1290,7 @@ def _load_input_queue() -> None:
 
 def _persist_input_queue() -> None:
     try:
-        with open(INPUT_FILE, "w", encoding="utf-8") as f:
-            json.dump(_input_queue, f)
+        write_file(INPUT_FILE, json.dumps(_input_queue))
     except Exception:
         pass
 
@@ -1333,9 +1311,12 @@ def _broadcast(payload: dict) -> None:
             _client_chars.pop(q, None)
 
 
-_music_cli, _music_hf = _music_module.runtime_config(Path(rt("music-config.json")))
+# Renderer settings name programs the display runs, so they never come from the DM-writable runtime dir.
+_music_config_path = Path(config_path("music-config.json"))
+_image_config_path = Path(config_path("image-config.json"))
+_music_cli, _music_hf = _music_module.runtime_config(_music_config_path)
 _render_lock = threading.Lock()
-_image_config = _background_module.runtime_config(Path(rt("image-config.json")))
+_image_config = _background_module.runtime_config(_image_config_path)
 _background = _background_module.BackgroundDirector(
     Path(rt("backgrounds")),
     renderer=(lambda job: _background_module.render_local(job, _image_config)) if _image_config else None,
@@ -1678,8 +1659,9 @@ def chunk():
 
     # A speaking NPC gets a saved voice before its line reaches the page, so
     # the cast broadcast lands first and the line is read in that voice.
+    voice_note = ""
     if is_npc:
-        new_cast = _ensure_npc_voice(data["npc"], data.get("npc_voice") or "")
+        new_cast, voice_note = _ensure_npc_voice(data["npc"], data.get("npc_voice") or "")
         if new_cast is not None:
             _broadcast({"cast": new_cast})
 
@@ -1691,6 +1673,8 @@ def chunk():
     _persist_log()
     _persist_tail()
     _broadcast(payload)
+    if voice_note:
+        return jsonify({"note": voice_note}), 200
     return "", 204
 
 
@@ -2191,8 +2175,7 @@ def narration_pref():
     pref = rt("narration_target")
     try:
         if n:
-            with open(pref, "w", encoding="utf-8") as f:
-                f.write(str(n))
+            write_file(pref, str(n))
         elif os.path.exists(pref):
             os.remove(pref)
     except OSError:
@@ -2232,8 +2215,7 @@ def roll_pref():
             with open(pref, encoding="utf-8") as f:
                 prefs = json.load(f)
         prefs[char] = mode
-        with open(pref, "w", encoding="utf-8") as f:
-            json.dump(prefs, f)
+        write_file(pref, json.dumps(prefs))
     except (OSError, ValueError):
         pass
     return {"ok": True, "character": char, "mode": mode}, 200
@@ -2302,7 +2284,7 @@ def _write_session_flag(pattern: "re.Pattern", new_line: str) -> bool:
             text = f"{text}{sep}{nl}## Session Flags{nl}{new_line}{nl}"
 
     try:
-        state.write_text(text, encoding="utf-8", newline="")
+        write_file(state, text, root=_campaigns_dir())
         return True
     except OSError:
         return False
@@ -2414,13 +2396,19 @@ def _read_cast(path):
     return _cast_voices.voices(_cast_voices.read_raw(path))
 
 
+def _cast_voice_genders(narrator: str) -> "tuple[list, list]":
+    """The narrator's backend catalog as (male, female) voices."""
+    if _tts is None:
+        return [], []
+    if narrator in _tts.GEMINI_VALID_VOICES:
+        return list(_tts.GEMINI_VOICES_MALE), list(_tts.GEMINI_VOICES_FEMALE)
+    return list(_tts.LOCAL_VOICES_MALE), list(_tts.LOCAL_VOICES_FEMALE)
+
+
 def _cast_voice_pool(narrator: str) -> list:
     """Voices the fallback may hand out: the narrator's backend catalog."""
-    if _tts is None:
-        return []
-    if narrator in _tts.GEMINI_VALID_VOICES:
-        return list(_tts.GEMINI_VOICES_MALE + _tts.GEMINI_VOICES_FEMALE)
-    return list(_tts.LOCAL_VOICES_MALE + _tts.LOCAL_VOICES_FEMALE)
+    male, female = _cast_voice_genders(narrator)
+    return male + female
 
 
 def _recent_npc_names(limit: int = 12) -> list:
@@ -2444,19 +2432,21 @@ def _recent_npc_names(limit: int = 12) -> list:
     return names
 
 
-def _ensure_npc_voice(name: str, requested: str = "") -> "dict | None":
-    """Give a speaking NPC a saved voice; return the new cast when it changed.
+def _ensure_npc_voice(name: str, requested: str = "") -> "tuple[dict | None, str]":
+    """Give a speaking NPC a saved voice. Returns (the new cast when it changed, a note for the DM).
 
     A voice the DM names is saved unless a hand pick from the voice menu
-    already exists for that name. Otherwise an unknown name gets a stable
-    voice from `_cast_voices.pick_voice`. Existing entries are never replaced
-    by the fallback. Failures never block the narration.
+    already exists for that name. When another speaker or the narrator already
+    has it, a new speaker gets a free voice of the same gender instead, an
+    existing one keeps its voice, and the note says so. Otherwise an unknown
+    name gets a stable voice from `_cast_voices.pick_voice`. Existing entries
+    are never replaced by the fallback. Failures never block the narration.
     """
     if _tts is None:
-        return None
+        return None, ""
     raw_name = str(name or "").strip().lower()
     if not raw_name or len(raw_name) > 80 or raw_name.startswith("_"):
-        return None
+        return None, ""
     requested = str(requested or "").strip()
     narrator = _read_narrator_voice()
     gemini = narrator in _tts.GEMINI_VALID_VOICES
@@ -2470,33 +2460,44 @@ def _ensure_npc_voice(name: str, requested: str = "") -> "dict | None":
             cast = _cast_voices.voices(raw)
             src = _cast_voices.sources(raw)
             key = _cast_voices.cast_key(cast, raw_name)
-            if key in cast:
-                if not requested or cast[key] == requested:
-                    return None
-                if src.get(key) not in (_cast_voices.DM, _cast_voices.AUTO):
-                    return None          # a hand pick always wins
-                cast[key], src[key] = requested, _cast_voices.DM
-            elif requested:
-                cast[key], src[key] = requested, _cast_voices.DM
+            if key in cast and (not requested or cast[key] == requested
+                                or src.get(key) not in (_cast_voices.DM, _cast_voices.AUTO)):
+                return None, ""          # nothing new, or a hand pick, which always wins
+            with _stats_lock:
+                party_names = [str(p.get("name", "")) for p in _current_stats.get("players", [])
+                               if isinstance(p, dict)]
+            party = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in party_names if n)
+                     if k in cast]
+            note = ""
+            if requested:
+                male, female = _cast_voice_genders(narrator)
+                voice, holder = _cast_voices.dm_voice(
+                    cast, key, requested, narrator=narrator, party=party,
+                    pool=male + female, male=male, female=female)
+                if holder and key in cast:
+                    voice = cast[key]
+                if holder:
+                    spoken = str(name).strip()
+                    note = (f"{spoken} shares {requested} with {holder}: no free voice of that kind is left."
+                            if voice == requested else
+                            f"{spoken} speaks as {voice}: {requested} is already {holder}'s voice.")
+                if cast.get(key) == voice:
+                    return None, note
+                cast[key], src[key] = voice, (_cast_voices.DM if voice == requested else _cast_voices.AUTO)
             else:
-                with _stats_lock:
-                    party_names = [str(p.get("name", "")) for p in _current_stats.get("players", [])
-                                   if isinstance(p, dict)]
-                party = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in party_names if n)
-                         if k in cast]
                 recent = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in _recent_npc_names())
                           if k in cast]
                 voice = _cast_voices.pick_voice(
                     key, _cast_voice_pool(narrator), narrator=narrator,
                     party=party, recent=recent, used=cast.values())
                 if not voice:
-                    return None
+                    return None, ""
                 cast[key], src[key] = voice, _cast_voices.AUTO
             _cast_voices.write_raw(path, cast, src, raw.get("_comment"))
-            return cast
+            return cast, note
     except Exception as exc:          # never lose narration over a voice
         print(f"[cast] could not save a voice for {raw_name!r}: {exc}", file=_sys.stderr)
-        return None
+        return None, ""
 
 
 CLIENTLOG_FILE = rt("client-errors.log")
@@ -2517,8 +2518,7 @@ def clientlog():
         str(d.get("message", ""))[:500].replace("\n", " "),
     )
     try:
-        with open(CLIENTLOG_FILE, "a", encoding="utf-8") as f:
-            f.write(line)
+        append_text(CLIENTLOG_FILE, line)
     except Exception:
         pass
     return "", 204
@@ -3326,8 +3326,7 @@ def submit_now():
     except Exception:
         return "Error", 500
     try:
-        with open(TRIGGER_FILE, "w", encoding="utf-8") as f:
-            f.write(content)
+        write_file(TRIGGER_FILE, content)
     except Exception:
         return "Error", 500
     return "", 204
@@ -3489,11 +3488,11 @@ if __name__ == "__main__":
 
     host = "0.0.0.0" if _LAN_MODE else "localhost"
     # TLS — only enabled when --tls is explicitly passed; HTTP is the default.
-    # Certs are runtime state (persist across plugin updates) → rt(); .scheme is a
-    # launch-time marker read by simple shell commands → stays in the code dir.
+    # Certs live in <data root>/tls (start-display.sh, setup_tls.py), out of the DM's reach;
+    # .scheme is a launch-time marker read by simple shell commands → stays in the code dir.
     _display_dir = os.path.dirname(os.path.abspath(__file__))
-    _cert = rt("cert.pem")
-    _key  = rt("key.pem")
+    _cert = config_path(os.path.join("tls", "cert.pem"))
+    _key  = config_path(os.path.join("tls", "key.pem"))
     ssl_ctx = (_cert, _key) if (_TLS_MODE and os.path.exists(_cert) and os.path.exists(_key)) else None
     scheme  = "https" if ssl_ctx else "http"
 

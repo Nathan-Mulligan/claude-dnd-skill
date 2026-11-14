@@ -36,7 +36,7 @@ python3 backgrounds.py --python /absolute/path/to/model-venv/bin/python \
   --guard /absolute/path/to/watch_trial.py
 ```
 
-The command validates and saves the local paths under the display runtime directory.
+The command validates and saves the local paths in `image-config.json` in the campaign data root (`DND_CAMPAIGN_ROOT`, default `~/.claude/dnd`), not in the runtime directory, which a sandboxed DM can write.
 Restart the display after configuration. Environment variables override saved paths:
 
 ```bash

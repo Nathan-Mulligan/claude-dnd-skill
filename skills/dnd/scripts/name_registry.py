@@ -92,9 +92,13 @@ def _load() -> dict:
 def _save(data: dict) -> None:
     data["updated"] = _today()
     p = _registry_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, indent=2, ensure_ascii=False),
-                 encoding="utf-8")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(data, indent=2, ensure_ascii=False),
+                     encoding="utf-8")
+    except PermissionError:
+        # A portal DM may write only its own campaign; `rebuild` later picks the name up from its files.
+        sys.stderr.write(f"name_registry: {p} is read-only here; not recorded\n")
 
 
 # ── Scanners ──────────────────────────────────────────────────────────────
