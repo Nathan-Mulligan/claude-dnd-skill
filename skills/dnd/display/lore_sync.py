@@ -333,16 +333,20 @@ def failure_reason(e: BaseException) -> str:
     return f"{type(e).__name__}: {e}"[:300]
 
 
-def _ask_codex(prompt: str, model: str) -> object:
+_API_KEY_VARS = ("CODEX_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def _ask_codex(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
     with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
-        schema = Path(work, "schema.json")
+        schema_file = Path(work, "schema.json")
         out = Path(work, "out.json")
-        schema.write_text(json.dumps(_SCHEMA), encoding="utf-8")
+        schema_file.write_text(json.dumps(schema), encoding="utf-8")
         cmd = [_codex_bin(), "exec", "-m", model, "-c", 'model_reasoning_effort="low"',
                "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
-               "-s", "read-only", "-C", work, "--output-schema", str(schema),
+               "-s", "read-only", "-C", work, "--output-schema", str(schema_file),
                "-o", str(out), prompt]
-        env = dict(os.environ, AGENT_TASK="1")
+        env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}  # subscription login only
+        env["AGENT_TASK"] = "1"
         done = subprocess.run(cmd, cwd=work, env=env, stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, encoding="utf-8", errors="replace",
                               timeout=MODEL_TIMEOUT_S, check=False)
@@ -351,16 +355,16 @@ def _ask_codex(prompt: str, model: str) -> object:
         return json.loads(out.read_text(encoding="utf-8"))
 
 
-def _ask_claude(prompt: str, model: str) -> object:
+def _ask_claude(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
     """Claude CLI in print mode on the user's subscription: no tools, no
     settings, no MCP servers, no saved session. ANTHROPIC_API_KEY is removed
     so the call can never be billed to an API account."""
     with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
         cmd = ["claude", "-p", "--model", model, "--output-format", "json",
-               "--json-schema", json.dumps(_SCHEMA), "--tools", "", "--setting-sources", "",
+               "--json-schema", json.dumps(schema), "--tools", "", "--setting-sources", "",
                "--strict-mcp-config", "--no-session-persistence",
-               "--system-prompt", "You write short JSON notes for a game sidebar. Reply only with the JSON asked for."]
-        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
+               "--system-prompt", "You write short JSON notes for a tabletop game. Reply only with the JSON asked for."]
+        env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
         env["AGENT_TASK"] = "1"
         done = subprocess.run(cmd, cwd=work, env=env, input=prompt, capture_output=True,
                               text=True, timeout=MODEL_TIMEOUT_S, check=True)
@@ -372,8 +376,8 @@ def _ask_claude(prompt: str, model: str) -> object:
     return json.loads(reply.get("result") or "")
 
 
-def _ask_ollama(prompt: str, model: str) -> object:
-    body = {"model": model, "stream": False, "think": False, "format": _SCHEMA,
+def _ask_ollama(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
+    body = {"model": model, "stream": False, "think": False, "format": schema,
             "options": {"temperature": 0.2},
             "messages": [{"role": "user", "content": prompt}]}
     req = urllib.request.Request(OLLAMA_URL, data=json.dumps(body).encode("utf-8"),
@@ -399,6 +403,15 @@ def validate(result: object) -> dict:
                     or not all(isinstance(item[k], str) for k in ("name", "detail"))):
                 raise ValueError(f"model reply has a malformed {key} item")
     return result
+
+
+def ask(prompt: str, schema: dict, choice: "tuple[str, str] | None" = None) -> object:
+    """Ask the chosen helper for JSON matching `schema`. Raises when the helper is off or fails."""
+    choice = choice or choose_model()
+    if choice is None:
+        raise RuntimeError("helper is off")
+    provider, model = choice
+    return _PROVIDERS[provider](prompt, model, schema)
 
 
 def ask_model(prompt: str, choice: "tuple[str, str] | None" = None) -> dict:

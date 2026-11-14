@@ -39,6 +39,7 @@ import random
 import re
 import sys
 
+import npc_entries
 from xp import CR_XP, MONSTER_MULTIPLIERS, XP_THRESHOLDS
 
 try:
@@ -356,13 +357,9 @@ def _weighted(table, rng):
     return table[-1]
 
 
-def _norm_name(name: str) -> str:
-    return " ".join(name.split()).casefold()
-
-
 def npc_rng(name: str) -> random.Random:
     """The same name always rolls the same person."""
-    return random.Random("npc:" + _norm_name(name))
+    return random.Random("npc:" + npc_entries.norm_name(name))
 
 
 def npc_temperament(rng=None, trader: bool = False) -> dict:
@@ -680,81 +677,23 @@ def format_road_day(day: dict, number: int, total: int, label: str = "") -> str:
 
 # ── npcs.md entries ──────────────────────────────────────────────────────────
 
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
-_ENTRY_SUBSECTIONS = {"personality", "relationships", "notes"}
-
-
-_ANNOTATION_STARTS = (" (", " —", " –", " - ", ",", ":")
-
-
-def _heading_is(text: str, name: str, exact: bool) -> bool:
-    """Exact name, or (exact=False) the name followed by an annotation such as "(trader)" or "— innkeeper"."""
-    heading, wanted = _norm_name(text.strip("* ")), _norm_name(name)
-    return heading == wanted or (not exact and heading.startswith(tuple(wanted + a for a in _ANNOTATION_STARTS)))
-
-
-def _is_entry_heading(match) -> bool:
-    return match.group(2).strip("* ").casefold() not in _ENTRY_SUBSECTIONS
-
-
-def _entry_span(lines: list, name: str):
-    for exact in (True, False):
-        for i, line in enumerate(lines):
-            m = _HEADING_RE.match(line)
-            if not m or not 2 <= len(m.group(1)) <= 4 or not _heading_is(m.group(2), name, exact):
-                continue
-            level = len(m.group(1))
-            for j in range(i + 1, len(lines)):
-                h = _HEADING_RE.match(lines[j])
-                if h and len(h.group(1)) <= level and _is_entry_heading(h):
-                    return i, j
-            return i, len(lines)
-    return None
-
-
-def _ensure_entry(lines: list, name: str):
-    span = _entry_span(lines, name)
-    if span:
-        return span
-    levels = {len(m.group(1)) for m in map(_HEADING_RE.match, lines) if m and _is_entry_heading(m)}
-    marker = "##" if 2 in levels and 3 not in levels else "###"
-    while lines and not lines[-1].strip():
-        lines.pop()
-    lines += ["", f"{marker} {name}"]
-    return len(lines) - 1, len(lines)
-
-
-def _read_npcs(path) -> list:
-    return path.read_text(encoding="utf-8").splitlines() if path.is_file() else ["# NPCs"]
-
 
 def save_npc_fields(path, name: str, fields) -> None:
     """Set `- **Label:** value` lines in the NPC's entry, adding the entry if it is missing."""
-    lines = _read_npcs(path)
-    start, end = _ensure_entry(lines, name)
-    insert_at = start + 1
-    while insert_at < end and _BULLET_RE.match(lines[insert_at]):
-        insert_at += 1
-    for label, value in fields:
-        prefix = f"- **{label}:**"
-        existing = next((k for k in range(start + 1, end) if lines[k].startswith(prefix)), None)
-        if existing is not None:
-            lines[existing] = f"{prefix} {value}"
-        else:
-            lines.insert(insert_at, f"{prefix} {value}")
-            insert_at += 1
-            end += 1
-    _write_atomic(path, "\n".join(lines) + "\n")
+    npc_entries.edit(path, lambda lines: npc_entries.set_fields(lines, name, fields))
 
 
 def add_npc_note(path, name: str, note: str, date: str = "") -> str:
-    lines = _read_npcs(path)
-    start, end = _ensure_entry(lines, name)
-    while end > start + 1 and not lines[end - 1].strip():
-        end -= 1
     line = f"- Party note ({date}): {note}" if date else f"- Party note: {note}"
-    lines.insert(end, line)
-    _write_atomic(path, "\n".join(lines) + "\n")
+
+    def append(lines: list) -> bool:
+        start, end = npc_entries.ensure_entry(lines, name)
+        while end > start + 1 and not lines[end - 1].strip():
+            end -= 1
+        lines.insert(end, line)
+        return True
+
+    npc_entries.edit(path, append)
     return line
 
 
