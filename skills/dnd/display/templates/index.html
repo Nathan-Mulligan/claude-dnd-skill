@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="dnd-token" content="{{ lan_token }}">
 <meta name="narrator-voice" content="{{ narrator_voice }}">
+<meta name="dice-input" content="{{ dice_input }}">
 <meta name="tts-available" content="{{ '1' if tts_available else '0' }}">
 
 <!-- Theme anti-FOUC. Runs synchronously before the stylesheet parses so the
@@ -2453,6 +2454,28 @@
     font-size:var(--type-body);
   }
   #dp-reel.locked { animation: dp-lock 0.45s ease-out; }
+  #dp-reel[hidden], #dp-faces[hidden], #dp-face-hint[hidden] { display: none; }
+  #dp-faces { display: flex; gap: 14px; align-items: center; justify-content: center; }
+  #dice-pad .dp-face {
+    width: 2.1em;
+    padding: 2px 0;
+    background: transparent;
+    color: #f4e2a8;
+    border: none;
+    border-bottom: 2px solid rgba(180,140,60,0.55);
+    border-radius: 0;
+    font: 600 var(--type-display)/1 var(--font-heading);
+    text-align: center;
+    caret-color: #f4e2a8;
+  }
+  #dice-pad .dp-face::placeholder { color: rgba(180,140,60,0.35); }
+  #dice-pad .dp-face:focus { outline: none; border-bottom-color: #f4e2a8; }
+  #dice-pad .dp-face[aria-invalid="true"] { border-bottom-color: #d0624a; }
+  #dp-face-hint {
+    text-align: center;
+    opacity: .8;
+    font: 400 var(--type-body)/1.4 var(--font-heading);
+  }
   @keyframes dp-lock {
     0%   { transform: scale(1.0); }
     35%  { transform: scale(1.18); color: #fff8dc; text-shadow: 0 0 24px rgba(255,220,140,0.9); }
@@ -3321,6 +3344,9 @@
   :root[data-skin="editorial"] #dp-reel-wrap{
     background:var(--e-strong); border:1px solid var(--e-hair-strong); border-radius:4px; box-shadow:none; }
   :root[data-skin="editorial"] #dp-reel{ font-family:var(--font-heading); font-weight:600; color:var(--e-accent); text-shadow:none; }
+  :root[data-skin="editorial"] #dice-pad .dp-face{ color:var(--e-accent); caret-color:var(--e-accent); border-bottom-color:var(--e-hair-strong); }
+  :root[data-skin="editorial"] #dice-pad .dp-face:focus{ border-bottom-color:var(--e-accent); }
+  :root[data-skin="editorial"] #dp-face-hint{ color:var(--e-on-strong); opacity:.75; }
   :root[data-skin="editorial"] #dp-result-line{ font-family:var(--font-heading); color:var(--e-on-strong); opacity:.75; }
   :root[data-skin="editorial"] #dp-result-line .total{ color:var(--e-accent); opacity:1; }
 
@@ -3928,6 +3954,10 @@
       <input id="vb-slider" class="settings-slider" type="range" min="250" max="2500" step="250" value="500" aria-label="Narration length target in words">
     </span>
   </div>
+  <div class="audio-row" id="dice-input-row" title="How the players roll: tap the on-screen dice, or roll real dice at the table and type the number">
+    <span class="audio-label">Dice</span>
+    <select id="dice-input-select" class="theme-label theme-select" aria-label="Dice"><option value="click">Click to roll</option><option value="real">Real dice</option></select>
+  </div>
   <div class="audio-row" id="speed-row" title="Typing speed">
     <span class="audio-label">Type Speed</span>
     <select id="speed-label" class="speed-label theme-select" aria-label="Type speed"><option value="36">Normal</option><option value="18">Fast</option><option value="0">Instant</option></select>
@@ -4000,6 +4030,7 @@
   <button id="ph-set-toggle" type="button" title="Display settings" aria-label="Display settings">⚙</button>
   <div id="ph-set-menu" role="menu">
     <label class="ph-set-opt ph-set-row" id="ph-theme-opt"><span>Theme</span><select id="ph-theme-select" class="ph-set-select" aria-label="Phone theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select></label>
+    <label class="ph-set-opt ph-set-row" id="ph-dice-opt"><span>Dice</span><select id="ph-dice-select" class="ph-set-select" aria-label="Dice"><option value="click">Click to roll</option><option value="real">Real dice</option></select></label>
     <label class="ph-set-opt ph-set-row" id="ph-skin-opt"><span>Style</span><select id="ph-skin-select" class="ph-set-select" aria-label="Display style"><option value="vellum">Vellum</option><option value="editorial">Editorial</option></select></label>
     <button class="ph-set-opt" id="ph-roll-opt" type="button" hidden><span>Rolls</span><strong id="ph-roll-val">Players</strong></button>
   </div>
@@ -4060,7 +4091,8 @@
         <input id="dp-name" type="text" maxlength="24" placeholder="Name"
                autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
       </div>
-      <div id="dp-reel-wrap"><div id="dp-reel">d20</div></div>
+      <div id="dp-reel-wrap"><div id="dp-reel">d20</div><div id="dp-faces" hidden></div></div>
+      <div id="dp-face-hint" hidden></div>
       <div id="dp-result-line"></div>
       <div class="dp-row" id="dp-die-row">
         <button class="dp-die active" data-spec="1d20">d20</button>
@@ -7252,6 +7284,28 @@ for (const [id, key, value, update] of [
   });
 })();
 
+// Dice setting: 'click' rolls on the dice pad, 'real' asks for the faces of
+// physical dice. Saved with the campaign so the TV and every phone agree.
+let _diceInput = document.querySelector('meta[name="dice-input"]')?.getAttribute('content') === 'real' ? 'real' : 'click';
+const _diceInputSelects = ['dice-input-select', 'ph-dice-select'].map(id => document.getElementById(id)).filter(Boolean);
+function _applyDiceInput(mode) {
+  _diceInput = mode === 'real' ? 'real' : 'click';
+  _diceInputSelects.forEach(select => { select.value = _diceInput; });
+  window.DndSelect?.refresh();
+  if (typeof window._dpSetDiceInput === 'function') window._dpSetDiceInput();
+}
+_diceInputSelects.forEach(select => {
+  select.value = _diceInput;
+  select.closest('label')?.addEventListener('click', event => event.stopPropagation());
+  select.addEventListener('change', () => {
+    const previous = _diceInput;
+    _applyDiceInput(select.value);
+    fetch('/dice-input', { method: 'POST', headers: _authHeaders(), body: JSON.stringify({ mode: _diceInput }) })
+      .then(response => { if (!response.ok) throw new Error(response.status); })
+      .catch(() => _applyDiceInput(previous));
+  });
+});
+
 function _syncSfx() {
   _setTrack(_sfxTrack, _sfxOn);
   if (_sfxGain) _sfxGain.gain.setTargetAtTime(_sfxOn ? _sfxVolume : 0, _audioCtx().currentTime, 0.05);
@@ -8824,6 +8878,7 @@ function connect() {
     if (payload.dice_pending !== undefined) {
       _updateDicePendingBadge(payload.dice_pending);
     }
+    if (payload.dice_input && payload.dice_input !== _diceInput) _applyDiceInput(payload.dice_input);
 
     if (payload.stats) {
       updateStats(payload.stats);
@@ -9070,6 +9125,7 @@ connect();
         if (rid) _seen.add(rid);
         if (fresh && (_onscreenDiceOn() || onscreen.length) && typeof window._edOpenDrawer === 'function') {
           window._edOpenDrawer('dice-drawer');
+          window._dpFocusFaces?.();
         }
       };
     }
@@ -9495,6 +9551,14 @@ document.getElementById('dice-pending-badge')?.addEventListener('click', () => {
   if (typeof window._edOpenDrawer === 'function') window._edOpenDrawer('dice-drawer');
 });
 
+// Sides of each physical die the table rolls for one result: a d20 with
+// advantage or disadvantage is two d20s, and 2d6 is two d6.
+function _realDiceSlots(spec, adv) {
+  const m = /^(\d+)d(\d+)$/.exec(spec) || [spec, '1', '20'];
+  const twoD20 = spec === '1d20' && (adv === 'advantage' || adv === 'disadvantage');
+  return Array(twoD20 ? 2 : Number(m[1])).fill(Number(m[2]));
+}
+
 // ── Phone dice pad: server-side roll + slot-machine reveal ───────────────
 function _initDicePad() {
   const reel    = document.getElementById('dp-reel');
@@ -9503,6 +9567,8 @@ function _initDicePad() {
   const nameEl  = document.getElementById('dp-name');
   const labelEl = document.getElementById('dp-label');
   const boundEl = document.getElementById('dp-bound');
+  const facesEl = document.getElementById('dp-faces');
+  const faceHint = document.getElementById('dp-face-hint');
   if (!reel || !rollBtn) return;
 
   // Character binding: ?char=Piper (or ?character=Piper) locks this phone to
@@ -9549,6 +9615,83 @@ function _initDicePad() {
     document.getElementById('dp-adv-row').hidden = !isD20;
   }
 
+  // Real dice: the reel window becomes one box per physical die.
+  function _faceHintText(slots) {
+    const who = (nameEl.value || '').trim();
+    const die = 'd' + slots[0];
+    let ask;
+    if (adv !== 'normal' && slots.length === 2 && spec === '1d20') {
+      ask = `roll two d20s and type both. The ${adv === 'advantage' ? 'higher' : 'lower'} one counts.`;
+    } else if (slots.length > 1) {
+      ask = `roll ${['two', 'three', 'four'][slots.length - 2] || slots.length} ${die}s and type each one.`;
+    } else if (slots[0] === 100) {
+      ask = 'roll percentile dice and type the number (00 with a 0 is 100).';
+    } else {
+      ask = `roll a ${die} and type what it shows.`;
+    }
+    return who ? `${who}, ${ask}` : ask.charAt(0).toUpperCase() + ask.slice(1);
+  }
+  function _renderFaces() {
+    const real = _diceInput === 'real';
+    reel.hidden = real;
+    facesEl.hidden = !real;
+    faceHint.hidden = !real;
+    rollBtn.textContent = real ? 'Enter roll' : 'Roll';
+    if (!real) { facesEl.replaceChildren(); return; }
+    const slots = _realDiceSlots(spec, adv);
+    facesEl.replaceChildren(...slots.map((sides, i) => {
+      const input = document.createElement('input');
+      input.className = 'dp-face';
+      input.type = 'text';
+      input.inputMode = 'numeric';
+      input.autocomplete = 'off';
+      input.maxLength = String(sides).length;
+      input.placeholder = 'd' + sides;
+      input.setAttribute('aria-label', slots.length > 1 ? `d${sides}, die ${i + 1} of ${slots.length}` : `d${sides} result`);
+      input.addEventListener('input', () => {
+        input.value = input.value.replace(/\D/g, '');
+        input.removeAttribute('aria-invalid');
+      });
+      input.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        if (!rollBtn.disabled) rollBtn.click();
+      });
+      return input;
+    }));
+    faceHint.textContent = _faceHintText(slots);
+  }
+  function _readFaces() {
+    const slots = _realDiceSlots(spec, adv);
+    const inputs = [...facesEl.querySelectorAll('.dp-face')];
+    let firstBad = null;
+    const faces = inputs.map((input, i) => {
+      const n = Number(input.value);
+      const ok = /^\d+$/.test(input.value) && n >= 1 && n <= slots[i];
+      if (ok) input.removeAttribute('aria-invalid');
+      else { input.setAttribute('aria-invalid', 'true'); firstBad = firstBad || input; }
+      return n;
+    });
+    if (!firstBad && faces.length === slots.length) return faces;
+    document.getElementById('dp-result-line').textContent =
+      `Type a number from 1 to ${slots[0]} for ${slots.length > 1 ? 'each die' : 'the die'}.`;
+    (firstBad || inputs[0])?.focus();
+    return null;
+  }
+  // Real dice: put the cursor in the first box, unless someone is typing elsewhere.
+  function _focusFaces() {
+    const focused = document.activeElement;
+    const typingElsewhere = focused && !focused.closest('#dice-pad')
+      && (focused.isContentEditable || /^(INPUT|TEXTAREA)$/.test(focused.tagName));
+    if (_diceInput !== 'real' || typingElsewhere) return;
+    facesEl.querySelector('.dp-face')?.focus({ preventScroll: true });
+  }
+  window._dpFocusFaces = _focusFaces;
+  window._dpSetDiceInput = _renderFaces;
+  nameEl.addEventListener('input', () => {
+    if (!faceHint.hidden) faceHint.textContent = _faceHintText(_realDiceSlots(spec, adv));
+  });
+
   document.querySelectorAll('#dp-die-row .dp-die').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#dp-die-row .dp-die').forEach(b => b.classList.remove('active'));
@@ -9556,14 +9699,17 @@ function _initDicePad() {
       spec = btn.dataset.spec;
       if (!reel.classList.contains('spinning')) reel.textContent = spec.replace('1d', 'd');
       _syncAdvAvailability();
+      _renderFaces();
     });
   });
   _syncAdvAvailability();
+  _renderFaces();
   document.querySelectorAll('.dp-adv').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.dp-adv').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       adv = btn.dataset.adv;
+      _renderFaces();
     });
   });
   document.querySelectorAll('.dp-mod').forEach(btn => {
@@ -9623,6 +9769,13 @@ function _initDicePad() {
   async function _dpRoll() {
     const character = (nameEl.value || '').trim() || 'Player';
     const label     = (labelEl.value || '').trim();
+    let typed = null;
+    if (_diceInput === 'real') {
+      // The last real roll is still showing: this press is "Roll again".
+      if (facesEl.hidden) { _renderFaces(); facesEl.querySelector('.dp-face')?.focus(); return; }
+      typed = _readFaces();
+      if (!typed) return;
+    }
     rollBtn.disabled = true;
     document.getElementById('dp-result-line').textContent = '';
 
@@ -9631,7 +9784,7 @@ function _initDicePad() {
 
     // Kick off spin animation immediately so the phone feels responsive,
     // then await the authoritative server roll.
-    const spinPromise = spin(faces);
+    const spinPromise = typed ? Promise.resolve() : spin(faces);
     let result = null;
     try {
       const res = await fetch('/player-input/dice', {
@@ -9640,12 +9793,18 @@ function _initDicePad() {
         body: JSON.stringify({
           character, spec, modifier: mod, advantage: adv, label,
           request_id: _activeRequestId || undefined,
+          faces: typed || undefined,
         }),
       });
       if (res.ok) result = await res.json();
     } catch (_) { /* network error — fall through */ }
 
     await spinPromise;
+    if (!result && typed) {
+      document.getElementById('dp-result-line').textContent = 'That roll did not save. Check the numbers and try again.';
+      rollBtn.disabled = false;
+      return;
+    }
     if (!result) {
       reel.classList.remove('spinning');
       reel.textContent = '!';
@@ -9660,12 +9819,19 @@ function _initDicePad() {
     const displayFace = (result.kept && result.kept.length === 1)
       ? result.kept[0]
       : result.subtotal;
+    if (typed) {
+      facesEl.hidden = true;
+      faceHint.hidden = true;
+      reel.hidden = false;
+      rollBtn.textContent = 'Roll again';
+    }
     lockTo(displayFace);
 
     const line = document.getElementById('dp-result-line');
     line.innerHTML = `${result.spec}${result.modifier ? (result.modifier > 0 ? '+' : '') + result.modifier : ''}` +
                      ` &nbsp;→&nbsp; <span class="total">${result.total}</span>` +
-                     (result.both ? ` &nbsp;<span style="opacity:.7">(${result.both.join(' / ')} ${result.advantage})</span>` : '');
+                     (result.both ? ` &nbsp;<span style="opacity:.7">(${result.both.join(' / ')} ${result.advantage})</span>` : '') +
+                     (result.manual ? ' &nbsp;<span style="opacity:.7">rolled at the table</span>' : '');
     if (navigator.vibrate) navigator.vibrate(30);
     rollBtn.classList.remove('pulse');
     if (boundEl) {
@@ -9777,6 +9943,8 @@ function _initDicePad() {
 
     // Lock everything except the prescribed die + adv button + Roll.
     _setLocked(true, reqSpec, (req.advantage || 'normal'));
+    _renderFaces();
+    _focusFaces();
 
     // Pull the player to the Roll tab so they don't miss the request. If they
     // were already on Roll, this is a no-op; if they were on Move, the tab
@@ -9802,6 +9970,7 @@ function _initDicePad() {
     if (_locked) _setLocked(false);
     rollBtn.disabled = false;
     rollBtn.classList.remove('pulse', 'rolled');
+    _renderFaces();
     if (boundEl) {
       const r = boundEl.querySelector('.req');
       if (r) r.remove();
