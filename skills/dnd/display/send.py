@@ -128,6 +128,7 @@ CHUNK_LIMIT = 3500             # paragraph-split text bodies above this many cha
 # Used by the post-send self-check to detect skipped or failed sends BEFORE the
 # script exits, surfacing problems to stderr where Bash output is visible.
 _SEND_LOG: list = []  # entries: {"endpoint": "chunk"/"stats", "ok": bool, "reason": str, "size": int}
+_NOTES: set = set()  # notes from the display already shown to the DM this run
 
 # SSL context — only used when running HTTPS (self-signed cert)
 if _SCHEME == "https":
@@ -153,6 +154,17 @@ def _endpoint_label(url: str) -> str:
     return url.rsplit("/", 1)[-1] or url
 
 
+def _print_note(resp) -> None:
+    """Print a note the display sent back for the DM (such as a voice it changed), once per run."""
+    try:
+        note = json.loads(resp.read(2000) or b"{}").get("note")
+    except (ValueError, AttributeError, OSError):
+        return
+    if isinstance(note, str) and note and note not in _NOTES:
+        _NOTES.add(note)
+        print(f"send.py: {note}", file=sys.stderr)
+
+
 def _post(url: str, data: bytes, token: str) -> bool:
     """POST data with retries. Logs every send (success or failure) to _SEND_LOG.
 
@@ -174,6 +186,7 @@ def _post(url: str, data: bytes, token: str) -> bool:
             # Server uses 204 (no content) for success; treat any 2xx as OK.
             if 200 <= status < 300:
                 _SEND_LOG.append({"endpoint": label, "ok": True, "status": status, "size": len(data)})
+                _print_note(resp)
                 return True
             # Non-2xx: surface body to stderr for diagnosis.
             body_excerpt = resp.read(200).decode("utf-8", errors="replace") if hasattr(resp, "read") else ""
