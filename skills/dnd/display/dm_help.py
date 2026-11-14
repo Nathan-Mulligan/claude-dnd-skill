@@ -298,8 +298,10 @@ def call_claude(display: str, state: str, session: str, arc: str, graph: str = "
 
     result = subprocess.run(
         [
+            # Campaign text the DM wrote is in the prompt, and this runs outside its sandbox: no tools.
             "claude", "-p",
             "--model", "claude-sonnet-4-6",
+            "--tools", "", "--setting-sources", "", "--strict-mcp-config", "--no-session-persistence",
             "--system-prompt", system,
             prompt,
         ],
