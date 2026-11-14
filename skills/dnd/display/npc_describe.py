@@ -13,6 +13,7 @@ How it runs
 Rules
   * Extraction only. The model returns phrases copied from the narration; a phrase that is
     not in the narration word for word is dropped, so nothing invented reaches npcs.md.
+    A phrase with a quotation mark is dialogue, not a look, and is dropped too.
     When the narration says nothing about the person, nothing is written.
   * At most MAX_TRIES answers per person; after that the DM's own notes are all there is.
     A call that fails before the model answers does not count.
@@ -53,8 +54,8 @@ PROMPT = """Below is narration the players of a tabletop game were just shown.
 
 Copy, word for word, up to {limit} short phrases from it that describe how {name} looks, dresses,
 sounds or carries themselves. Copy only words about {name}, exactly as they are written, as JSON
-{{"phrases": [...]}}. Never add, guess, reword or summarise. If the narration describes none of
-that for {name}, return {{"phrases": []}}. Do not run commands.
+{{"phrases": [...]}}. Never copy anything {name} says. Never add, guess, reword or summarise. If the
+narration describes none of that for {name}, return {{"phrases": []}}. Do not run commands.
 
 NARRATION:
 {text}
@@ -175,6 +176,8 @@ def copied_phrases(reply: object, narration: str, name: str) -> list:
             continue
         wanted = _plain(phrase).strip(" ,;.").lower()
         if len(wanted) < 4 or len(wanted) > PHRASE_MAX or wanted == npc_entries.norm_name(name):
+            continue
+        if '"' in wanted:  # a spoken line, not how they look
             continue
         match = re.search(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)", folded)
         if not match:

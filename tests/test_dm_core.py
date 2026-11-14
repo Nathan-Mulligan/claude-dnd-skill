@@ -222,3 +222,13 @@ def test_dm_core_keeps_the_resume_load_lean_and_documents_the_wrap_up():
     for needle in ("stop_point.py show", "stop_point.py write", "## Story So Far",
                    "session-log-archive.md", "Save & close", "exact moment"):
         assert needle in core
+
+
+def test_dm_core_pushes_quests_and_factions_when_they_change():
+    # Seen in the integration play-through: a quest finished and a faction changed, and the sidebar
+    # was never told, because the bookkeeping list named only the party push.
+    core = _read(CORE)
+    bookkeeping = next(line for line in core.splitlines() if "**Bookkeeping.**" in line)
+    assert "--quests" in bookkeeping and "--factions" in bookkeeping
+    flags = core[core.index("## 16."):]
+    assert "push_stats.py --quests" in flags and "--factions" in flags
