@@ -102,17 +102,24 @@ def test_merge_keeps_a_note_already_shown_for_the_same_name():
         {"name": "Find a cargo.", "status": "active", "detail": "Own."}]
 
 
-def test_read_state_refuses_links_and_non_files(tmp_path):
+NO_FIFO = pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no FIFOs on Windows")
+
+
+def test_read_state_refuses_links_and_reads_like_read_text(tmp_path):
     real = tmp_path / "real.md"
     real.write_text("## Active Quests\n- A.\n", encoding="utf-8")
-    assert sidebar_sync.read_state(real) == real.read_text(encoding="utf-8")
+    assert sidebar_sync.read_state(real) == real.read_text(encoding="utf-8") == "## Active Quests\n- A.\n"
     link = tmp_path / "state.md"
     link.symlink_to(real)
     assert sidebar_sync.read_state(link) is None
+    assert sidebar_sync.read_state(tmp_path / "missing.md") is None
+
+
+@NO_FIFO
+def test_read_state_refuses_a_fifo(tmp_path):
     fifo = tmp_path / "fifo.md"
     os.mkfifo(fifo)
     assert sidebar_sync.read_state(fifo) is None
-    assert sidebar_sync.read_state(tmp_path / "missing.md") is None
 
 
 def test_hostile_lines_parse_in_linear_time():
@@ -199,6 +206,7 @@ def test_another_campaigns_state_never_reaches_the_sidebar(display):
     assert module._sync_sidebar_from_state() is False
 
 
+@NO_FIFO
 def test_a_fifo_campaign_marker_never_hangs_the_sync(display):
     module, _, state, _, _ = display
     state.write_text("## Active Quests\n- Find a cargo.\n", encoding="utf-8")

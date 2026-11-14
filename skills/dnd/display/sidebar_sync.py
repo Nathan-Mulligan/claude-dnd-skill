@@ -49,7 +49,8 @@ def read_state(path, limit: int = STATE_MAX_BYTES) -> "str | None":
         if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
             return None
         with os.fdopen(fd, "rb", closefd=False) as stream:
-            return stream.read(limit).decode("utf-8", errors="replace")
+            text = stream.read(limit).decode("utf-8", errors="replace")
+        return text.replace("\r\n", "\n").replace("\r", "\n")  # as read_text() would
     except OSError:
         return None
     finally:
