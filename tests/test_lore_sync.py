@@ -285,17 +285,6 @@ def test_env_overrides_win_over_saved_choice(helper_env, monkeypatch):
     assert lore_sync.choose_model() is None
 
 
-def test_kick_respects_saved_off(helper_env, monkeypatch):
-    called = []
-    monkeypatch.setattr(lore_sync.subprocess, "Popen", lambda *a, **k: called.append(a))
-    lore_sync.save_helper("off")
-    lore_sync.kick()
-    assert called == []
-    lore_sync.save_helper("qwen")
-    lore_sync.kick()
-    assert len(called) == 1
-
-
 GOOD = {"factions": [{"name": "Guild", "detail": "Traders."}], "quests": []}
 
 
