@@ -332,3 +332,58 @@ def test_calendar_advance_after_a_prepared_day_dates_one_journey(tmp_path, monke
     assert entries[0]["prep"] == kept["prep"]
     assert sum(e["kind"] in HAZARDS for e in entries) <= 1
 
+
+
+# ── from review: prepared days, out-of-order spans and unnamed months ────────
+
+
+def keep(folder, day):
+    (folder / oracle.ROAD_NEXT).write_text(json.dumps({"for": oracle._today(folder), "day": day}), encoding="utf-8")
+
+
+def test_an_undated_prepared_hazard_still_counts_for_the_journey(tmp_path, monkeypatch):
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(tmp_path))
+    folder = make(tmp_path, start="1 Frostmonth 900")
+    for seed in range(60):
+        (folder / oracle.ROAD_LOG).unlink(missing_ok=True)
+        keep(folder, {"kind": "danger", "text": "Wolves at dusk.", "guidance": "Telegraph it.", "prep": f"old{seed}"})
+        rolled = oracle.campaign_road(folder, 4, rng=random.Random(seed))
+        assert rolled[0]["prep"] == f"old{seed}"
+        assert sum(d["kind"] in HAZARDS for d in rolled) == 1, seed
+
+
+@pytest.mark.parametrize("kept", [
+    {"kind": "danger", "text": "Wolves at dusk.", "guidance": "Telegraph it."},
+    {"kind": "obstacle", "text": "A fallen tree.", "guidance": "Two options."},
+])
+def test_a_prepared_hazard_that_no_longer_fits_a_racing_clock_is_rolled_again(tmp_path, monkeypatch, kept):
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(tmp_path))
+    folder = make(tmp_path)
+    keep(folder, {**kept, "prep": "stale"})
+    assert oracle.prepare_road(folder).get("prep") != "stale"
+    keep(folder, {**kept, "prep": "stale"})
+    assert oracle.campaign_road(folder, 1)[0].get("prep") != "stale"
+
+
+def test_a_prepared_hazard_after_the_journey_s_hazard_is_rolled_again(tmp_path, monkeypatch):
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(tmp_path))
+    folder = make(tmp_path, start="1 Frostmonth 900")
+    today = oracle.day_number(json.loads((folder / "calendar.json").read_text(encoding="utf-8")))
+    (folder / oracle.ROAD_LOG).write_text(json.dumps([{"kind": "danger", "text": "Bandits.", "day": today}]),
+                                          encoding="utf-8")
+    keep(folder, {"kind": "discovery", "text": "Tracks.", "guidance": "Choose.", "prep": "second"})
+    assert oracle.campaign_road(folder, 1)[0].get("prep") != "second"
+
+
+def test_a_span_rolled_up_to_a_logged_hazard_joins_its_journey():
+    ctx = context()
+    recent = [{"kind": "danger", "text": "Wolves at dusk.", "day": 55}]
+    for seed in range(300):
+        rolled = oracle.roll_road(5, rng=random.Random(seed), context=ctx, recent=recent, first_day=50)
+        assert not any(d["kind"] in HAZARDS for d in rolled), seed
+
+
+def test_a_calendar_without_month_names_still_dates_its_clocks():
+    cal = {"day": 9, "month": 1, "year": 900, "months": [], "month_length": 30}
+    assert oracle.date_number("12 Month 1 900", cal) == oracle.day_number({**cal, "day": 12})
+    assert oracle.date_number("3 Month 2", cal) == oracle.day_number({**cal, "day": 3, "month": 2})

@@ -468,7 +468,13 @@ def day_number(cal: dict):
 def date_number(text: str, cal: dict):
     """The day number of an in-world date such as "18 Duskfall 1247", read against the calendar's month names."""
     months = cal.get("months")
-    if not isinstance(months, list) or not months:
+    if months == [] or (months is None and "month" in cal):
+        # calendar.py names an unnamed month "Month N".
+        m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?Month\s+(\d{1,2})(?![\w-])(?:,?\s+(\d{1,6}))?",
+                      text or "", re.IGNORECASE)
+        return day_number({**cal, "day": int(m.group(1)), "month": int(m.group(2)),
+                           "year": int(m.group(3)) if m.group(3) else cal.get("year")}) if m else None
+    if not isinstance(months, list):
         return None
     names = sorted({str(name) for name in months if str(name).strip()}, key=len, reverse=True)
     m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(" + "|".join(map(re.escape, names))
@@ -579,13 +585,13 @@ def _racing(clocks, day):
     return sorted(near, key=lambda c: c["due"])
 
 
-def _journey(recent, day) -> list:
-    """The logged road days in the unbroken run of dates through `day`: the journey so far,
-    including any dates rolled again."""
+def _journey(recent, day, last=None) -> list:
+    """The logged road days in the unbroken run of dates through `day` (to `last`, for a span about to be
+    rolled): the journey so far, including any dates rolled again."""
     if day is None:
         return []
     logged = {e["day"] for e in recent if isinstance(e.get("day"), int)}
-    low = high = day
+    low, high = day, max(day, last if last is not None else day)
     while low - 1 in logged:
         low -= 1
     while high + 1 in logged:
@@ -639,7 +645,7 @@ def roll_road(days: int, rng=None, context=None, recent=(), party=None, first_da
     rng = rng or random.Random()
     context = context or {}
     recent = list(recent)
-    journey = _journey(recent, first_day)
+    journey = _journey(recent, first_day, first_day + days - 1 if first_day is not None else None)
     rolled = []
     for i in range(days):
         number = first_day + i if first_day is not None else None
@@ -766,9 +772,22 @@ def _read_prepared(folder) -> "dict | None":
     return None
 
 
-def _usable(kept, date, context: dict, log: list) -> bool:
-    """A kept day is used only on the date it was rolled for, while its story source stands, and only once."""
+def _fits(day: dict, context: dict, log: list, first) -> bool:
+    """A kept hazard still obeys the journey's one hazard and a clock that has come close since it was rolled."""
+    if day["kind"] not in HAZARDS:
+        return True
+    racing = _racing(context.get("clocks", ()), first)
+    if racing and (day["kind"] != "obstacle" or not day.get("stakes")):
+        return False
+    return not _hazard_used(_journey(log, first))
+
+
+def _usable(kept, date, context: dict, log: list, first) -> bool:
+    """A kept day is used only on the date it was rolled for, while its story source stands and it still fits
+    the journey, and only once."""
     if not kept or kept.get("for") != date or not _still_current(kept["day"], context):
+        return False
+    if not _fits(kept["day"], context, log, first):
         return False
     return not any(entry.get("prep") == kept["day"].get("prep") for entry in log)
 
@@ -781,7 +800,7 @@ def prepare_road(folder, rng=None) -> dict:
         today, log = _today(folder), _read_road_log(folder)
         context, first = _road_plan(folder, today)
         kept = _read_prepared(folder)
-        if _usable(kept, today, context, log):
+        if _usable(kept, today, context, log, first):
             return kept["day"]
         rng = rng or random.Random()
         day = roll_road(1, rng=rng, context=context, recent=log, party=read_party(folder), first_day=first)[0]
@@ -801,7 +820,14 @@ def campaign_road(folder, days: int, rng=None, start=None) -> list:
         kept = _read_prepared(folder) if days > 0 else None
         date = start if start is not None else _today(folder)
         context, first = _road_plan(folder, date)
-        rolled = [kept["day"]] if _usable(kept, date, context, log) else []
+        rolled = []
+        if _usable(kept, date, context, log, first):
+            day = dict(kept["day"])
+            if first is not None:
+                day["day"] = first
+            if day["kind"] in HAZARDS:
+                day["hazard_used"] = True
+            rolled.append(day)
         rolled += roll_road(days - len(rolled), rng=rng, context=context,
                             recent=log + [_log_entry(d) for d in rolled], party=read_party(folder),
                             first_day=first + len(rolled) if first is not None else None)
