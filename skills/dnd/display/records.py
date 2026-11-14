@@ -16,7 +16,10 @@ turn-log.md (in the campaign folder; this module is its only writer)
 
 npcs.md (shared with the DM and oracle.py, through npc_entries.edit and its lock)
   For each `@npc NAME` speaker: `- **Met:** <place>, session N (<in-world date>)` and
-  `- **Voice:** <id>`, each added only when the entry has no such line. `- **As seen:**`
+  `- **Voice:** <id>`, each added only when the entry has no such line. A speaker with no entry
+  gets one only for a full name ("Mira Kett", not "Warden rider" or "Auditor"). Met is skipped
+  for someone met before: their entry has a note line, an earlier session, or the DM's own
+  description while the logs already name them. `- **As seen:**`
   carries phrases the helper model copied from the narration (npc_describe.py). This module
   only ever adds lines; it never changes or removes one, so the DM's own notes always stand.
 """
@@ -49,6 +52,11 @@ LOOK_LABELS = ("As seen", "Look", "Looks", "Appearance", "Description")
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _SESSION_HEADING = re.compile(r"^#{2,3}\s+Session\s+(\d+)\b", re.MULTILINE)
 _SESSION_COUNT = re.compile(r"\*\*Session count:\*\*\s*(\d+)")
+_FIELD = re.compile(r"^[-*]\s+\*\*[^*]+:\*\*")
+_ANNOTATION = re.compile(r" \(| —| –| - |,|:")
+_SESSION_MENTION = re.compile(r"\bsession\s+(\d+)", re.IGNORECASE)
+_NAME_PARTICLES = {"of", "the", "de", "del", "della", "di", "da", "du", "van", "von", "der", "den", "le", "la", "al",
+                   "bin", "ibn", "ap"}
 _LOCATION = re.compile(r"^[ \t]*[-*][ \t]*\*\*Location:\*\*[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
 
 
@@ -170,13 +178,46 @@ def _cast_voice(folder: Path, name: str) -> str:
     return cast.get(cast_voices.cast_key(cast, name), "")
 
 
-def _npc_file(folder: Path, name: str) -> Path:
-    """The file holding this person's entry: npcs.md, else npcs-full.md, else npcs.md (a new entry)."""
+def _entry_file(folder: Path, name: str) -> "Path | None":
+    """The file holding this person's entry: npcs.md, else npcs-full.md, else None."""
     for file_name in ("npcs.md", "npcs-full.md"):
         path = folder / file_name
         if path.is_file() and npc_entries.entry_span(npc_entries.read_lines(path), name, first_word=True):
             return path
-    return folder / "npcs.md"
+    return None
+
+
+def _npc_file(folder: Path, name: str) -> Path:
+    return _entry_file(folder, name) or folder / "npcs.md"
+
+
+def is_full_name(name: str) -> bool:
+    """"Mira Kett" or "Anselm of Brackenford", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
+    words = name.split()
+    if len(words) < 2 or words[0].casefold() in ("the", "a", "an"):
+        return False
+    return all(word[:1].isupper() or (i and word.casefold() in _NAME_PARTICLES) for i, word in enumerate(words))
+
+
+def _met_before(folder: Path, path: Path, name: str, session: int) -> bool:
+    """The entry shows an earlier meeting: a note line, an earlier session, or a description the logs back up."""
+    lines = npc_entries.read_lines(path)
+    span = npc_entries.entry_span(lines, name, first_word=True)
+    if not span:
+        return False
+    described = False
+    for line in (raw.strip() for raw in lines[span[0] + 1:span[1]]):
+        if not line or line.startswith("|"):
+            continue
+        if any(int(n) < session for n in _SESSION_MENTION.findall(line)) or line.startswith(("- Party note", "* Party note")):
+            return True
+        described = described or not _FIELD.match(line)
+    if not described:
+        return False
+    heading = _ANNOTATION.split(lines[span[0]].lstrip("#").strip().strip("*"))[0]
+    full = " ".join(heading.split()).casefold()
+    logs = (_read(folder / f) for f in ("session-log.md", "session-log-archive.md", "state.md"))
+    return bool(full) and any(full in " ".join(text.split()).casefold() for text in logs)
 
 
 def _has_look(path: Path, name: str) -> bool:
@@ -212,13 +253,19 @@ def _record_npcs(folder: Path, blocks: list, place: str, date: str, session: int
         if block.get("kind") != "npc" or not name[:1].isupper() or name.casefold() in seen:
             continue
         seen.add(name.casefold())
-        met = f"{place}, session {session}" if place else f"session {session}"
-        fields = [("Met", f"{met} ({date})" if date else met)]
+        path = _entry_file(folder, name)
+        if path is None and not is_full_name(name):
+            continue
+        path = path or folder / "npcs.md"
+        fields = []
+        if not _met_before(folder, path, name, session):
+            met = f"{place}, session {session}" if place else f"session {session}"
+            fields.append(("Met", f"{met} ({date})" if date else met))
         voice = _cast_voice(folder, name) or block.get("voice") or ""
         if voice:
             fields.append(("Voice", voice))
-        path = _npc_file(folder, name)
-        _add_lines(path, name, fields)
+        if fields:
+            _add_lines(path, name, fields)
         if narration and not _has_look(path, name):
             npc_describe.request(folder, name, narration)
 

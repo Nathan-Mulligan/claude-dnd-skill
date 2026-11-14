@@ -139,7 +139,7 @@ def test_a_new_npc_gets_where_they_were_met_and_their_voice(camp):
 
 def test_the_dms_own_lines_are_never_changed(camp):
     dm_entry = ("# NPCs\n\n### Hessa Varn\n- **Role:** toll clerk\n- **Voice:** gravel and patience\n"
-                "- **Demeanor:** tired, exact\n\nShe once worked the Saltmere docks.\n\n### Edrin Shaw\n- **Role:** carter\n")
+                "- **Demeanor:** tired, exact\n\n- **Wants:** a quiet audit\n\n### Edrin Shaw\n- **Role:** carter\n")
     (camp / "npcs.md").write_text(dm_entry, encoding="utf-8")
     records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
     records.record_send(blocks(TURN.replace("voice=bf_alice", "voice=af_heart")), place="Elsewhere", now=NOW + 60)
@@ -148,7 +148,55 @@ def test_the_dms_own_lines_are_never_changed(camp):
         assert line in text
     assert text.count("- **Voice:**") == 1
     assert text.count("- **Met:**") == 1 and "Elsewhere" not in text
-    assert text.index("- **Met:**") < text.index("She once worked")
+    assert text.index("- **Met:**") < text.index("- **Wants:**") < text.index("### Edrin Shaw")
+
+
+@pytest.mark.parametrize("history", [
+    "Brackenford innkeeper; offers the wagon yard for 2 cp.",
+    "- Party note (16 Duskfall 1247): Took the hoop order.",
+    "- **Role:** toll clerk, first seen in session 4",
+])
+def test_someone_known_from_before_gets_no_new_met(camp, history):
+    (camp / "npcs.md").write_text(f"# NPCs\n\n## Hessa Varn\n{history}\n", encoding="utf-8")
+    with open(camp / "session-log.md", "a", encoding="utf-8") as log:
+        log.write("Hessa Varn let them stable the mule.\n")
+    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
+    text = (camp / "npcs.md").read_text(encoding="utf-8")
+    assert "- **Met:**" not in text
+    assert "- **Voice:** bf_alice" in text and history in text
+
+
+def test_a_written_up_npc_the_logs_never_mention_still_gets_met(camp):
+    (camp / "npcs.md").write_text("# NPCs\n\n## Hessa Varn\nToll clerk; hides a timber advance.\n", encoding="utf-8")
+    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
+    assert "- **Met:** Brackenford toll gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
+
+
+def test_a_new_npc_with_only_a_profile_still_gets_met(camp):
+    (camp / "npcs.md").write_text("# NPCs\n\n## Hessa Varn\n- **Temperament:** tired (ordinary)\n"
+                                  "- **Wants now:** a quiet audit\n", encoding="utf-8")
+    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
+    assert "- **Met:** Brackenford toll gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("label", ["Warden rider", "Auditor", "Warden auditor", "Traveller", "Man at the barrier",
+                                   "Grey-cloaked rider", "The Ferryman"])
+def test_an_unnamed_speaker_gets_no_entry(camp, label):
+    records.record_send(blocks(f'@npc {label}\n"Move along."\n'), place="Road", now=NOW)
+    assert not (camp / "npcs.md").exists()
+    assert f"**{label}:** \"Move along.\"" in log_text(camp)
+
+
+@pytest.mark.parametrize("name", ["Mira Kett", "Brother Aldous", "Anselm of Brackenford", "Tam O'Rourke"])
+def test_a_named_newcomer_gets_an_entry(camp, name):
+    records.record_send(blocks(f'@npc {name}\n"Move along."\n'), place="Road", now=NOW)
+    assert f"### {name}\n" in (camp / "npcs.md").read_text(encoding="utf-8")
+
+
+def test_a_role_label_that_has_an_entry_is_still_filled(camp):
+    (camp / "npcs.md").write_text("# NPCs\n\n## Warden rider\n- **Role:** courier\n", encoding="utf-8")
+    records.record_send(blocks('@npc Warden rider voice=bm_lewis\n"Make way."\n'), place="Road", now=NOW)
+    assert "- **Voice:** bm_lewis" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_a_first_name_finds_the_one_entry_it_belongs_to(camp):
