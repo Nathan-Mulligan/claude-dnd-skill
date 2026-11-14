@@ -670,3 +670,137 @@ def test_a_close_that_never_saved_keeps_the_voice_running(setup, monkeypatch):
     portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", "f" * 32, close=True)
     assert portal.handoff_state()["status"] == "failed"
     assert stop_voice_calls(calls) == []
+
+
+# ── Save & close with the notes helper writing the summary ──────────────────
+
+def save_fields_and_acknowledge(old, token, names=("state.md", "session-tail.md")):
+    request, _ = portal.handoff_paths(token)
+    pending = json.loads(request.read_text(encoding="utf-8"))
+    for name in names:
+        (old / name).write_text(f"Fresh {name}\n", encoding="utf-8")
+        os.utime(old / name, ns=(pending["requested_at_ns"] + 1_000_000, pending["requested_at_ns"] + 1_000_000))
+    portal.acknowledge_handoff(token)
+
+
+def helper_on(monkeypatch, prepare):
+    events = []
+    monkeypatch.setattr(portal.session_summary, "helper", lambda: ("codex", "gpt-6-luna"))
+    monkeypatch.setattr(portal.session_summary, "prepare",
+                        lambda folder, mark, choice: events.append(("prepare", mark, choice)) or prepare())
+    monkeypatch.setattr(portal.session_summary, "write", lambda folder, plan: events.append(("write", plan)))
+    return events
+
+
+def test_save_and_close_leaves_the_summary_to_the_helper(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "1" * 32
+    mark = "ab" * 8
+    (old / "session-tail.md").write_text(f"# Where we stopped\nOld note\n<!-- display-mark: {mark} -->\n", encoding="utf-8")
+    events = helper_on(monkeypatch, lambda: {"session-log.md": ("old", "new")})
+    prompts = []
+
+    def checkpoint(prompt):
+        prompts.append(prompt)
+        save_fields_and_acknowledge(old, token)  # session-log.md is left to the helper
+
+    original_run = portal.run
+
+    def recording_run(*args, **kwargs):
+        if args[:2] == ("tmux", "kill-session"):
+            events.append(("kill",))
+        return original_run(*args, **kwargs)
+
+    monkeypatch.setattr(portal, "run", recording_run)
+    monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "complete" and "closed" in state["message"], state
+    assert not alive["value"]
+    [prompt] = prompts
+    for needle in ("wrap up", "notes helper", "Next Hooks", "Clocks", "stop_point.py write"):
+        assert needle in prompt
+    assert "Write this session's entry" not in prompt
+    assert "\n" not in prompt
+    assert events == [("prepare", mark, ("codex", "gpt-6-luna")), ("kill",),
+                      ("write", {"session-log.md": ("old", "new")})]
+
+
+def test_a_failed_helper_summary_falls_back_to_the_dm(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "2" * 32
+
+    def broken():
+        raise ValueError("helper reply names what the material never mentions: Veyra")
+
+    events = helper_on(monkeypatch, broken)
+    prompts = []
+
+    def checkpoint(prompt):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            save_fields_and_acknowledge(old, token)
+        else:
+            save_fields_and_acknowledge(old, token, names=("session-log.md",))
+
+    monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "complete", state
+    assert "DM wrote the summary" in state["message"]
+    assert not alive["value"]
+    assert len(prompts) == 2
+    for needle in ("could not write", "session-log.md", "### Recap", "## Story So Far", "Continuity Archive"):
+        assert needle in prompts[1]
+    assert "\n" not in prompts[1]
+    assert not any(event[0] == "write" for event in events)
+    log = Path(portal.session_summary.rt("session_summary.log")).read_text(encoding="utf-8")
+    assert "old: helper summary failed" in log and "Veyra" in log
+
+
+def test_the_dm_must_save_the_log_itself_after_a_helper_failure(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "3" * 32
+
+    def broken():
+        raise RuntimeError("codex timed out")
+
+    helper_on(monkeypatch, broken)
+    monkeypatch.setattr(portal, "CLOSE_TIMEOUT", 1)
+
+    def checkpoint(prompt):
+        if "notes helper could not" not in prompt:
+            return save_fields_and_acknowledge(old, token)
+        with pytest.raises(ValueError, match="session-log.md"):
+            portal.acknowledge_handoff(token)  # the DM acknowledged without writing the summary
+
+    monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "failed" and "left running" in state["message"], state
+    assert alive["value"]
+    assert not any(args[:2] == ("tmux", "kill-session") for args in calls)
+
+
+def test_with_the_helper_off_the_dm_writes_the_summary(setup, monkeypatch):
+    old, previous, _, _, _ = setup
+    token = "4" * 32
+    monkeypatch.setattr(portal.session_summary, "helper", lambda: None)
+    monkeypatch.setattr(portal.session_summary, "prepare", lambda *args: pytest.fail("Helper is off"))
+    prompts = []
+    monkeypatch.setattr(portal, "send_checkpoint_request",
+                        lambda prompt: prompts.append(prompt) or save_and_acknowledge(old, token))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    assert portal.handoff_state()["status"] == "complete"
+    [prompt] = prompts
+    assert "Write this session's entry in session-log.md with its Recap" in prompt
+
+
+def test_a_model_switch_never_uses_the_helper(setup, monkeypatch):
+    old, previous, alive, _, _ = setup
+    token = "5" * 32
+    monkeypatch.setattr(portal.session_summary, "helper", lambda: pytest.fail("Only Save & close summarises"))
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_and_acknowledge(old, token))
+    monkeypatch.setattr(portal, "start_session", lambda *args, **kwargs: alive.update(value=True) or (True, "Started"))
+    portal.perform_handoff("codex", "resume", "old", "", previous, "$7", token)
+    assert portal.handoff_state()["status"] == "complete"

@@ -333,41 +333,46 @@ def failure_reason(e: BaseException) -> str:
     return f"{type(e).__name__}: {e}"[:300]
 
 
+# Removed from every helper's environment, so a call can only use the signed-in subscription.
 _API_KEY_VARS = ("CODEX_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
 
-def _ask_codex(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
+def _helper_env() -> dict:
+    env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
+    env["AGENT_TASK"] = "1"
+    return env
+
+
+def _ask_codex(prompt: str, model: str, schema: dict = _SCHEMA, effort: str = "low",
+               timeout: float = MODEL_TIMEOUT_S) -> object:
     with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
         schema_file = Path(work, "schema.json")
         out = Path(work, "out.json")
         schema_file.write_text(json.dumps(schema), encoding="utf-8")
-        cmd = [_codex_bin(), "exec", "-m", model, "-c", 'model_reasoning_effort="low"',
+        cmd = [_codex_bin(), "exec", "-m", model, "-c", f'model_reasoning_effort="{effort}"',
                "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
                "-s", "read-only", "-C", work, "--output-schema", str(schema_file),
                "-o", str(out), prompt]
-        env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}  # subscription login only
-        env["AGENT_TASK"] = "1"
-        done = subprocess.run(cmd, cwd=work, env=env, stdin=subprocess.DEVNULL,
+        done = subprocess.run(cmd, cwd=work, env=_helper_env(), stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=MODEL_TIMEOUT_S, check=False)
+                              timeout=timeout, check=False)
         if done.returncode:
             raise RuntimeError(f"codex exited {done.returncode}: {_tail(done.stderr, prompt)}")
         return json.loads(out.read_text(encoding="utf-8"))
 
 
-def _ask_claude(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
+def _ask_claude(prompt: str, model: str, schema: dict = _SCHEMA, effort: str = "low",
+                timeout: float = MODEL_TIMEOUT_S) -> object:
     """Claude CLI in print mode on the user's subscription: no tools, no
-    settings, no MCP servers, no saved session. ANTHROPIC_API_KEY is removed
-    so the call can never be billed to an API account."""
+    settings, no MCP servers, no saved session. API keys are removed so the
+    call can never be billed to an API account."""
     with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
         cmd = ["claude", "-p", "--model", model, "--output-format", "json",
                "--json-schema", json.dumps(schema), "--tools", "", "--setting-sources", "",
                "--strict-mcp-config", "--no-session-persistence",
-               "--system-prompt", "You write short JSON notes for a tabletop game. Reply only with the JSON asked for."]
-        env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
-        env["AGENT_TASK"] = "1"
-        done = subprocess.run(cmd, cwd=work, env=env, input=prompt, capture_output=True,
-                              text=True, encoding="utf-8", errors="replace", timeout=MODEL_TIMEOUT_S, check=True)
+               "--system-prompt", "You write JSON notes for a tabletop game. Reply only with the JSON asked for."]
+        done = subprocess.run(cmd, cwd=work, env=_helper_env(), input=prompt, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", timeout=timeout, check=True)
     reply = json.loads(done.stdout)
     if not isinstance(reply, dict) or reply.get("is_error"):
         raise ValueError("claude reported an error")
@@ -376,13 +381,14 @@ def _ask_claude(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
     return json.loads(reply.get("result") or "")
 
 
-def _ask_ollama(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
+def _ask_ollama(prompt: str, model: str, schema: dict = _SCHEMA, effort: str = "low",
+                timeout: float = MODEL_TIMEOUT_S) -> object:
     body = {"model": model, "stream": False, "think": False, "format": schema,
             "options": {"temperature": 0.2},
             "messages": [{"role": "user", "content": prompt}]}
     req = urllib.request.Request(OLLAMA_URL, data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=MODEL_TIMEOUT_S) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         reply = json.loads(resp.read().decode("utf-8"))
     return json.loads(reply["message"]["content"])
 
