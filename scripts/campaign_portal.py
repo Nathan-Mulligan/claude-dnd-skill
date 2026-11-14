@@ -761,16 +761,24 @@ def await_checkpoint(token: str, previous: dict, identity: str, campaign: str, r
     raise ValueError("The DM did not confirm a complete save in time")
 
 
-def helper_summary(token: str, previous: dict, identity: str, folder: Path, mark: str | None,
-                   helper: tuple, command: str, details: dict) -> tuple:
-    """Have the notes helper prepare the summary while the DM waits; on any failure the DM writes it.
-    Returns (plan to write after the DM stops, or None; the DM's latest acknowledgement or None;
-    its request time; the files it had to save; a note for the close message)."""
+def helper_summary(token: str, previous: dict, identity: str, folder: Path, mark: str | None, helper: tuple,
+                   command: str, details: dict, ack: dict, requested_at_ns: int, required: frozenset) -> tuple:
+    """Have the notes helper write the summary while the DM waits idle; on any failure the DM writes it.
+    Returns the acknowledgement, request time and required files the final stop check must use, and a
+    note for the close message."""
     campaign = previous["campaign"]
     set_handoff("saving", SUMMARY_MESSAGE, **details)
     notify_display("/campaign-handoff", {"campaign": campaign, "token": token, "active": True})
     try:
-        return session_summary.prepare(folder, mark, helper), None, None, None, ""
+        plan = session_summary.prepare(folder, mark, helper)
+        with SESSION_LOCK:
+            if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
+                raise ValueError("The active DM changed before the summary was written")
+            if ack.get("files") != checkpoint_files(campaign, requested_at_ns, required):
+                raise ValueError("Campaign files changed after the DM's save")
+            session_summary.write(folder, plan)
+            # The helper's writes are now the saved state the DM must not change before it stops.
+            return {"files": checkpoint_files(campaign, requested_at_ns, required)}, requested_at_ns, required, ""
     except Exception as error:  # noqa: BLE001 — any helper failure hands the summary back to the DM
         reason = lore_sync.failure_reason(error)
     session_summary.log(f"{campaign}: helper summary failed, the DM writes it instead: {reason}")
@@ -782,7 +790,7 @@ def helper_summary(token: str, previous: dict, identity: str, folder: Path, mark
         requested_at_ns = request_checkpoint(token, previous, campaign, FALLBACK_REQUIRED)
         send_checkpoint_request(summary_fallback_prompt(campaign, folder, command))
     ack = await_checkpoint(token, previous, identity, campaign, requested_at_ns, FALLBACK_REQUIRED, CLOSE_TIMEOUT)
-    return None, ack, requested_at_ns, FALLBACK_REQUIRED, " The notes helper failed, so the DM wrote the summary."
+    return ack, requested_at_ns, FALLBACK_REQUIRED, " The notes helper failed, so the DM wrote the summary."
 
 
 def stop_voice() -> None:
@@ -802,7 +810,7 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
                     effort: str = DEFAULT_EFFORT, close: bool = False) -> None:
     """Have the running DM save, verify the files, then stop it and start the next DM (or none, on close).
     On Save & close with the notes helper on, the DM saves its own fields first and the helper writes the
-    summary while the DM waits, so a helper failure can still hand the summary back to the DM."""
+    summary while the DM waits idle, so any helper failure can still hand the summary back to the DM."""
     action = "close" if close else "switch"
     details = {"campaign": name, "provider": provider, "action": action}
     stopped = False
@@ -831,12 +839,10 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             send_checkpoint_request(prompt)
         ack = await_checkpoint(token, previous, identity, old_campaign, requested_at_ns, required,
                                CLOSE_TIMEOUT if close else HANDOFF_TIMEOUT)
-        plan, note = None, ""
+        note = ""
         if helper:
-            plan, fallback_ack, fallback_at, fallback_required, note = helper_summary(
-                token, previous, identity, old_path, mark, helper, command, details)
-            if fallback_ack is not None:
-                ack, requested_at_ns, required = fallback_ack, fallback_at, fallback_required
+            ack, requested_at_ns, required, note = helper_summary(
+                token, previous, identity, old_path, mark, helper, command, details, ack, requested_at_ns, required)
         with SESSION_LOCK:
             if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
                 raise ValueError("The active DM changed before the model switch")
@@ -856,12 +862,6 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
                 raise ValueError("Could not close the saved DM session")
             stopped = True
             if close:
-                if plan:
-                    try:
-                        session_summary.write(old_path, plan)
-                    except (OSError, ValueError) as error:
-                        session_summary.log(f"{old_campaign}: summary not written after the DM stopped: {error}")
-                        note = f" The session summary could not be written: {error}."
                 stop_voice()
                 set_handoff("complete", "Session saved and the DM closed. Resume the campaign to start a fresh DM."
                             + note, **details)

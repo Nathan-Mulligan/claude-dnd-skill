@@ -10,15 +10,16 @@ asks the helper chosen in the portal (lore_sync's choice, Luna by default) for:
     newest two, which then moves whole to session-log-archive.md;
   * a new `## Story So Far` when Continuity Archive entries older than the
     newest five fold into it. Their bullets move to session-log-archive.md.
-`prepare()` writes nothing. The portal calls `write()` once the DM has
-stopped, so each file has one writer at a time. Any failure raises; the portal
-then asks the DM to write the summary itself and logs why to
-runtime/session_summary.log.
+`prepare()` writes nothing. The portal calls `write()` while the DM waits
+idle, after checking it changed nothing since its save, so each file has one
+writer at a time. Any failure raises; the portal then asks the DM to write the
+summary itself before stopping it, and logs why to runtime/session_summary.log.
 
 The helper sees only party-facing material: this session's log entry, the
-display lines since the last saved stop point, the new stop point, Recent
-Events, the last recap and the archive text being folded. DM Calibration and
-DM Notes subsections are stripped. A reply naming anyone or anything the
+display lines since the last saved stop point (from the display's text log),
+the new stop point, Recent Events, the last recap and the archive text being
+moved or folded. `### DM ...` subsections and lines that read as DM-only are
+stripped. A reply naming anyone or anything, or giving a number, that the
 material never mentions is refused.
 """
 from __future__ import annotations
@@ -47,6 +48,7 @@ STORY_WORDS = 150
 SUMMARY_TIMEOUT_S = 240  # under the display's five-minute input pause
 EFFORT = "medium"
 SOURCE_CHARS = 60000
+TRANSCRIPT_CHARS = 150000
 FILES = ("session-log-archive.md", "session-log.md", "state.md")  # write order: additions land first
 
 SCHEMA = {
@@ -80,6 +82,11 @@ LEVEL_2_OR_3 = re.compile(r"^#{2,3} ", re.M)
 SUBSECTION_END = re.compile(r"^(?:#{2,3} |---[ \t]*$)", re.M)
 PLACEHOLDER = re.compile(r"[-—]?\s*(?:<[^>]*>|\*\([^)]*\)\*|none|tbd)?", re.I)
 DM_ONLY = re.compile(r"^### [^\n]*\bDM\b", re.M)
+# Lines in moving archive text that may hold what only the DM knows. They still move whole to
+# session-log-archive.md; they are just never shown to the helper.
+DM_LINE = re.compile(r"\b(?:DM|GM)\b|\bsecretly\b|\bsecret\s*[:)\]]|\(\s*secret|hidden from|off-?screen"
+                     r"|unknown to the party|calibration|faction move|party (?:does not|doesn't|did not|didn't) know",
+                     re.I)
 NAME = re.compile(r"\b[A-Z][A-Za-z'’-]*[A-Za-z]")
 # Capitalised only because they open a sentence; never treated as names.
 OPENERS = set("""a after afterwards again also an and as at back before but by during each eventually
@@ -154,12 +161,12 @@ def has_recap(entry: str) -> bool:
     return bool(span) and filled(entry[span[0]:span[1]])
 
 
-def without_dm_only(text: str) -> str:
-    """Drop `### DM Calibration`, `### DM Notes` and the like."""
+def without_dm_only(text: str, lines: bool = True) -> str:
+    """Drop `### DM Calibration`, `### DM Notes` and the like, and (in archive text) lines that read as DM-only."""
     while (m := DM_ONLY.search(text)):
         nxt = SUBSECTION_END.search(text, m.end())
         text = text[:m.start()] + (text[nxt.start():] if nxt else "")
-    return text
+    return "\n".join(line for line in text.splitlines() if not (lines and DM_LINE.search(line)))
 
 
 def splice(text: str, edits: list) -> str:
@@ -206,8 +213,21 @@ def display_mark(folder: Path) -> "str | None":
     return stop_point.mark_of(_read(folder / "session-tail.md") or "")
 
 
+def transcript(campaign: str) -> list[dict]:
+    """The display's durable text log (its last 2000 lines), this campaign's lines only."""
+    try:
+        with open(rt("text_log.json"), encoding="utf-8") as f:
+            entries = json.load(f)
+    except (OSError, ValueError):
+        return []
+    return [e for e in (entries if isinstance(entries, list) else [])
+            if isinstance(e, dict) and e.get("_camp") == campaign and isinstance(e.get("text"), str)
+            and e["text"].strip() and not e.get("tutor")]
+
+
 def display_lines(folder: Path, mark: "str | None") -> list[str]:
-    entries = stop_point.entries_after(stop_point.display_entries(folder), mark)
+    """Everything the display showed since the last saved stop point; the 30-line tail if the log is missing."""
+    entries = stop_point.entries_after(transcript(folder.name) or stop_point.display_entries(folder), mark)
     return [f"{turn['who']}: {' '.join(turn['text'].split())}" for turn in stop_point.as_turns(entries, keep=None)]
 
 
@@ -275,12 +295,12 @@ def last_recap(log_text: str, current: "Block | None") -> str:
 def build_prompt(m: Material, folder: Path) -> str:
     this_log = ""
     if m.current:
-        body = without_dm_only(m.current.text)
+        body = without_dm_only(m.current.text, lines=False)
         this_log = body[body.index("\n") + 1:] if "\n" in body else ""
     parts = [
         f"LAST SESSION'S RECAP (already recorded; never repeat it as this session's events):\n{last_recap(m.log, m.current) or '(none)'}",
         f"THIS SESSION'S LOG (Session {m.number}):\n{clip(this_log) or '(none)'}",
-        "LINES THE DISPLAY SHOWED THIS SESSION, OLDEST FIRST:\n" + (clip("\n".join(m.lines)) or "(none)"),
+        "LINES THE DISPLAY SHOWED THIS SESSION, OLDEST FIRST:\n" + (clip("\n".join(m.lines), TRANSCRIPT_CHARS) or "(none)"),
         f"WHERE PLAY STOPPED (saved by the DM at the end of this session):\n{clip(stop_note(folder)) or '(none)'}",
         f"RECENT EVENTS (from the campaign notes; may reach back before this session):\n{clip(recent_events(m.state), 8000) or '(none)'}",
     ]
@@ -296,7 +316,8 @@ def build_prompt(m: Material, folder: Path) -> str:
         archived = "an empty list; there are no older sessions to archive."
     if m.fold:
         parts.append(f"STORY SO FAR (current):\n{story_so_far(m.state) or '(none yet)'}")
-        parts.append("SESSIONS FOLDING INTO THE STORY SO FAR:\n" + "\n\n".join(clip(b.text, 6000) for b in m.fold))
+        parts.append("SESSIONS FOLDING INTO THE STORY SO FAR:\n" + "\n\n".join(
+            clip(without_dm_only(b.text), 6000) for b in m.fold))
         story = ("one paragraph of at most 130 words that retells STORY SO FAR (the oldest events) followed by "
                  "SESSIONS FOLDING INTO THE STORY SO FAR, in that order. Use only those two sections for this "
                  "field: nothing from this session, the last recap, the recent events or the older sessions to "
@@ -375,6 +396,10 @@ def check(reply: object, m: Material, prompt: str) -> dict:
     names = invented(texts, prompt)
     if names:
         raise ValueError("helper reply names what the material never mentions: " + ", ".join(names[:5]))
+    numbers = set(re.findall(r"\d+", prompt))
+    new = [n for t in texts for n in re.findall(r"\d+", t) if n not in numbers]
+    if new:
+        raise ValueError("helper reply gives numbers the material never gives: " + ", ".join(sorted(set(new))[:5]))
     return {"recap": recap, "events": events, "archived": archived, "story": story}
 
 
