@@ -3324,8 +3324,9 @@ def stream():
     q.put_nowait({"music": _music.snapshot()})
     q.put_nowait({"background": _background.snapshot()})
     q.put_nowait({"party_feedback": _party_feedback_snapshot()})
-    # Voices may have changed while this browser was away.
+    # Voices and the dice setting may have changed while this browser was away.
     q.put_nowait({"cast": _read_cast(_cast_file())})
+    q.put_nowait({"dice_input": _read_dice_input()})
     if _setup_question:
         q.put_nowait({"setup_question": _setup_question})
 

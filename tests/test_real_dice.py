@@ -179,3 +179,16 @@ console.log(JSON.stringify([
 ]));
 '''], capture_output=True, text=True, encoding='utf-8', check=True)
     assert json.loads(result.stdout) == [[20], [20, 20], [20, 20], [6, 6], [100], [8]]
+
+
+def test_a_reconnecting_screen_learns_the_dice_input(display):
+    module, client, _, _ = display
+    client.post('/dice-input', json={'mode': 'real'})
+    with module.app.test_request_context('/stream?character=Nella'):
+        response = module.stream()
+        queue = module._clients[-1]
+        first = []
+        while not queue.empty():
+            first.append(queue.get_nowait())
+        response.close()
+    assert {'dice_input': 'real'} in first
