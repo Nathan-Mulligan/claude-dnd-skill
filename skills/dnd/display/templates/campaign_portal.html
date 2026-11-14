@@ -77,6 +77,7 @@
           <div id="model-field"><label for="provider">Model</label><select id="provider">{% for key, choice in dm_choices.items() %}<option value="{{ key }}" data-launcher="{{ choice.launcher }}">{{ choice.model }}</option>{% endfor %}</select></div>
           <div id="effort-field"><label for="effort">DM thinking effort</label><select id="effort">{% for key, label in efforts.items() %}<option value="{{ key }}"{% if key == default_effort %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         </div>
+        {% if qwen_hidden %}<p class="hint" id="qwen-off">Qwen, the local model, is switched off for now. The portal can't yet stop a Qwen DM from changing files outside its campaign on this Mac, as it does for Codex and Claude.</p>{% endif %}
         <div id="helper-field"><label for="helper">Sidebar notes helper</label><select id="helper">{% for key, label in helpers.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
           <p class="hint" id="helper-hint">A second, smaller model writes the short notes shown when you tap a faction or quest in the sidebar, using only what the party knows. It works in the background and only when those lists change, so it never slows the DM. Off turns it off; a change applies straight away.</p></div>
         <div id="new-fields"><label for="name">Campaign name · optional</label><input id="name" maxlength="60" placeholder="Name your adventure" autocomplete="off"></div>
