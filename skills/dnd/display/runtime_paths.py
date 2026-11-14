@@ -13,6 +13,7 @@ runtime state — they are recreated on every launch and stay in the code dir.
 import os
 import sys
 import pathlib
+import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -41,3 +42,33 @@ def rt(name: str) -> str:
     """Resolve current environment overrides, retaining explicit RT overrides."""
     base = RT if RT != _INITIAL_RT else str(_runtime_dir())
     return os.path.join(base, name)
+
+
+# The DM can write the runtime dir from inside its sandbox, and the display writes here from
+# outside it, so these never write through a link the DM placed.
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+def _open_no_link(path: str, flags: int) -> int:
+    if not _NOFOLLOW and os.path.islink(path):  # Windows has no O_NOFOLLOW
+        raise OSError(f"{path} is a link")
+    return os.open(path, flags | os.O_CREAT | _NOFOLLOW, 0o600)
+
+
+def touch(path: str) -> None:
+    """Create an empty file if it is missing. Raises OSError, also when `path` is a link."""
+    os.close(_open_no_link(path, os.O_WRONLY))
+
+
+def log_line(path: str, msg: str) -> None:
+    """Append one timestamped line. Never raises; writes nothing through a link."""
+    try:
+        fd = _open_no_link(path, os.O_WRONLY | os.O_APPEND)
+    except OSError:
+        return
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
+        try:
+            if os.fstat(fd).st_nlink == 1:
+                f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+        except OSError:
+            pass
