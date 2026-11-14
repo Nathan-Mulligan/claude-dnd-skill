@@ -15,9 +15,9 @@
 ## Ability Scores
 | STR | DEX | CON | INT | WIS | CHA |
 |-----|-----|-----|-----|-----|-----|
-| 14 (+2) | 12 (+1) | 15 (+2) | 10 (+0) | 10 (+0) | 15 (+2) |
+| 14 (+2) | 12 (+1) | 15 (+2) | 8 (-1) | 12 (+1) | 15 (+2) |
 
-27-point buy base 14, 12, 14, 10, 10, 13; Merchant +1 CON and +2 CHA.
+27-point buy base 14, 12, 14, 8, 12, 13; Merchant +1 CON and +2 CHA.
 
 ## Combat Stats
 - **HP:** 12 / 12 | **Temp HP:** 0
@@ -25,32 +25,32 @@
 - **Hit Dice:** 1d10 (remaining: 1)
 - **Death Saves:** Successes: 0 | Failures: 0
 - **Heroic Inspiration:** 1 | **Lay on Hands:** 5 / 5 HP | **Luck Points:** 2 / 2
-- **Proficiency Bonus:** +2 | **Passive Perception:** 12
+- **Proficiency Bonus:** +2 | **Passive Perception:** 13
 
 ## Saving Throws
-STR +2 | DEX +1 | CON +2 | INT +0 | WIS +2 proficient | CHA +4 proficient
+STR +2 | DEX +1 | CON +2 | INT -1 | WIS +3 proficient | CHA +4 proficient
 
 ## Skills
 | Skill | Ability | Bonus | Proficient |
 |-------|---------|-------|------------|
 | Acrobatics | DEX | +1 | — |
-| Animal Handling | WIS | +2 | proficient |
-| Arcana | INT | +0 | — |
+| Animal Handling | WIS | +3 | proficient |
+| Arcana | INT | -1 | — |
 | Athletics | STR | +4 | proficient |
 | Deception | CHA | +2 | — |
-| History | INT | +0 | — |
-| Insight | WIS | +2 | proficient |
+| History | INT | -1 | — |
+| Insight | WIS | +3 | proficient |
 | Intimidation | CHA | +4 | proficient |
-| Investigation | INT | +0 | — |
-| Medicine | WIS | +2 | proficient |
-| Nature | INT | +0 | — |
-| Perception | WIS | +2 | proficient |
+| Investigation | INT | -1 | — |
+| Medicine | WIS | +3 | proficient |
+| Nature | INT | -1 | — |
+| Perception | WIS | +3 | proficient |
 | Performance | CHA | +2 | — |
 | Persuasion | CHA | +4 | proficient |
-| Religion | INT | +2 | proficient |
+| Religion | INT | +1 | proficient |
 | Sleight of Hand | DEX | +1 | — |
 | Stealth | DEX | +1 | — |
-| Survival | WIS | +0 | — |
+| Survival | WIS | +1 | — |
 
 ## Attacks
 | Name | Attack Bonus | Damage | Type | Notes |

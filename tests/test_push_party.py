@@ -46,7 +46,7 @@ def test_the_header_stats_come_from_the_sheet(campaign):
     assert (wynn["ac"], wynn["initiative"], wynn["speed"]) == (15, "+1", 30)
     assert wynn["hit_dice"] == {"max": 1, "remaining": 1, "die": "d10"}
     assert wynn["ability_scores"]["str"] == {"score": 14, "mod": "+2"}
-    assert wynn["ability_scores"]["int"] == {"score": 10, "mod": "+0"}
+    assert wynn["ability_scores"]["int"] == {"score": 8, "mod": "-1"}
     assert wynn["spell_slots"] == {"1": {"used": 0, "max": 2}}
     assert wynn["inspiration"] is True
 
@@ -66,6 +66,7 @@ def test_a_character_without_spells_sends_no_spell_keys(campaign):
     oswin = _player(campaign, "oswin-iv")
     assert "spell_slots" not in oswin and "spells" not in oswin["sheet"]
     assert oswin["hit_dice"]["die"] == "d8" and oswin["ac"] == 13
+    assert oswin["ability_scores"]["str"] == {"score": 8, "mod": "-1"}
 
 
 def test_blank_template_fields_are_left_out_not_guessed(campaign):

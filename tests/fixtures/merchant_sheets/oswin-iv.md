@@ -17,9 +17,9 @@
 ## Ability Scores
 | STR | DEX | CON | INT | WIS | CHA |
 |-----|-----|-----|-----|-----|-----|
-| 10 (+0) | 15 (+2) | 12 (+1) | 12 (+1) | 12 (+1) | 15 (+2) |
+| 8 (-1) | 15 (+2) | 13 (+1) | 12 (+1) | 13 (+1) | 15 (+2) |
 
-27-point buy base 10, 15, 11, 12, 12, 13; Merchant background +1 CON, +2 CHA.
+27-point buy base 8, 15, 12, 12, 13, 13; Merchant background +1 CON, +2 CHA.
 
 ## Combat Stats
 - **HP:** 9 / 9 | **Temp HP:** 0
@@ -30,7 +30,7 @@
 - **Proficiency Bonus:** +2 | **Passive Perception:** 13
 
 ## Saving Throws
-STR +0 | DEX +4 proficient | CON +1 | INT +3 proficient | WIS +1 | CHA +2
+STR -1 | DEX +4 proficient | CON +1 | INT +3 proficient | WIS +1 | CHA +2
 
 ## Skills
 | Skill | Ability | Bonus | Proficient |
@@ -38,7 +38,7 @@ STR +0 | DEX +4 proficient | CON +1 | INT +3 proficient | WIS +1 | CHA +2
 | Acrobatics | DEX | +4 | proficient |
 | Animal Handling | WIS | +3 | proficient |
 | Arcana | INT | +1 | — |
-| Athletics | STR | +0 | — |
+| Athletics | STR | -1 | — |
 | Deception | CHA | +4 | proficient |
 | History | INT | +1 | — |
 | Insight | WIS | +3 | proficient |
