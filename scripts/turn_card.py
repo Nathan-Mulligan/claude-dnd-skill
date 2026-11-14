@@ -29,6 +29,14 @@ RULES = (
 ROLL_MODES = {"auto": "you roll openly", "players": "players roll (call for the roll and wait)"}
 CLOCK_WINDOW = 2
 MAX_NPCS = 3
+# Words that open a name without telling two people apart (#141): "Captain" or "Warden" comes up in play
+# far more often than the person it heads.
+TITLES = frozenset("""
+    abbess abbot aunt bailiff baron baroness bishop brother captain chief commander constable count countess
+    dame doctor duchess duke elder father general granny guard high king lady lieutenant lord madam madame
+    magister magistrate master mayor mistress mother old priest priestess prince princess queen reeve saint
+    sergeant sheriff sister steward uncle warden young
+""".split())
 PREP_SCRIPT = Path(__file__).resolve().parents[1] / "skills/dnd/scripts/turn_prep.py"
 PREP_TIMEOUT = 5
 
@@ -172,11 +180,17 @@ def _npc_entries(npcs: str) -> dict[str, dict]:
     return entries
 
 
-def _mentioned(name: str, text: str, first_names: dict[str, int]) -> bool:
+def _name_parts(name: str) -> list[str]:
+    """The capitalised words of an entry's name that aren't titles, in order: "Odell", "Marsh"."""
+    words = (word.strip(".,'’\"()") for word in name.split())
+    return [w for w in words if len(w) >= 4 and w[0].isupper() and w.lower() not in TITLES]
+
+
+def _mentioned(name: str, text: str, name_parts: dict[str, int]) -> bool:
     if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE):
         return True
-    first = name.split()[0]
-    return len(first) >= 4 and first_names.get(first.lower()) == 1 and bool(re.search(rf"\b{re.escape(first)}\b", text))
+    given = (_name_parts(name) or [""])[0]
+    return bool(given) and name_parts.get(given.lower()) == 1 and bool(re.search(rf"\b{re.escape(given)}\b", text))
 
 
 def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
@@ -184,12 +198,13 @@ def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
     if not entries:
         return ""
     scene = " ".join((arc_pulse.location(state), field(state, "Current Situation", "Party status"), party_input))
-    first_names: dict[str, int] = {}
+    name_parts: dict[str, int] = {}  # a given name that is also someone's surname tells nobody apart
     for name in entries:
-        first_names[name.split()[0].lower()] = first_names.get(name.split()[0].lower(), 0) + 1
+        for part in {p.lower() for p in _name_parts(name)}:
+            name_parts[part] = name_parts.get(part, 0) + 1
     present = []
     for name, info in entries.items():
-        if not _mentioned(name, scene, first_names):
+        if not _mentioned(name, scene, name_parts):
             continue
         attitude = info.get("attitude", "")
         nature = info.get("temperament") or info.get("demeanor") or info.get("role") or info.get("summary", "")
