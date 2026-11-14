@@ -110,6 +110,14 @@ def test_a_name_part_two_people_share_lists_neither(fenmoor):
     assert "People here: Odell Pike (Ferryman)" in card(fenmoor, "[Wren Talley]: We wave to Odell Pike.")
 
 
+def test_a_given_name_that_is_another_persons_surname_lists_only_the_one_named(fenmoor):
+    (fenmoor / "npcs.md").write_text(
+        "| Name | Role |\n|---|---|\n| Captain Odell Marsh | Barge captain |\n| Captain Bram Odell | Dock guard |\n",
+        encoding="utf-8")
+    text = card(fenmoor, "[Wren Talley]: We wave to Captain Bram Odell.")
+    assert "People here: Captain Bram Odell (Dock guard)" in text and "Marsh" not in text
+
+
 def test_npc_saved_by_the_oracle_shows_temperament_and_want(fenmoor):
     oracle_spec = importlib.util.spec_from_file_location("oracle_for_card", REPO / "skills/dnd/scripts/oracle.py")
     oracle = importlib.util.module_from_spec(oracle_spec)

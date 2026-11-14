@@ -180,20 +180,17 @@ def _npc_entries(npcs: str) -> dict[str, dict]:
     return entries
 
 
-def _given_name(name: str) -> str:
-    """The part of an entry's name a mention would use: the first capitalised word that isn't a title."""
-    for word in name.split():
-        word = word.strip(".,'’\"()")
-        if len(word) >= 4 and word[0].isupper() and word.lower() not in TITLES:
-            return word
-    return ""
+def _name_parts(name: str) -> list[str]:
+    """The capitalised words of an entry's name that aren't titles, in order: "Odell", "Marsh"."""
+    words = (word.strip(".,'’\"()") for word in name.split())
+    return [w for w in words if len(w) >= 4 and w[0].isupper() and w.lower() not in TITLES]
 
 
-def _mentioned(name: str, text: str, given_names: dict[str, int]) -> bool:
+def _mentioned(name: str, text: str, name_parts: dict[str, int]) -> bool:
     if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE):
         return True
-    given = _given_name(name)
-    return bool(given) and given_names.get(given.lower()) == 1 and bool(re.search(rf"\b{re.escape(given)}\b", text))
+    given = (_name_parts(name) or [""])[0]
+    return bool(given) and name_parts.get(given.lower()) == 1 and bool(re.search(rf"\b{re.escape(given)}\b", text))
 
 
 def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
@@ -201,13 +198,13 @@ def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
     if not entries:
         return ""
     scene = " ".join((arc_pulse.location(state), field(state, "Current Situation", "Party status"), party_input))
-    given_names: dict[str, int] = {}
+    name_parts: dict[str, int] = {}  # a given name that is also someone's surname tells nobody apart
     for name in entries:
-        given = _given_name(name).lower()
-        given_names[given] = given_names.get(given, 0) + 1
+        for part in {p.lower() for p in _name_parts(name)}:
+            name_parts[part] = name_parts.get(part, 0) + 1
     present = []
     for name, info in entries.items():
-        if not _mentioned(name, scene, given_names):
+        if not _mentioned(name, scene, name_parts):
             continue
         attitude = info.get("attitude", "")
         nature = info.get("temperament") or info.get("demeanor") or info.get("role") or info.get("summary", "")
