@@ -123,6 +123,7 @@ This file holds everything an ordinary turn needs. The short files in `play/` be
 - `send.py --dice-request --character "A,B" --modifier N --dc N --label "..." [--advantage advantage|disadvantage] --wait <<'DNDEND'`
 - `dice.py d20+3 [--silent] [--label "..."]`; `d20+3 adv`, `2d6+2`.
 - `calendar.py -c X advance N days|hours [--no-road]`; `rest short|long`; `set "22 Harvestmoon 1247" [morning]`; `time evening`; `now`.
+- `inventory.py buy|sell --campaign X --character NAME --price "2 gp" [--qty N] ITEM`; `spend|earn --campaign X --character NAME "2 gp 5 sp"`; `add|remove --campaign X --character NAME [--qty N] ITEM`; `cargo add|remove|show --campaign X [ITEM]`.
 - `oracle.py npc --campaign X --name "Full Name" [--trader]`; `oracle.py npc note --campaign X --name "Full Name" "<line>"`.
 - `xp.py award --campaign X --characters "A,B" --difficulty easy|medium|hard|deadly --type combat|noncombat [--note "..."]`.
 - `push_stats.py --party X` (the whole party from its sheets); `push_stats.py --player NAME --hp CUR MAX | --conditions-add COND | --conditions-remove COND`.
