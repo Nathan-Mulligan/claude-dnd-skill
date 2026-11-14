@@ -443,6 +443,39 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/session_recap.py diff-files before.json afte
 
 ---
 
+## Turn log and NPC records — `display/records.py`, `display/npc_describe.py`
+
+Nothing to run: `send.py` keeps both after each send reaches the display. A block the display never got is not recorded. A failure prints one `send.py: turn log or NPC record not written` line and never fails the send.
+
+**`<campaign>/turn-log.md`**, written only by `send.py` (never edit it):
+
+    # Turn log
+
+    ## Session 7 · 2026-11-14
+
+    ### 21:04 · Brackenford toll gate · 18 Duskfall 1247
+
+    **Everybody:** We hand over the satchel.
+
+    **DM:** The clerk breaks the seal.
+
+    **Hessa Varn:** "Twenty silver, or the wagon stays."
+
+- A `## Session N · <date>` section starts after three hours without a send. N is one more than the newest `## Session N` in `session-log.md`.
+- One `###` entry per send: the real time, the place (the last `--scene` place, else `state.md`'s Location) and the in-world date.
+- One paragraph per block, word for word: `DM` (narration), `DM hint` (tutor), `Dice`, `XP`, `Inspiration`, `Milestone`, or the player, action or NPC name. A line starting with `#` inside a block is written as `\#`.
+- A replay is skipped: a send whose blocks were all logged in the last 40 and are each 40 characters or longer. Awards and short lines are always logged. A long block cut short by a failed post is logged as far as it was shown.
+- Read the newest session with `grep -n '^## Session' turn-log.md`, then `sed -n` from the last match; never the whole file.
+
+**NPC records.** For each `@npc NAME` speaker (or `--npc NAME`) whose name starts with a capital, `send.py` adds to their entry in `npcs.md` (or `npcs-full.md` if the entry lives there; a first name alone finds the one entry it starts):
+- `- **Met:** <place>, session N (<in-world date>)`, the first time only.
+- `- **Voice:** <id>`, the voice the display uses (`cast.json`), else the marker's.
+- `- **As seen:** <phrases>`: when the entry has no look line (`As seen`, `Look`, `Appearance`, `Description`), the helper model chosen in the portal (`lore_sync.py`: Luna by default, off with `DND_LORE_SYNC=0`) copies up to three phrases about that person from the narration, in the background. Phrases not found word for word in the narration are dropped, and nothing is written when the narration said nothing. Phrases must match whole words, so "scarred" never comes from "unscarred". It is added on the next send (kept for a later send if that write fails), at most three tries per person; failures go to `runtime/npc_describe.log`.
+
+The scripts only ever add a line the entry lacks. They never change or remove one, so personality, motives and anything else the DM wrote stand. `oracle.py` and `send.py` share one lock on `npcs.md`.
+
+---
+
 ## Where Play Stopped — `scripts/stop_point.py`
 
 Writes and shows `<campaign>/session-tail.md`: one line on where play stopped, the open question or pending roll, and the last eight exchanges word for word. Every portal save requires a fresh one, and a resumed DM reads it first. Without one, `show` prints the last eight entries of the display's `session_tail.json`.

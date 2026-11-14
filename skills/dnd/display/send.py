@@ -627,6 +627,19 @@ def _dice_request(args) -> None:
                 sys.exit(2)
 
 
+def _record(blocks: "list[dict]", awards: "list[tuple[str, str]]", place: "str | None") -> None:
+    """Add what the table was just shown to the turn log and NPC records (display/records.py)."""
+    if not blocks and not awards:
+        return
+    try:
+        import records
+        problem = records.record_send(blocks, awards, place)
+    except Exception as error:  # noqa: BLE001 — the narration is already on screen
+        problem = f"turn log or NPC record not written ({type(error).__name__})"
+    if problem:
+        print(f"send.py: {problem}", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send text to the DnD display server.")
     parser.add_argument("--setup-question", nargs="?", const="", metavar="TEXT",
@@ -843,8 +856,10 @@ def main() -> None:
         if not _other:
             return
     scene_note = None
+    place = scene.label if scene else None
     if args.scene is not None:
         derived, unchanged = _derive_scene(args.scene, args.mood)
+        place = derived.scene.label
         scene_note = (f"scene unchanged: {derived.scene.label} ({derived.scene.key})" if unchanged else
                       f"scene: {derived.scene.label} ({derived.scene.key}; {derived.setting}, {derived.mood}"
                       + (f", {derived.scene.era})" if derived.scene.era else ")"))
@@ -853,6 +868,7 @@ def main() -> None:
     music_id = uuid.uuid4().hex if music_event else None
 
     token = _read_token()
+    awards: "list[tuple[str, str]]" = []  # (label, line) for the turn log, once shown
 
     # ── Inspiration award/spend ──────────────────────────────────────────────
     # Award/spend flags POST their styled block + stat update first, then fall
@@ -864,7 +880,8 @@ def main() -> None:
         body: dict = {"inspiration_award": name, "text": name}
         if args.inspiration_reason:
             body["reason"] = args.inspiration_reason.strip()
-        _post(FLASK_URL, json.dumps(body).encode(), token)
+        if _post(FLASK_URL, json.dumps(body).encode(), token):
+            awards.append(("Inspiration", name + (f" ({body['reason']})" if body.get("reason") else "")))
         _post(STATS_URL, json.dumps({"players": [{"name": name, "inspiration": True}]}).encode(), token)
 
     if args.inspiration_spend:
@@ -881,7 +898,8 @@ def main() -> None:
         m_body: dict = {"milestone_award": name, "text": name, "label": label}
         if args.milestone_reason:
             m_body["reason"] = args.milestone_reason.strip()
-        _post(FLASK_URL, json.dumps(m_body).encode(), token)
+        if _post(FLASK_URL, json.dumps(m_body).encode(), token):
+            awards.append(("Milestone", f"{label}: {name}" + (f" ({m_body['reason']})" if m_body.get("reason") else "")))
         _post(STATS_URL, json.dumps({
             "players": [{"name": name, "_milestone_inc": label}]
         }).encode(), token)
@@ -908,7 +926,8 @@ def main() -> None:
             amt   = xp_data.get("xp", 0)
             rsn   = xp_data.get("reason", "")
             xp_data["summary"] = f"{names} — {amt} XP" + (f" ({rsn})" if rsn else "")
-        _post(FLASK_URL, json.dumps({"xp_award": xp_data, "text": xp_data["summary"]}).encode(), token)
+        if _post(FLASK_URL, json.dumps({"xp_award": xp_data, "text": xp_data["summary"]}).encode(), token):
+            awards.append(("XP", str(xp_data["summary"])))
 
     # ── Pre-flight integrity check ────────────────────────────────────────────
     # If a content flag is set but no text arrived on stdin, that's almost
@@ -941,8 +960,10 @@ def main() -> None:
     # with no narration block carries it on its first block.
     music_kinds = {None} if any(b["kind"] is None for b in blocks) else {b["kind"] for b in blocks}
     music_pending = bool(music_id)
+    delivered = []
     for block in blocks:
         kind = block["kind"]
+        shown = []
         for chunk in _split_paragraphs(block["text"]):
             payload: dict = {"text": chunk}
             with_music = music_pending and kind in music_kinds
@@ -969,8 +990,12 @@ def main() -> None:
                 sys.exit(2)
             ok = _post(FLASK_URL, json.dumps(payload).encode("utf-8"), token)
             if ok:
+                shown.append(chunk)
                 chunks_sent += 1
                 music_pending = music_pending and not with_music
+        if shown:
+            delivered.append(dict(block, text="\n\n".join(shown)))
+    _record(delivered, awards, place)
 
     if music_event and chunks_sent == 0:
         print("send.py: music cue requires successfully sent narration", file=sys.stderr)
