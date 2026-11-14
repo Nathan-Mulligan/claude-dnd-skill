@@ -137,7 +137,7 @@ class ImprovVarietyTests(unittest.TestCase):
     def test_most_road_days_are_quiet_but_not_all(self):
         rng = random.Random(5)
         kinds = [oracle.road_day(rng=rng)["kind"] for _ in range(2000)]
-        self.assertTrue(600 < kinds.count("quiet") < 1000)
+        self.assertTrue(850 < kinds.count("quiet") < 1250)
         self.assertEqual(set(kinds), {"quiet", "traveller", "obstacle", "discovery", "danger", "story"})
 
     def test_adventure_pacing_brings_fewer_quiet_days_and_more_story(self):
@@ -149,7 +149,7 @@ class ImprovVarietyTests(unittest.TestCase):
         quiet_adv, story_adv = count("adventure")
         quiet_down, story_down = count("downtime")
         self.assertLess(quiet_adv, quiet_mixed * 0.7)
-        self.assertGreater(story_adv, story_mixed * 2)
+        self.assertGreater(story_adv, story_mixed * 1.5)
         self.assertGreater(quiet_down, quiet_mixed)
         self.assertLess(story_down, story_mixed)
 

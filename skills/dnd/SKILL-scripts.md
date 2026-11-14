@@ -381,11 +381,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP events
 ```
   +3 days → Moonday, 18 Duskfall 1247 — morning (hour 8)
 On the road: one roll per travel day (improvised campaign). Not travelling? Ignore these, and use --no-road for rests, waiting in town or downtime.
-Day 1 of 3 (16 Duskfall 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Investigating costs time; ignoring it may cost later.
-Day 2 of 3 (17 Duskfall 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it one vivid line and move on.
-Day 3 of 3 (18 Duskfall 1247): danger. Wolves circling the camp at dusk, bold with hunger. Telegraph the threat, and let talk, flight or a fight all work.
-    Encounter budget (medium for 2 characters of level 1): about 100 XP. Roughly 1 × CR 1/4 (wolf), 2 × CR 1/8 (bandit) or 4 × CR 0 (jackal).
+Present each event and stop there: the party decides how to meet it. Never pay, pick a route or spend time for them.
+Day 1 of 3 (16 Duskfall 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Two or three lines: investigating costs time, ignoring it may cost later, and the party decides.
+Day 2 of 3 (17 Duskfall 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it a line or two of colour and carry on.
+Day 3 of 3 (18 Duskfall 1247): story. A clock is ticking (due 20 Duskfall 1247): the bridge closes to loaded wagons. Show it on the road: carters turning back. The story catches up with them: play it as a scene with a concrete event, and end on the party's choice.
 ```
+
+A danger day adds a line with the encounter budget for the party.
 
 ---
 
@@ -494,9 +496,11 @@ Likelihoods: `sure-thing`, `likely`, `50/50`, `unlikely`, `no-way`. Verdict suff
 
 **`npc`.** Rolls a temperament tier (about 60% ordinary, 30% colourful, 6% memorable, 4% troubled), a current want (about half ask something of the party, marked "an ask") and, with `--trader`, a trading style. With `--campaign` and `--name` it writes `- **Temperament:**`, `- **Wants now:**` and `- **Trades:**` lines into that NPC's entry in `npcs.md` (a `###` heading starting with the name), adding the entry if it is missing; running it again rewrites the same values. `npc note` appends `- Party note (<in-world date>): <line>` to the end of the entry: one line after a scene, on how it went and what the NPC now thinks of the party.
 
-**`road`.** One roll per travel day: quiet, traveller, obstacle, discovery, danger or story, each with several examples. With `--campaign` it reads `state.md`:
-- `pacing` in `## Session Flags` weights the table: `adventure` has about half the quiet days and over three times the story days of `mixed`; `downtime` has more quiet days and travellers, and less danger.
-- Story days use `## Next Hooks` bullets and `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) when present; about half of traveller days bring a clock's news or a hook.
+**`road`.** One roll per travel day: quiet, traveller, obstacle, discovery, danger or story, each with several examples. Most days are quiet or tied to the story; obstacles, discoveries and dangers (hazards) are rare. It prints one rule first: present each event and stop, and never pay, pick a route or spend time for the party. With `--campaign` it reads `state.md`:
+- `pacing` in `## Session Flags` weights the table. In a 2-day journey with no clock close, `adventure` gives about 36% quiet days, 41% tied to the story and 24% unrelated (hazards or a passing traveller); `mixed` about 52% quiet, 27% story and 20% unrelated; `downtime` the most quiet days and the least story.
+- Story days use the current arc beat's `world_pressure`, `## Next Hooks`, `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) and `## Active Quests` (the errand). About half of traveller days bring a clock's news, a hook or the errand.
+- One hazard a journey at most. A journey is the run of road days on consecutive calendar days, so it carries on across `advance 1 day` calls and ends when a day passes without travel.
+- Racing a clock (one due within 3 days of the travel day, by `calendar.json`): no danger or discovery; an obstacle comes only with the clock's stakes attached, travellers bring news tied to the story, and story days show that clock twice as often.
 - `road_log.json` in the campaign folder keeps the last 10 days, so an example, hook or clock is not reused while it is in the log (a hook used on a story day is not repeated by a traveller either), and the same eventful kind never comes twice in a row.
 - Danger days add an encounter budget for the party (size and average level from `party_stats.json`, else `characters/*.md`), at the tier set by the `difficulty` dial (`standard` = medium).
 
