@@ -830,7 +830,7 @@ def main() -> None:
         text = _waiting_stdin()
     else:
         text = "" if sys.stdin.isatty() else sys.stdin.read()
-    if _has_content_flag or args.opener:
+    if _has_content_flag:
         blocks = _flag_block(args, text)
     else:
         try:

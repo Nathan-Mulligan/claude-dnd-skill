@@ -212,3 +212,8 @@ def test_a_heredoc_file_on_stdin_is_read_for_a_roll_request(sender, tmp_path):
 def test_dev_null_on_stdin_is_no_body(sender):
     with open(os.devnull, encoding="utf-8") as stdin, mock.patch.object(sys, "stdin", stdin):
         assert sender._waiting_stdin() == ""
+
+
+def test_an_opener_call_carries_the_player_echo_before_the_opener_line(sender):
+    chunks = _run(sender, ["--opener"], "@player Everybody\nWe take the satchel.\n@narration\nEdrin's grip loosens.\n")
+    assert [(c.get("player"), c.get("opener")) for _, c in chunks] == [("Everybody", None), (None, True)]
