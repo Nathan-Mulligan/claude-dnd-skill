@@ -28,6 +28,7 @@ You decide what comes at the party. The players decide how to answer it. A table
   - Play each NPC present to their card line.
   - Apply the trade policy without asking.
   - Write to the length it gives.
+  - A `Prepared` line holds numbers the scripts fetched for the trade, fight or journey just announced: list prices and purses, SRD stat blocks, or the next road day, already rolled (`calendar.py advance` prints that same day as day 1, so never roll `oracle.py road` for it). Read it instead of looking things up. It only supplies numbers; if it doesn't fit the scene, ignore it.
   - If the card and your memory disagree, the card wins. If the card and a campaign file disagree, re-read the file.
 - A `DM steering` line on the turn card is mandatory this turn. Resolve the party's action briefly, then bring the named pressure in as a concrete event. If the beat has already landed, run `arc.py advance` instead.
 - `[[<Character> roll mode: ...]]` overrides `roll_mode` for that character.
@@ -93,7 +94,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - With the display running, the table hears only what you send. Every reply to the players goes through `send.py` in a real shell command, never as text in your reply. With no display (the `No display` choice), write the narration in your reply instead.
 - Nothing reaches the table until a whole command is written, so a turn is two calls and one word. A player roll is the one split: the stake goes out with the roll request (section 4), the result in the narration call after it.
   1. **Narration.** One `send.py` call holding every block, and nothing else in that command. Before it, run only what the narration reports: `calendar.py advance` on travel, `oracle.py npc` for a new NPC, `dice.py` for NPC rolls, `inventory.py` for a trade, `encounter_state.py` or `combat.py` (and `tracker.py`) to resolve a fight, and a read of a fact you must check. No `/health` or `paths.py` checks: `send.py` covers them. When the scene changes, re-read `state.md`'s `## Next Hooks`, `## Clocks` and `## Live State Flags` before you write, so the story keeps its threads.
-  2. **Bookkeeping.** Every file write (`state.md`, `session-log.md`, NPC notes, `arc.py`, `xp.py`, `push_stats.py`) in one call after the narration. Never in or before the narration call.
+  2. **Bookkeeping.** Every file write (`state.md`, `session-log.md`, NPC notes, `arc.py`, `xp.py`, `push_stats.py --party X` after a sheet change) in one call after the narration. Never in or before the narration call.
   3. **Reply with one word: `done`.** No summary; nobody reads it. (With no display, the narration is your reply instead.)
 - In the narration heredoc, a line holding only a marker starts a block: `@player NAME` (their action, tidied), `@dice` (roll lines), `@narration`, `@npc NAME` (add ` voice=ID` the first time they speak), `@tutor` last. Text before the first marker is narration.
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`.
@@ -143,6 +144,6 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 - `inventory.py buy|sell --campaign X --character NAME --price "2 gp" [--qty N] ITEM`; `spend|earn --campaign X --character NAME "2 gp 5 sp"`; `add|remove --campaign X --character NAME [--qty N] ITEM`; `cargo add|remove|show --campaign X [ITEM]`.
 - `oracle.py npc --campaign X --name "Full Name" [--trader]`; `oracle.py npc note --campaign X --name "Full Name" "<line>"`.
 - `xp.py award --campaign X --characters "A,B" --difficulty easy|medium|hard|deadly --type combat|noncombat [--note "..."]`.
-- `push_stats.py --player NAME --hp CUR MAX | --xp CUR NEXT | --conditions-add COND | --conditions-remove COND`.
+- `push_stats.py --party X [--replace-players]` (the whole party read from its sheets; `--replace-players` only at load); `push_stats.py --player NAME --hp CUR MAX | --xp CUR NEXT | --conditions-add COND | --conditions-remove COND`.
 
 Check phrase: the lantern is lit at the crossroads.

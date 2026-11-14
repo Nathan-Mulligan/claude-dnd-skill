@@ -330,6 +330,7 @@ _ROAD_WEIGHTS = {
     "downtime": (("quiet", 45), ("traveller", 28), ("obstacle", 10), ("discovery", 9), ("danger", 5), ("story", 3)),
 }
 ROAD_LOG = "road_log.json"
+ROAD_NEXT = "road_next.json"
 ROAD_LOG_KEEP = 10
 
 _DIFFICULTY_TIER = {"easy": 0, "standard": 1, "hard": 2, "deadly": 3}
@@ -560,12 +561,66 @@ def _write_atomic(path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def campaign_road(folder, days: int, rng=None) -> list:
-    """Roll `days` travel days for the campaign in `folder` and record them in road_log.json."""
+def calendar_day(cal) -> "list | None":
+    """[year, month, day] of a calendar.json dict, the key a prepared road day is kept under."""
+    try:
+        return [int(cal["year"]), int(cal["month"]), int(cal["day"])]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _today(folder) -> "list | None":
+    try:
+        return calendar_day(json.loads((folder / "calendar.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
+def _road_context(folder) -> dict:
     state = folder / "state.md"
-    text = state.read_text(encoding="utf-8") if state.is_file() else ""
+    return read_road_context(state.read_text(encoding="utf-8") if state.is_file() else "")
+
+
+def prepare_road(folder, rng=None) -> dict:
+    """The next travel day, rolled once and kept in road_next.json until a road roll uses it.
+
+    Never logged and never moves the calendar, so asking again shows the same day."""
+    path = folder / ROAD_NEXT
+    today = _today(folder)
+    try:
+        kept = json.loads(path.read_text(encoding="utf-8"))
+        if kept.get("for") == today and isinstance(kept.get("day"), dict):
+            return kept["day"]
+    except (OSError, ValueError, AttributeError):
+        pass
+    day = roll_road(1, rng=rng, context=_road_context(folder), recent=_read_road_log(folder),
+                    party=read_party(folder))[0]
+    _write_atomic(path, json.dumps({"for": today, "day": day}, indent=2, ensure_ascii=False) + "\n")
+    return day
+
+
+def _take_prepared(folder, start) -> "dict | None":
+    path = folder / ROAD_NEXT
+    try:
+        kept = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    path.unlink(missing_ok=True)
+    day = kept.get("day") if isinstance(kept, dict) else None
+    fresh = kept.get("for") == start and isinstance(day, dict)
+    return day if fresh and isinstance(day.get("kind"), str) and isinstance(day.get("text"), str) else None
+
+
+def campaign_road(folder, days: int, rng=None, start=None) -> list:
+    """Roll `days` travel days for the campaign in `folder` and record them in road_log.json.
+
+    A day kept by prepare_road for the date the journey starts (`start`, [year, month, day];
+    default today) becomes day 1, so a prepared day is never rolled twice."""
     log = _read_road_log(folder)
-    rolled = roll_road(days, rng=rng, context=read_road_context(text), recent=log, party=read_party(folder))
+    first = _take_prepared(folder, start if start is not None else _today(folder)) if days > 0 else None
+    rolled = [first] if first else []
+    rolled += roll_road(days - len(rolled), rng=rng, context=_road_context(folder),
+                        recent=log + [_log_entry(d) for d in rolled], party=read_party(folder))
     log += [_log_entry(d) for d in rolled]
     _write_atomic(folder / ROAD_LOG, json.dumps(log[-ROAD_LOG_KEEP:], indent=2, ensure_ascii=False) + "\n")
     return rolled

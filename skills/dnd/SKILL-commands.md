@@ -145,52 +145,20 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
    - **source/<chapter-id>.md (imported campaigns only):** the full module text, one file per chapter. Never loaded at session start. Before running a scene in a chapter, read that chapter's `source/<id>.md` (the `source_ref` in the arc) — and only that chapter. This is the predefined-story equivalent of reading a single NPC's full entry on demand.
    - **npcs.md:** Index row only at load. **Before writing substantive dialogue or decisions for any named NPC, read their full entry in `npcs-full.md`.** Do not wait for an explicit `/dm:dnd npc [name]` call — do it proactively when a scene centers on that character. Index rows carry surface traits only; personality axes, relationships, and hidden goals are in the full entry.
    - **Do NOT read session-log.md or session-log-archive.md at load** — recent events are already in `state.md → ## Recent Events`, older sessions in `## Story So Far` and `## Continuity Archive`, and the stop point in `stop_point.py show`. Only read session-log.md if the player explicitly requests a recap, or if DM Calibration from the last 1-2 sessions is needed and not already internalized, and then only the entry you need.
-6. Push full party stats to display sidebar. **CRITICAL:** use `--json` with a complete player object — **never** the `--player` shorthand here. `--player` only updates existing fields; it cannot populate the card or sheet tabs. The display shows "Full sheet not loaded" when `sheet` is absent.
+6. Push full party stats to display sidebar, in one call:
 
    ```bash
-   python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --replace-players --json '{
-     "players": [
-       {
-         "name": "CharName",
-         "race": "Race",
-         "class": "Class (Background)",
-         "level": N,
-         "hp": {"current": N, "max": N, "temp": 0},
-         "ac": N,
-         "speed": 30,
-         "hit_dice": {"max": N, "remaining": N, "die": "d8"},
-         "xp": {"current": N, "next": N},
-         "conditions": [],
-         "concentration": null,
-         "inspiration": 0,
-         "spell_slots": {},
-         "sheet": {
-           "attacks": [{"name":"...","bonus":"+N","damage":"...","type":"...","notes":"..."}],
-           "attacks": [...]
-         }
-       }
-     ]
-   }'
-   ```
-
-   For casters, add `"spells": {"cantrips":["..."],"level1":["..."]}` inside `sheet`. Omit for non-casters.
-
-   Do not write `features` or `inventory` by hand: add `--from-sheets <campaign-name>` to the same call and it fills features (grouped by class, species and background), inventory and the coin ledger from the sheet files. If `inventory.py show --campaign <campaign-name>` reports `no ledger` for a character, run `inventory.py migrate` for them (dry run), show the player what it understood, and add `--write` only once they confirm.
-
-   **Inspiration:** read from `state.md → ## Current Situation → Party status`. Set `"inspiration": 1` (or `true`) if the character has it, `0` if not. Inspiration is NOT reset by a long rest — it persists until spent. Must be explicitly tracked in the party status line at `/dm:dnd save` (e.g., `Mara: Inspiration ✓`) and loaded at `/dm:dnd load`. Use `push_stats.py --player <name> --inspiration true/false` for mid-session updates.
-
-   `--replace-players` clears stale characters from previous campaigns. Build the JSON from the character file — every field above is required for the card and sheet tabs to render correctly.
-
-   Also push `--world-time`, `--factions`, and `--quests` in the **same** `push_stats.py` call as the player JSON to avoid race conditions where the display server receives a partial update. Combine all into one invocation:
-
-   ```bash
-   python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --replace-players \
-     --json '{...players...}' \
-     --from-sheets <campaign-name> \
+   python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name> --replace-players \
      --world-time '{...}' \
      --factions '[...]' \
      --quests '[...]'
    ```
+
+   `--party` selects the campaign and reads every character sheet itself: race, class, level, HP, AC, initiative, speed, hit dice, XP, ability scores, spell slots, Heroic Inspiration, attacks, spells, features, inventory and the coin ledger. Never build the player JSON by hand. `--replace-players` clears stale characters from previous campaigns; leave it off mid-session, when `push_stats.py --party <campaign-name>` refreshes the sidebar after a sheet changes. If `inventory.py show --campaign <campaign-name>` reports `no ledger` for a character, run `inventory.py migrate` for them (dry run), show the player what it understood, and add `--write` only once they confirm.
+
+   **Inspiration** comes from the sheet's `Heroic Inspiration` line. When `state.md → ## Current Situation → Party status` says otherwise, follow with `push_stats.py --player <name> --inspiration true/false`. It persists until spent, not reset by a long rest.
+
+   Push `--world-time`, `--factions` and `--quests` in the **same** call, as above, so the display never receives a partial update.
 
    Faction JSON structure — **`standing` is required**:
    ```json
@@ -386,7 +354,7 @@ Campaign "<name>" created from <source title>.
 ---
 
 ## `/dm:dnd save`
-Write session events to session-log.md, update state.md (location, active quests, party HP/resources, recent events), update any characters/*.md that changed. Mirror each updated character to global roster (`~/.claude/dnd/characters/<name>.md`).
+Write session events to session-log.md, update state.md (location, active quests, party HP/resources, recent events), update any characters/*.md that changed. Mirror each updated character to global roster (`~/.claude/dnd/characters/<name>.md`). Then refresh the sidebar from the saved sheets with `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name>`.
 
 **Inspiration tracking:** On every save, record each PC's Inspiration state in `state.md → ## Current Situation → Party status`. Use explicit text: `Inspiration ✓` if held, omit or `No Inspiration` if not. Inspiration persists across sessions and is NOT cleared by long rests. Example: `Mara: HP 24/24. Inspiration ✓. Theo: HP 24/24.`
 
@@ -778,7 +746,7 @@ DNDEND
 
 **Long (8 hours):**
 1. Restore all HP, half max Hit Dice (round up), all spell slots, most class features. Update sheet.
-2. Push: `push_stats.py --player NAME --hp <max> <max>` and `--second-wind true`.
+2. Push: `push_stats.py --party <campaign-name>` once the sheets are updated, and `push_stats.py --player NAME --second-wind true`.
 3. Advance time: `calendar.py -c <campaign> rest long`
 4. Clear all tracker state: `tracker.py -c <campaign> clear --all`
 5. Update `state.md` in-world date to match calendar output.
