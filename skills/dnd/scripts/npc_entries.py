@@ -8,8 +8,9 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Callable
 
@@ -128,10 +129,31 @@ def read_lines(path: Path) -> list:
     return path.read_text(encoding="utf-8").splitlines() if path.is_file() else ["# NPCs"]
 
 
-def write_atomic(path: Path, text: str) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+def write_atomic(path: Path, text: str, mode: int = 0o644) -> None:
+    """Replace `path` through a temporary file with a fresh name, so a link the DM placed is never written through."""
+    fd, tmp = tempfile.mkstemp(dir=Path(path).parent, prefix=f".{Path(path).name}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        with suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def open_lock(path) -> int:
+    """Open a lock file without following a link: the display and the portal take locks from outside the
+    DM's sandbox, in folders the DM can write. A link found there is replaced, never followed."""
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        return os.open(path, flags, 0o600)
+    except OSError:
+        if not os.path.islink(path):
+            raise
+        os.unlink(path)
+        return os.open(path, flags | os.O_EXCL, 0o600)
 
 
 @contextmanager
@@ -143,7 +165,7 @@ def locked(key: str):
     folder = runtime_dir() / "locks"
     folder.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
-    fd = os.open(folder / f"{digest}.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    fd = open_lock(folder / f"{digest}.lock")
     try:
         deadline = time.monotonic() + LOCK_WAIT_S
         while fcntl is not None:

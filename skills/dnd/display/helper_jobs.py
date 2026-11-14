@@ -30,7 +30,7 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from runtime_paths import log_line, rt, touch  # noqa: E402
 
-KINDS = ("lore_sync",)
+KINDS = ("lore_sync", "npc_describe")
 POLL_S = 1.0
 
 _running: "dict[str, threading.Thread]" = {}
@@ -71,8 +71,10 @@ def run_due(helpers: dict) -> None:
 
 def _helpers() -> dict:
     import lore_sync
+    import npc_describe
+    import npc_entries  # noqa: F401 — npc_describe's own import, loaded now with it
     import push_stats  # noqa: F401 — lore_sync imports it on its first run; load it now instead
-    return {"lore_sync": lore_sync.run_and_log}
+    return {"lore_sync": lore_sync.run_and_log, "npc_describe": npc_describe.run_and_log}
 
 
 def _loop(helpers: dict) -> None:
