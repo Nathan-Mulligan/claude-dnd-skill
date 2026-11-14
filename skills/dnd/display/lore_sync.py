@@ -57,6 +57,7 @@ PUBLIC_SECTIONS = (
     "open threads",
     "recent events",
     "party knowledge",
+    "faction standings",
 )
 DETAIL_MAX = 320
 LOCK_STALE_S = 600
@@ -476,6 +477,9 @@ def _release(fd: int) -> None:
         pass
 
 
+import sidebar_sync  # noqa: E402 — loaded with this module, never later from the DM-writable checkout
+
+
 def sync_once() -> str:
     """One pass: regenerate and publish notes if the inputs changed."""
     health = _request("/health") or {}
@@ -483,7 +487,7 @@ def sync_once() -> str:
     if not campaign or not root:
         return "no-campaign"
     state = Path(root, "campaigns", campaign, "state.md")
-    public = public_text(state.read_text(encoding="utf-8")) if state.is_file() else ""
+    public = public_text(sidebar_sync.read_state(state) or "")  # run unsandboxed: never follow the DM's links
     stats = _current_stats()
     if stats is None:
         return "unreadable"
