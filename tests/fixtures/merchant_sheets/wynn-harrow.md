@@ -1,56 +1,56 @@
-# Nella Reed
-**Player:**  **Campaign:** Enderal  **Last Updated:** 2026-11-10
+# Wynn Harrow
+**Player:**  **Campaign:** Hollowmere  **Last Updated:** 2026-10-03
 
 ## Identity
 - **Race:** Human | **Class:** Paladin | **Level:** 1 | **Background:** Merchant
 - **Alignment:** unassigned | **XP:** 0 / 300
 
 ## Character Pillar
-- **Bond:** Elbane is her husband and equal partner in their travelling trade business. Her player decides Nella’s choices.
+- **Bond:** Oswin is her older brother and co-owner of their family carting business. Her player decides Wynn’s choices.
 
 ## Campaign History
-- **Origin campaign:** Enderal
+- **Origin campaign:** Hollowmere
 - **Previous campaigns:** none
 
 ## Ability Scores
 | STR | DEX | CON | INT | WIS | CHA |
 |-----|-----|-----|-----|-----|-----|
-| 15 (+2) | 10 (+0) | 15 (+2) | 8 (-1) | 12 (+1) | 15 (+2) |
+| 14 (+2) | 12 (+1) | 15 (+2) | 8 (-1) | 12 (+1) | 15 (+2) |
 
-27-point buy base 15, 10, 14, 8, 12, 13; Merchant +1 CON and +2 CHA.
+27-point buy base 14, 12, 14, 8, 12, 13; Merchant +1 CON and +2 CHA.
 
 ## Combat Stats
 - **HP:** 12 / 12 | **Temp HP:** 0
-- **AC:** 14 | **Initiative:** +0 | **Speed:** 30 ft
+- **AC:** 15 | **Initiative:** +1 | **Speed:** 30 ft
 - **Hit Dice:** 1d10 (remaining: 1)
 - **Death Saves:** Successes: 0 | Failures: 0
 - **Heroic Inspiration:** 1 | **Lay on Hands:** 5 / 5 HP | **Luck Points:** 2 / 2
 - **Proficiency Bonus:** +2 | **Passive Perception:** 13
 
 ## Saving Throws
-STR +2 | DEX +0 | CON +2 | INT -1 | WIS +3 proficient | CHA +4 proficient
+STR +2 | DEX +1 | CON +2 | INT -1 | WIS +3 proficient | CHA +4 proficient
 
 ## Skills
 | Skill | Ability | Bonus | Proficient |
 |-------|---------|-------|------------|
-| Acrobatics | DEX | +0 | — |
+| Acrobatics | DEX | +1 | — |
 | Animal Handling | WIS | +3 | proficient |
 | Arcana | INT | -1 | — |
 | Athletics | STR | +4 | proficient |
 | Deception | CHA | +2 | — |
 | History | INT | -1 | — |
 | Insight | WIS | +3 | proficient |
-| Intimidation | CHA | +2 | — |
-| Investigation | INT | +1 | proficient |
-| Medicine | WIS | +1 | — |
+| Intimidation | CHA | +4 | proficient |
+| Investigation | INT | -1 | — |
+| Medicine | WIS | +3 | proficient |
 | Nature | INT | -1 | — |
 | Perception | WIS | +3 | proficient |
 | Performance | CHA | +2 | — |
 | Persuasion | CHA | +4 | proficient |
-| Religion | INT | -1 | — |
-| Sleight of Hand | DEX | +0 | — |
-| Stealth | DEX | +2 | proficient |
-| Survival | WIS | +3 | proficient |
+| Religion | INT | +1 | proficient |
+| Sleight of Hand | DEX | +1 | — |
+| Stealth | DEX | +1 | — |
+| Survival | WIS | +1 | — |
 
 ## Attacks
 | Name | Attack Bonus | Damage | Type | Notes |
@@ -64,18 +64,18 @@ STR +2 | DEX +0 | CON +2 | INT -1 | WIS +3 proficient | CHA +4 proficient
 | 1st | 2 | 0 |
 
 ## Known Spells / Cantrips
-Prepared: Bless, Cure Wounds. No cantrips. Spellcasting ability Charisma; spell save DC 12, spell attack +4. Replace one prepared paladin spell on a long rest. Holy symbol as spellcasting focus.
+Prepared: Heroism, Shield of Faith. No cantrips. Spellcasting ability Charisma; spell save DC 12, spell attack +4. Replace one prepared paladin spell on a long rest. Holy symbol as spellcasting focus.
 
 ## Features & Traits
 ### Paladin
 - Lay on Hands: 5 HP pool, replenished on long rest. Bonus action touch heals up to remaining pool, or spend 5 HP to remove Poisoned.
 - Spellcasting: 2 first-level slots, restored on a long rest; two prepared paladin spells.
 - Weapon Mastery: longsword (Sap) and javelin (Slow); may change choices after a long rest.
-- Proficient with light, medium and heavy armour, shields, simple and martial weapons. Class skills: Athletics and Insight. Saving throws Wisdom and Charisma.
+- Proficient with light, medium and heavy armour, shields, simple and martial weapons. Class skills: Intimidation and Religion. Saving throws Wisdom and Charisma.
 - No fighting style, Paladin's Smite, Channel Divinity or oath/subclass at level 1.
 ### Human
-- Resourceful: gain Heroic Inspiration after a long rest. Skillful: Perception proficiency. Versatile: Skilled origin feat grants Investigation, Stealth and Survival proficiency.
-- Medium; speed 30 ft; Common, Dwarvish and Halfling.
+- Resourceful: gain Heroic Inspiration after a long rest. Skillful: Perception proficiency. Versatile: Skilled origin feat grants Athletics, Medicine and Insight proficiency.
+- Medium; speed 30 ft; Common, Elvish and Gnomish.
 ### Merchant
 - Lucky origin feat: 2 Luck Points per long rest; spend one for advantage on a d20 test or to impose disadvantage on an attack against you.
 - Animal Handling, Persuasion and navigator's tools proficiency.
@@ -84,8 +84,8 @@ Prepared: Bless, Cure Wounds. No cantrips. Spellcasting ability Charisma; spell 
 **Weapons:** longsword, javelin.
 **Armour:** studded leather, shield.
 **Adventuring Gear:** holy symbol, explorer's pack, 10 torches.
-**Currency:** 109 gp. Starting gold alternatives: paladin 150 gp and merchant 50 gp, less 91 gp for studded leather (45), shield (10), longsword (15), javelin (5), holy symbol (5), explorer's pack (10), 10 torches (1).
-**Shared caravan:** rented wagon and mule, 3 sp owed to their owner at next market; the 50 lb flour was sold to Meren for 26 sp; the four purchased blankets were sold to Dera for 24 sp; Bera’s separate parcel of mended blankets was delivered to Dera Voss at the salt-town cooperage; the 20 sp salt purchase debt to Hessa has been paid in full. No wages owed to Nella.
+**Currency:** 59 gp. Starting gold alternatives: paladin 150 gp, less 91 gp for studded leather (45), shield (10), longsword (15), javelin (5), holy symbol (5), explorer's pack (10), 10 torches (1).
+**Shared caravan:** rented wagon and mule, 3 sp owed to their owner at next market; the 40 lb wool was sold to Gilla for 18 sp; the six purchased candles were sold to Rusk for 6 sp; Tamm’s separate crate of mended lanterns was delivered to Brisa Oakes at the river-town chandlery; the 12 sp wool purchase debt to Corra has been paid in full. No wages owed to Wynn.
 
 ## Backstory & Notes
-Warm, dryly funny and good with the mule. Nella and Elbane are spouses and equal partners; Nella’s player controls her choices. These class and background choices are reversible starting defaults and do not prescribe her personality or past.
+Patient, blunt and good with the mule. Wynn and Oswin are siblings and equal partners; Wynn’s player controls her choices. These class and background choices are reversible starting defaults and do not prescribe her personality or past.

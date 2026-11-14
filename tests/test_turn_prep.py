@@ -20,7 +20,7 @@ pytest.importorskip("yaml")
 REPO = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO / "skills/dnd/scripts"
 FIXTURE = REPO / "tests/fixtures/fenmoor"
-SHEETS = REPO / "tests/fixtures/enderal_sheets"
+SHEETS = REPO / "tests/fixtures/merchant_sheets"
 sys.path.insert(0, str(SCRIPTS))
 
 import oracle  # noqa: E402
@@ -89,13 +89,13 @@ def test_a_fight_with_no_known_creature_preps_nothing(fenmoor):
 
 def test_a_trade_preps_list_prices_and_the_purses(fenmoor):
     (fenmoor / "characters").mkdir()
-    shutil.copy(SHEETS / "nella-reed.md", fenmoor / "characters/nella-reed.md")
+    shutil.copy(SHEETS / "wynn-harrow.md", fenmoor / "characters/wynn-harrow.md")
     ledger = {"version": 1, "coins": {"pp": 0, "gp": 32, "ep": 0, "sp": 8, "cp": 7}, "items": []}
-    (fenmoor / "characters/nella-reed.inventory.json").write_text(json.dumps(ledger), encoding="utf-8")
+    (fenmoor / "characters/wynn-harrow.inventory.json").write_text(json.dumps(ledger), encoding="utf-8")
     lines = prepared(card(fenmoor, "We'd like to buy a rope and a hooded lantern"))
     assert len(lines) == 1
     assert "Rope 1 gp" in lines[0] and "Lantern, Hooded 5 gp" in lines[0]
-    assert "Nella Reed 32 gp, 8 sp, 7 cp" in lines[0]
+    assert "Wynn Harrow 32 gp, 8 sp, 7 cp" in lines[0]
 
 
 def test_a_journey_preps_the_next_road_day_without_moving_time(fenmoor):
@@ -169,9 +169,9 @@ def test_no_signal_leaves_the_card_as_it_was(fenmoor):
 
 def test_a_haggle_with_no_listed_item_preps_nothing(fenmoor):
     (fenmoor / "characters").mkdir()
-    shutil.copy(SHEETS / "nella-reed.md", fenmoor / "characters/nella-reed.md")
+    shutil.copy(SHEETS / "wynn-harrow.md", fenmoor / "characters/wynn-harrow.md")
     ledger = {"version": 1, "coins": {"pp": 0, "gp": 32, "ep": 0, "sp": 8, "cp": 7}, "items": []}
-    (fenmoor / "characters/nella-reed.inventory.json").write_text(json.dumps(ledger), encoding="utf-8")
+    (fenmoor / "characters/wynn-harrow.inventory.json").write_text(json.dumps(ledger), encoding="utf-8")
     assert prepared(card(fenmoor, "We'll do it, but we haggle for two more silver, paid up front")) == []
 
 
