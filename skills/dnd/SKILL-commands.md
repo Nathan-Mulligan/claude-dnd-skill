@@ -354,7 +354,7 @@ Campaign "<name>" created from <source title>.
 ---
 
 ## `/dm:dnd save`
-Write this session's entry in session-log.md: the judgement (Recap, decisions, XP, loot, open threads), not the play-by-play, which `send.py` already keeps word for word in `turn-log.md`. Update state.md (location, active quests, party HP/resources, recent events) and any characters/*.md that changed. Mirror each updated character to global roster (`~/.claude/dnd/characters/<name>.md`). Then refresh the sidebar from the saved sheets with `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name>`.
+Write this session's entry in session-log.md: the judgement (Recap, decisions, XP, loot, open threads), not the play-by-play, which `send.py` already keeps word for word in `turn-log.md`. Head it `## Session N` with the number of the newest `## Session` in `turn-log.md` (the portal's save request names it). Update state.md (location, active quests, party HP/resources, recent events) and any characters/*.md that changed. Mirror each updated character to global roster (`~/.claude/dnd/characters/<name>.md`). Then refresh the sidebar from the saved sheets with `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name>`.
 
 **Inspiration tracking:** On every save, record each PC's Inspiration state in `state.md → ## Current Situation → Party status`. Use explicit text: `Inspiration ✓` if held, omit or `No Inspiration` if not. Inspiration persists across sessions and is NOT cleared by long rests. Example: `Mara: HP 24/24. Inspiration ✓. Theo: HP 24/24.`
 
@@ -432,7 +432,7 @@ If `graph.json` doesn't exist yet for this campaign, skip the sweep entirely (no
 
 ## `/dm:dnd end`
 
-**No-questions mode.** When the campaign portal asks you to end the session, or the table asks you to end without questions, run every step below but ask nothing: skip the calibration question in 1b (leave `### DM Calibration` blank), and in 1e decide yourself which beats landed. In the save's graph sweep, apply nothing: write the proposed graph calls under `## DM Notes` in state.md as "Graph proposals awaiting approval", and offer them at the next load. If the portal launched you, it owns the display, so skip steps 2 and 3 (don't stop the display).
+**No-questions mode.** When the campaign portal asks you to end the session, or the table asks you to end without questions, run every step below but ask nothing: skip the calibration question in 1b (leave `### DM Calibration` blank), and in 1e decide yourself which beats landed. In the save's graph sweep, apply nothing: write the proposed graph calls under `## DM Notes` in state.md as "Graph proposals awaiting approval", and offer them at the next load. If the portal launched you, it owns the display, so skip steps 2 and 3 (don't stop the display). When the portal's request says its notes helper writes the summary, also skip the save's session-log.md entry, 1a, e2b and the session log archival: the helper writes the entry, its Recap, Story So Far and archive after you acknowledge.
 
 1. Run `/dm:dnd save`, then:
    a. Append **Session Recap** block to session-log.md with key events and open threads.

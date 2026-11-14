@@ -73,9 +73,9 @@ def fingerprint(entry: dict) -> str:
     return hashlib.sha256(json.dumps(entry, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
 
 
-def as_turns(entries: list[dict]) -> list[dict]:
+def as_turns(entries: list[dict], keep: int | None = KEEP) -> list[dict]:
     return [{"who": str(entry.get("player") or entry.get("npc") or ("Dice" if entry.get("dice") else "DM")),
-             "text": entry["text"]} for entry in entries[-KEEP:]]
+             "text": entry["text"]} for entry in (entries[-keep:] if keep else entries)]
 
 
 def write(folder: Path, where: str, waiting: str, raw: str) -> None:
@@ -93,17 +93,29 @@ def write(folder: Path, where: str, waiting: str, raw: str) -> None:
     print(f"Saved where play stopped to {target}.")
 
 
+def mark_of(text: str) -> str | None:
+    """The fingerprint of the last display line shown when the note was written."""
+    mark = re.search(re.escape(MARK) + r"([0-9a-f]{16}) -->", text)
+    return mark.group(1) if mark else None
+
+
+def entries_after(entries: list[dict], mark: str | None) -> list[dict]:
+    """Display lines newer than the mark; all of them when the mark has scrolled out or is unknown."""
+    prints = [fingerprint(entry) for entry in entries]
+    if mark in prints:
+        return entries[len(prints) - prints[::-1].index(mark):]
+    return entries
+
+
 def since(text: str, entries: list[dict]) -> str:
     """Display lines shown after the note was written, e.g. when a DM stopped without saving."""
-    mark = re.search(re.escape(MARK) + r"([0-9a-f]{16}) -->", text)
+    mark = mark_of(text)
     if not mark or not entries:
         return ""
-    prints = [fingerprint(entry) for entry in entries]
-    if mark.group(1) in prints:
-        newer = entries[len(prints) - prints[::-1].index(mark.group(1)):]
+    newer = entries_after(entries, mark)
+    if mark in [fingerprint(entry) for entry in entries]:
         heading = "## Since then, the display showed (newer than the note above; trust these)"
     else:
-        newer = entries
         heading = "## Since then, the display moved on past its last thirty lines; the latest (trust these)"
     if not newer:
         return ""
