@@ -32,6 +32,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import random
@@ -39,6 +40,11 @@ import re
 import sys
 
 from xp import CR_XP, MONSTER_MULTIPLIERS, XP_THRESHOLDS
+
+try:
+    import fcntl
+except ImportError:  # Windows: no lock, the prepared day still works without one
+    fcntl = None
 
 try:
     from paths import find_campaign
@@ -330,6 +336,9 @@ _ROAD_WEIGHTS = {
     "downtime": (("quiet", 45), ("traveller", 28), ("obstacle", 10), ("discovery", 9), ("danger", 5), ("story", 3)),
 }
 ROAD_LOG = "road_log.json"
+ROAD_NEXT = "road_next.json"
+ROAD_LOCK = "road_next.lock"
+_HELD: set = set()
 ROAD_LOG_KEEP = 10
 
 _DIFFICULTY_TIER = {"easy": 0, "standard": 1, "hard": 2, "deadly": 3}
@@ -541,7 +550,7 @@ def roll_road(days: int, rng=None, context=None, recent=(), party=None) -> list:
 
 
 def _log_entry(day: dict) -> dict:
-    return {key: day[key] for key in ("kind", "text", "source") if key in day}
+    return {key: day[key] for key in ("kind", "text", "source", "prep") if key in day}
 
 
 def _read_road_log(folder) -> list:
@@ -560,15 +569,107 @@ def _write_atomic(path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def campaign_road(folder, days: int, rng=None) -> list:
-    """Roll `days` travel days for the campaign in `folder` and record them in road_log.json."""
+def calendar_day(cal) -> "list | None":
+    """[year, month, day] of a calendar.json dict, the key a prepared road day is kept under."""
+    try:
+        return [int(cal["year"]), int(cal["month"]), int(cal["day"])]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _today(folder) -> "list | None":
+    try:
+        return calendar_day(json.loads((folder / "calendar.json").read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return None
+
+
+@contextlib.contextmanager
+def road_lock(folder):
+    """Held while a road day is prepared or used, and by calendar.py from reading the date to the last road roll."""
+    key = os.path.realpath(folder)
+    # flock is per open file, so a second open in the process holding it would wait forever.
+    if fcntl is None or key in _HELD or not os.path.isdir(key):
+        yield
+        return
+    with open(os.path.join(key, ROAD_LOCK), "a", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        _HELD.add(key)
+        try:
+            yield
+        finally:
+            _HELD.discard(key)
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _road_context(folder) -> dict:
     state = folder / "state.md"
-    text = state.read_text(encoding="utf-8") if state.is_file() else ""
-    log = _read_road_log(folder)
-    rolled = roll_road(days, rng=rng, context=read_road_context(text), recent=log, party=read_party(folder))
-    log += [_log_entry(d) for d in rolled]
-    _write_atomic(folder / ROAD_LOG, json.dumps(log[-ROAD_LOG_KEEP:], indent=2, ensure_ascii=False) + "\n")
-    return rolled
+    return read_road_context(state.read_text(encoding="utf-8") if state.is_file() else "")
+
+
+def _still_current(day: dict, context: dict) -> bool:
+    """False once the hook or clock a story or traveller day was built on has left state.md."""
+    source = day.get("source")
+    if not source:
+        return True
+    current = {f"hook:{h.rstrip('.')}" for h in context.get("hooks", ())}
+    current |= {f"clock:{c['what']}" for c in context.get("clocks", ())}
+    return source in current
+
+
+def _read_prepared(folder) -> "dict | None":
+    try:
+        kept = json.loads((folder / ROAD_NEXT).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    day = kept.get("day") if isinstance(kept, dict) else None
+    if isinstance(day, dict) and isinstance(day.get("kind"), str) and isinstance(day.get("text"), str):
+        return kept
+    return None
+
+
+def _usable(kept, date, context: dict, log: list) -> bool:
+    """A kept day is used only on the date it was rolled for, while its story source stands, and only once."""
+    if not kept or kept.get("for") != date or not _still_current(kept["day"], context):
+        return False
+    return not any(entry.get("prep") == kept["day"].get("prep") for entry in log)
+
+
+def prepare_road(folder, rng=None) -> dict:
+    """The next travel day, rolled once and kept in road_next.json until a road roll uses it.
+
+    Never logged and never moves the calendar, so asking again shows the same day."""
+    with road_lock(folder):
+        today, context, log = _today(folder), _road_context(folder), _read_road_log(folder)
+        kept = _read_prepared(folder)
+        if _usable(kept, today, context, log):
+            return kept["day"]
+        rng = rng or random.Random()
+        day = roll_road(1, rng=rng, context=context, recent=log, party=read_party(folder))[0]
+        day["prep"] = "%016x" % rng.getrandbits(64)
+        _write_atomic(folder / ROAD_NEXT, json.dumps({"for": today, "day": day}, indent=2, ensure_ascii=False) + "\n")
+        return day
+
+
+def campaign_road(folder, days: int, rng=None, start=None) -> list:
+    """Roll `days` travel days for the campaign in `folder` and record them in road_log.json.
+
+    A day kept by prepare_road for the date the journey starts (`start`, [year, month, day];
+    default today) becomes day 1, so a prepared day is never rolled twice. The kept day is
+    deleted only after the log holds it, so a failed write never loses it."""
+    with road_lock(folder):
+        log, context = _read_road_log(folder), _road_context(folder)
+        kept = _read_prepared(folder) if days > 0 else None
+        date = start if start is not None else _today(folder)
+        rolled = [kept["day"]] if _usable(kept, date, context, log) else []
+        rolled += roll_road(days - len(rolled), rng=rng, context=context,
+                            recent=log + [_log_entry(d) for d in rolled], party=read_party(folder))
+        log += [_log_entry(d) for d in rolled]
+        _write_atomic(folder / ROAD_LOG, json.dumps(log[-ROAD_LOG_KEEP:], indent=2, ensure_ascii=False) + "\n")
+        later = isinstance(date, list) and isinstance(kept and kept.get("for"), list) and kept["for"] > date
+        if kept and not later:
+            (folder / ROAD_NEXT).unlink(missing_ok=True)
+        return rolled
 
 
 def format_road_day(day: dict, number: int, total: int, label: str = "") -> str:

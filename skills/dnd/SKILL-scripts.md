@@ -166,7 +166,10 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/character.py xp --level 1 --gained 150
 Pushes character and combat stats to the sidebar. Players merged by name; partial updates work.
 
 ```bash
-# Full stats push (on /dm:dnd load — use --replace-players to clear stale characters):
+# The whole party, read from the campaign's sheet files (use this at load and after sheet changes):
+python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign> [--replace-players]
+
+# Full stats push by hand (only for a field the sheet doesn't hold):
 python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --replace-players --json '{
   "players": [{
     "name": "Flerb", "race": "Tiefling", "class": "Fighter", "level": 1, "background": "Soldier",
@@ -493,6 +496,7 @@ Likelihoods: `sure-thing`, `likely`, `50/50`, `unlikely`, `no-way`. Verdict suff
 - Story days use `## Next Hooks` bullets and `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) when present; about half of traveller days bring a clock's news or a hook.
 - `road_log.json` in the campaign folder keeps the last 10 days, so an example, hook or clock is not reused while it is in the log (a hook used on a story day is not repeated by a traveller either), and the same eventful kind never comes twice in a row.
 - Danger days add an encounter budget for the party (size and average level from `party_stats.json`, else `characters/*.md`), at the tier set by the `difficulty` dial (`standard` = medium).
+- `road_next.json` holds a day the turn card's journey prep has already rolled (see Turn prep below), kept under the in-world date it was rolled on. The next road roll on that date, from `calendar.py advance` or `oracle.py road`, uses it as day 1 and deletes it once the log holds it. It is dropped and rolled fresh once the date has moved on, or when the hook or clock it was built on has left `state.md`. Preparing and using it share a lock (`road_next.lock`) with `calendar.py advance`, so the two never cross.
 
 ---
 
@@ -512,6 +516,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b -
 ```
 
 `advance` clears `steering_notes`, so write fresh steering for the new beat with `revise --steering`. For a structured campaign, `advance` ticks the chapter's next key beat off `outstanding_beats`; moving to a new chapter still means reading `arc.md`. `revise` refuses completed beats and logs each change in `revision_log`. Both rewrite only the YAML block under `## Campaign Arc` (comments inside it are dropped) and leave the rest of `state.md` as it was.
+
+**Turn prep** (`scripts/turn_prep.py`). When the party's reply plainly starts a fight, a trade or a journey, the card gets one `Prepared …` line, worked out by script while the card is built: for a fight, the SRD stat block (AC, HP, speed, initiative, CR and attacks) of up to two creatures the party names; for a trade, the SRD list prices of up to four items named, and each character's purse from the inventory ledger; for a journey in an improvised campaign, the next road day, rolled once and kept (see `road` above). Only one prep a turn, fight before trade before journey, and nothing when no creature, item or improvised road applies. It supplies numbers only. Notes in `[[…]]` never trigger it. To see what it would print: `python3 ${CLAUDE_SKILL_DIR}/scripts/turn_prep.py <campaign-dir> "<party input>"` (a journey check keeps the roll it makes).
 
 **`## Clocks`** in `state.md`: one bullet per dated event, `- 18 Duskfall 1247: <what happens> (seen by: <how the party could notice>)`. Dates use the campaign calendar's month names (`calendar.json`); a clock whose date can't be read is left off the card. Remove a clock once it has played out.
 
