@@ -594,3 +594,32 @@ def test_the_portal_never_writes_through_a_link_the_dm_placed_in_the_runtime_fol
     summary.log("test: a helper failure")
     summary.records.end_session(folder)
     assert target.read_text(encoding="utf-8") == "keep\n"
+
+
+MATERIAL = "Dovran Pell repaid the miller and the barge left at dusk."
+
+
+@pytest.mark.parametrize("opener", [
+    "Earlier", "Both", "Despite", "Although", "Nobody", "Everyone", "Two", "Hours", "Neither", "Because",
+    "Ultimately", "Nothing", "Someone", "Having", "Throughout", "Yesterday", "Since", "Until",
+])
+def test_common_words_that_open_a_sentence_are_not_names(opener):
+    # #128: "Earlier, they had repaid X." was refused as naming someone called "Earlier".
+    assert summary.invented([f"{opener}, Dovran Pell had repaid the miller."], MATERIAL) == []
+    assert summary.invented([f"The barge left. {opener} Dovran Pell waited."], MATERIAL) == []
+
+
+@pytest.mark.parametrize("reply", [
+    "Ysolde repaid the miller.",
+    "The barge left. Ysolde waited.",
+    "Earlier, Ysolde had repaid the miller.",
+    "Dovran Pell repaid the miller. “Ysolde paid too,” he said.",
+])
+def test_an_invented_name_opening_a_sentence_is_still_refused(reply):
+    assert summary.invented([reply], MATERIAL) == ["Ysolde"]
+
+
+@pytest.mark.parametrize("reply", ["Dovran Pell repaid Weeks.", "The barge left with Both aboard.",
+                                   "Dovran Pell, Nobody and the miller left."])
+def test_an_opener_word_used_as_a_name_mid_sentence_is_still_refused(reply):
+    assert summary.invented([reply], MATERIAL) != []
