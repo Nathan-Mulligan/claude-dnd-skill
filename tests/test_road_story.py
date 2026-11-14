@@ -246,3 +246,26 @@ def test_clock_dates_match_any_month_name_the_calendar_uses():
     assert oracle.date_number("12 Mörkfall 900", cal) == oracle.day_number({**cal, "day": 12})
     assert oracle.date_number("3 night-fall", cal) == oracle.day_number({**cal, "day": 3, "month": 1})
     assert oracle.date_number("1 Month3 901", cal) == oracle.day_number({**cal, "day": 1, "month": 3, "year": 901})
+
+
+def test_out_of_order_rerolls_still_share_one_journey():
+    ctx = context()
+    for seed in range(200):
+        log = [oracle._log_entry(d) for d in oracle.roll_road(5, rng=random.Random(seed), context=ctx, first_day=50)]
+        log += [oracle._log_entry(d) for d in oracle.roll_road(1, rng=random.Random(seed + 1), context=ctx, recent=log, first_day=50)]
+        log += [oracle._log_entry(d) for d in oracle.roll_road(2, rng=random.Random(seed + 2), context=ctx, recent=log, first_day=53)]
+        assert sum(e["kind"] in HAZARDS for e in log) <= 1, seed
+
+
+def test_month_names_match_however_their_case_folds():
+    cal = {"day": 1, "month": 1, "year": 900, "months": ["Kış", "Bahar"], "month_length": 30}
+    assert oracle.date_number("12 KIŞ 900", cal) == oracle.day_number({**cal, "day": 12})
+
+
+def test_racing_travellers_without_fresh_story_become_quiet_days():
+    ctx = {"pacing": "adventure", "hooks": [], "errands": [], "beat": None,
+           "clocks": [{"date": "12 Rainmonth 900", "what": "the feast begins", "seen_by": "pilgrims", "due": 12}]}
+    for seed in range(400):
+        for day in oracle.roll_road(4, rng=random.Random(seed), context=ctx, first_day=9):
+            if day["kind"] == "traveller" and 0 <= 12 - day["day"] <= oracle.RACE_DAYS:
+                assert day.get("source"), (seed, day)

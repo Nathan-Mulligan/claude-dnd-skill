@@ -469,7 +469,8 @@ def date_number(text: str, cal: dict):
                   + r")(?![\w-])(?:,?\s+(\d{1,6}))?", text or "", re.IGNORECASE)
     if not m:
         return None
-    month = [str(name).casefold() for name in months].index(m.group(2).casefold()) + 1
+    month = next(i for i, name in enumerate(months, 1)
+                 if re.fullmatch(re.escape(str(name)), m.group(2), re.IGNORECASE))
     return day_number({**cal, "day": int(m.group(1)), "month": month,
                        "year": int(m.group(3)) if m.group(3) else cal.get("year")})
 
@@ -573,17 +574,17 @@ def _racing(clocks, day):
 
 
 def _journey(recent, day) -> list:
-    """The trailing road days that run on, day after day, into `day` (or overlap it): the journey so far."""
+    """The logged road days in the unbroken run of dates through `day`: the journey so far,
+    including any dates rolled again."""
     if day is None:
         return []
-    journey, expect = [], day
-    for entry in reversed(recent):
-        logged = entry.get("day")
-        if not isinstance(logged, int) or logged < expect - 1:
-            break
-        journey.append(entry)
-        expect = min(expect, logged)
-    return journey[::-1]
+    logged = {e["day"] for e in recent if isinstance(e.get("day"), int)}
+    low = high = day
+    while low - 1 in logged:
+        low -= 1
+    while high + 1 in logged:
+        high += 1
+    return [e for e in recent if isinstance(e.get("day"), int) and low <= e["day"] <= high]
 
 
 def _hazard_used(journey) -> bool:
@@ -609,6 +610,8 @@ def road_day(rng=None, pacing: str = "mixed", context=None, recent=(), journey=(
     plot = []
     if kind == "story" or (kind == "traveller" and (racing or rng.random() < TRAVELLER_LINK)):
         plot = [(src, t) for src, t in _plot_texts(kind, context, racing) if src not in used_sources and t not in used]
+    if kind == "traveller" and racing and not plot:
+        kind = "quiet"
     day = {"kind": kind, "guidance": _ROAD_ROWS[kind][0]}
     if plot:
         day["source"], day["text"] = rng.choice(plot)
