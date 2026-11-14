@@ -460,6 +460,9 @@ def _release(fd: int) -> None:
         pass
 
 
+import sidebar_sync  # noqa: E402 — loaded with this module, never later from the DM-writable checkout
+
+
 def sync_once() -> str:
     """One pass: regenerate and publish notes if the inputs changed."""
     health = _request("/health") or {}
@@ -467,8 +470,7 @@ def sync_once() -> str:
     if not campaign or not root:
         return "no-campaign"
     state = Path(root, "campaigns", campaign, "state.md")
-    import sidebar_sync  # the display runs this outside the DM's sandbox: never follow its links
-    public = public_text(sidebar_sync.read_state(state) or "")
+    public = public_text(sidebar_sync.read_state(state) or "")  # run unsandboxed: never follow the DM's links
     stats = _current_stats()
     if stats is None:
         return "unreadable"
