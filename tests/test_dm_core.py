@@ -251,3 +251,11 @@ def test_skill_files_keep_the_sidebar_lists_in_state_md_not_in_pushes():
     assert "- **Short name** (active|threat|resolved|failed)" in load
     assert "- **Faction**: Standing" in load
     assert "--factions" not in load.split("push_stats.py --party", 1)[1].split("```", 1)[0]
+
+
+def test_dm_core_plays_road_days_for_the_story():
+    core = _read(CORE)
+    travel = core[core.index("## 7."):core.index("## 8.")]
+    for words in ("tied to the story", "a story day is a scene", "a line or two", "at most one a journey",
+                  "raises its stakes", "settle it and carry on", "stop for their choice"):
+        assert words in travel, words
