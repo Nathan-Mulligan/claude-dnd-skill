@@ -55,6 +55,7 @@ PUBLIC_SECTIONS = (
     "open threads",
     "recent events",
     "party knowledge",
+    "faction standings",
 )
 DETAIL_MAX = 320
 LOCK_STALE_S = 600
