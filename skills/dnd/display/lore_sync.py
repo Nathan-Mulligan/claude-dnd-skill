@@ -367,7 +367,7 @@ def _ask_claude(prompt: str, model: str, schema: dict = _SCHEMA) -> object:
         env = {k: v for k, v in os.environ.items() if k not in _API_KEY_VARS}
         env["AGENT_TASK"] = "1"
         done = subprocess.run(cmd, cwd=work, env=env, input=prompt, capture_output=True,
-                              text=True, timeout=MODEL_TIMEOUT_S, check=True)
+                              text=True, encoding="utf-8", errors="replace", timeout=MODEL_TIMEOUT_S, check=True)
     reply = json.loads(done.stdout)
     if not isinstance(reply, dict) or reply.get("is_error"):
         raise ValueError("claude reported an error")

@@ -125,24 +125,34 @@ def request(folder: Path, name: str, narration: str) -> bool:
         return False
 
 
-def take_results(folder: Path) -> dict:
-    """Descriptions found for this campaign since the last send, as {name: text}; each is handed out once."""
+def results(folder: Path) -> dict:
+    """Descriptions found for this campaign and not yet acknowledged, as {name: text}."""
     try:
-        key = str(Path(folder).resolve())
+        with npc_entries.locked("npc-describe"):
+            entry = _load().get(str(Path(folder).resolve()))
+        done = entry.get("done") if isinstance(entry, dict) else None
+        return {item["name"]: item["text"] for item in (done or {}).values()
+                if isinstance(item, dict) and isinstance(item.get("name"), str) and item.get("text")}
+    except Exception as error:  # noqa: BLE001
+        log(f"results failed: {error}")
+        return {}
+
+
+def acknowledge(folder: Path, names: list) -> None:
+    """Mark these descriptions as written to the NPC file; the person is never asked about again."""
+    if not names:
+        return
+    try:
         with npc_entries.locked("npc-describe"):
             data = _load()
-            entry = data.get(key)
-            if not isinstance(entry, dict) or not entry.get("done"):
-                return {}
-            found = {item["name"]: item["text"] for item in entry["done"].values()
-                     if isinstance(item, dict) and item.get("text")}
-            entry["done"] = {who: {"name": item.get("name"), "text": ""} for who, item in entry["done"].items()
-                             if isinstance(item, dict)}
+            done = _campaign(data, str(Path(folder).resolve()))["done"]
+            for name in names:
+                item = done.get(npc_entries.norm_name(name))
+                if isinstance(item, dict):
+                    item["text"] = ""
             _save(data)
-            return found
     except Exception as error:  # noqa: BLE001
-        log(f"take failed: {error}")
-        return {}
+        log(f"acknowledge failed: {error}")
 
 
 def kick() -> None:
@@ -155,24 +165,31 @@ def kick() -> None:
 
 
 def _plain(text: str) -> str:
-    return " ".join(text.translate(_QUOTES).split()).casefold()
+    return " ".join(text.translate(_QUOTES).split())
 
 
 def copied_phrases(reply: object, narration: str, name: str) -> list:
-    """The reply's phrases that appear in the narration word for word (ignoring case, spacing and quote style)."""
+    """The reply's phrases found in the narration as whole words (ignoring case, spacing and quote style),
+    each returned as the narration wrote it."""
     phrases = reply.get("phrases") if isinstance(reply, dict) else None
     if not isinstance(phrases, list):
         raise ValueError("model reply is not {phrases: [...]}")
-    source, kept = _plain(narration), []
+    source = _plain(narration)
+    folded = source.lower()
+    kept: list = []
     for phrase in phrases:
         if not isinstance(phrase, str):
             continue
-        phrase = " ".join(phrase.split()).strip(" ,;.")
-        plain = _plain(phrase)
-        if (len(plain) < 4 or len(phrase) > PHRASE_MAX or plain not in source
-                or plain == npc_entries.norm_name(name) or any(plain in _plain(k) for k in kept)):
+        wanted = _plain(phrase).strip(" ,;.").lower()
+        if len(wanted) < 4 or len(wanted) > PHRASE_MAX or wanted == npc_entries.norm_name(name):
             continue
-        kept.append(phrase)
+        match = re.search(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)", folded)
+        if not match:
+            continue
+        copied = source[match.start():match.end()] if len(folded) == len(source) else phrase.strip(" ,;.")
+        if any(wanted in k.lower() for k in kept):
+            continue
+        kept.append(copied)
         if len(kept) == MAX_PHRASES:
             break
     return kept
