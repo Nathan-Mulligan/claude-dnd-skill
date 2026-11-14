@@ -442,6 +442,17 @@ def test_a_recap_written_mid_session_is_replaced_by_the_whole_session(tmp_path, 
     assert "### Recap\nElbane asked Corwin Ash" in entry and "DM-SWITCH-RECAP" not in entry
 
 
+def test_a_mid_session_recap_is_not_shown_as_last_sessions(tmp_path, monkeypatch):
+    # On a campaign copy, the helper was told this session's own switch recap was "already recorded,
+    # never repeat it", and the close's recap dropped everything before the model switch.
+    switched = LOG + "\n## Session 8 — 2026-11-14\n### Recap\nDM-SWITCH-RECAP before the model change.\n"
+    folder = campaign(tmp_path, log=switched, lines=[])
+    turn_log(folder, TURNS_7, TURNS_8)
+    [prompt], _ = run(folder, monkeypatch)
+    last = prompt[prompt.index("LAST SESSION'S RECAP"):prompt.index("THIS SESSION'S LOG")]
+    assert "They crossed the fen with Hobb." in last and "DM-SWITCH-RECAP" not in last
+
+
 def test_a_turn_log_older_than_the_last_summary_is_not_reused(tmp_path, monkeypatch):
     folder = campaign(tmp_path)  # the display showed this session's lines
     turn_log(folder, TURNS_7, older_than_log=True)

@@ -319,7 +319,8 @@ def recent_events(state: str) -> str:
 
 
 def last_recap(log_text: str, current: "Block | None") -> str:
-    done = [b for b in blocks(log_text, LOG_HEADING, LEVEL_2) if b is not current and has_recap(b.text)]
+    this = current.number if current else None  # blocks() builds new objects, so compare by number
+    done = [b for b in blocks(log_text, LOG_HEADING, LEVEL_2) if b.number != this and has_recap(b.text)]
     if not done:
         return ""
     entry = max(done, key=lambda b: b.number).text
