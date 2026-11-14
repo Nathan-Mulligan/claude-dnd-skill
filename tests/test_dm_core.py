@@ -222,3 +222,15 @@ def test_dm_core_keeps_the_resume_load_lean_and_documents_the_wrap_up():
     for needle in ("stop_point.py show", "stop_point.py write", "## Story So Far",
                    "session-log-archive.md", "Save & close", "exact moment"):
         assert needle in core
+
+
+def test_dm_core_keeps_quests_and_factions_in_state_md_for_the_sidebar():
+    # Seen in the integration play-through: the DM updated state.md but rarely pushed, so the
+    # sidebar went stale (#147). The display now reads the two sections itself.
+    core = _read(CORE)
+    bookkeeping = next(line for line in core.splitlines() if "**Bookkeeping.**" in line)
+    assert "## Active Quests" in bookkeeping and "## Faction Standings" in bookkeeping
+    assert "push_stats.py --quests" not in core
+    flags = core[core.index("## 16."):]
+    assert "- **Short name** (active|threat|resolved|failed)" in flags
+    assert "- **Faction**: Standing" in flags

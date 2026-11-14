@@ -351,7 +351,7 @@ _PROSE_STOP_PHRASES = {
     "Veiled Stair", "Rennick Family", "Greengate", "Veldrath",
     "Plan A", "Plan B", "Plan C", "Three Names", "Three Truths",
     "World State", "Faction Moves", "Live State", "Continuity Archive",
-    "Recent Events", "Active Quests", "Open Threads", "Session Flags",
+    "Recent Events", "Active Quests", "Faction Standings", "Open Threads", "Session Flags",
     "Campaign Arc", "DM Notes", "DM Style", "Pale Court", "Wood Elf",
     "Circle of Spores", "Hand of the Tower", "Threadbare", "Hierarch Watch",
     "Hollins", "Erynn Vaude", "Vehn Dral",

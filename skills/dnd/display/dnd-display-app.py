@@ -1963,6 +1963,51 @@ def stats():
     return "", 204
 
 
+import sidebar_sync  # noqa: E402 — loaded at start, like the helpers (helper_jobs.py)
+
+SIDEBAR_SYNC_S = 2.0
+
+
+def _sync_sidebar_from_state() -> bool:
+    """Show the active campaign's state.md quests and factions in the sidebar when they differ (#147)."""
+    # The DM can write the runtime folder: a FIFO or a huge file here must not stall this thread.
+    campaign = (sidebar_sync.read_state(CAMP_FILE, limit=256) or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", campaign):
+        return False
+    found = sidebar_sync.lists(sidebar_sync.read_state(_campaigns_dir() / campaign / "state.md") or "")
+    if not found:
+        return False
+    with _stats_lock:
+        if _stats_owner != campaign:  # stats in memory belong to another campaign, or none yet
+            return False
+        changed = False
+        for key, items in found.items():
+            new = sidebar_sync.merged(_current_stats.get(key) or [], items)
+            if new is not None:
+                _current_stats[key] = new
+                changed = True
+        current = dict(_current_stats)
+    if not changed:
+        return False
+    _persist_stats()
+    _broadcast({"stats": current})
+    try:
+        import lore_sync
+        lore_sync.kick()
+    except Exception:
+        pass
+    return True
+
+
+def _sidebar_sync_loop() -> None:
+    while True:
+        try:
+            _sync_sidebar_from_state()
+        except Exception:  # the display must keep serving
+            pass
+        _time.sleep(SIDEBAR_SYNC_S)
+
+
 @app.route("/stats/lore", methods=["POST"])
 def stats_lore():
     """Set sidebar notes (`detail`) on the current factions and quests by name.
@@ -3468,4 +3513,5 @@ if __name__ == "__main__":
         print(f"DnD DM Display — Flask server starting on {scheme}://localhost:5001")
         print(f"Open {scheme}://localhost:5001 in your browser, then Chromecast the tab.")
         print()
+    threading.Thread(target=_sidebar_sync_loop, daemon=True, name="dnd-sidebar-sync").start()
     app.run(host=host, port=5001, threaded=True, debug=False, ssl_context=ssl_ctx)
