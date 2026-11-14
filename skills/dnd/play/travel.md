@@ -4,6 +4,7 @@ Read once when the party sets off, travels or passes time.
 
 ## Moving
 - Travel always goes through `calendar.py -c X advance N days` (or `hours`), before the narration call. It prints one road day per day passed. Give a quiet day one line of colour. Stop at anything else, present it, and let the party choose. Never compress a journey into one sentence.
+- A toll, gate fee, ferry fare or bribe on the road is a demand on the party, not a charge you settle. Name the sum and what refusing costs, and stop, unless a player already said they pay it (trade.md).
 - Time passing without travel (waiting in town, downtime) adds `--no-road`. A long rest is `calendar.py -c X rest long`, a short one `rest short`; neither rolls the road.
 - A new place, or a place whose mood truly changes, gets `--scene "<place>: <what is happening>"` on that narration (see scene-media.md).
 - Reaching a new town by a played road earns milestone XP (`--difficulty medium`, below).

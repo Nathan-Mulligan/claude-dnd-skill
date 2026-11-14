@@ -251,3 +251,32 @@ def test_situation_files_carry_their_rules(name, needles):
     text = _read(PLAY / f"{name}.md")
     for needle in needles:
         assert needle in text, (name, needle)
+
+
+def _section(text: str, heading: str) -> str:
+    start = text.index(heading)
+    end = text.find("\n## ", start + len(heading))
+    return text[start:end if end != -1 else None]
+
+
+def test_the_dm_never_spends_or_agrees_for_the_players():
+    rule = _section(_read(CORE), "## 2. Never play the player characters")
+    for words in ("spend their coin", "give away", "accept a deal", "toll", "bribe", "Pinned Facts", "stop"):
+        assert words in rule, words
+
+
+@pytest.mark.parametrize("path,cases", [
+    (SKILL / "play" / "trade.md", ("offer", "bribe", "only asked the price")),
+    (SKILL / "play" / "travel.md", ("toll", "fee", "bribe")),
+])
+def test_situation_files_put_payments_back_to_the_players(path, cases):
+    text = _read(path)
+    assert "a player agreed" in text or "trade.md" in text
+    for words in cases:
+        assert words in text, words
+
+
+@pytest.mark.parametrize("path", [CORE, SKILL / "play" / "trade.md", SKILL / "templates" / "state.md"])
+def test_no_file_tells_the_dm_to_apply_the_trade_policy_without_asking(path):
+    for line in _read(path).splitlines():
+        assert not ("rade policy" in line and "without asking" in line), line

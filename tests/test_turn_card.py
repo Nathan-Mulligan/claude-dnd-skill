@@ -48,7 +48,7 @@ def test_enderal_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoo
     assert "Ilsa quietly asks Corin" not in text
     assert "auditor reaches the Ashbridge tollhouse" in text and "[in 2 days]" in text
     assert "bridge closes to loaded wagons" not in text
-    assert "Trade policy (apply it without asking): aim for a 20% margin" in text
+    assert "Trade policy (" in text and "aim for a 20% margin" in text
     assert "People here: Rosa Whitlow (Brinewick baker whose shop is by the market well)" in text
     assert "Ilsa Brook" not in text
     assert "rolls: players roll" in text
@@ -215,3 +215,51 @@ def test_the_card_does_not_mistake_ordinary_words_for_a_fight(fenmoor, said, sit
 def test_a_closed_fight_in_the_state_is_not_an_open_one(fenmoor, combat):
     edit_state(fenmoor, "## Active Combat\nNone.", f"## Active Combat\n{combat}")
     assert "combat.md" not in card(fenmoor, "Corin asks Rosa how her daughter is.")
+
+
+def test_the_trade_policy_shapes_a_trade_but_never_says_yes_for_the_party(fenmoor):
+    line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Trade policy"))
+    assert "without asking" not in line
+    assert "never agrees a price, fee or deal for them" in line
+    assert "aim for a 20% margin" in line
+
+
+def test_every_card_keeps_the_party_s_coin_and_word_theirs(fenmoor):
+    rule = next(p for p in card(fenmoor).split(" | ") if p.startswith("Rule: Never decide for the player characters"))
+    for words in ("spend their coin", "hand over their things", "toll", "bribe"):
+        assert words in rule
+
+
+def test_a_debt_or_offer_left_open_in_the_state_is_put_back_to_the_party(fenmoor):
+    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate",
+               "- Garrick offered 2 sp to haul his flour back, not yet accepted. Rosa sold them bread.\n"
+               "- Ilsa is at the Ashbridge west gate")
+    line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party"))
+    assert "never pay, accept or hand over for them unasked" in line
+    assert "The 3 sp wagon and mule rental is still owed to its owner at the next market" in line
+    assert "Garrick offered 2 sp to haul his flour back, not yet accepted" in line
+    assert "salt debt is paid in full" not in line and "Rosa sold them bread" not in line
+
+
+def test_nothing_waiting_means_no_waiting_line(fenmoor):
+    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
+    edit_state(fenmoor, "; the wagon rental remains due", "")
+    assert "Waiting on the party" not in card(fenmoor)
+
+
+@pytest.mark.parametrize("settled", [
+    "Garrick offered 2 sp to haul his flour back, and the party accepted.",
+    "The 2 sp Garrick was owed was paid in full.",
+    "Garrick offered 2 sp to haul his flour back; they declined.",
+])
+def test_a_settled_debt_or_offer_is_not_put_back_to_the_party(fenmoor, settled):
+    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
+    edit_state(fenmoor, "; the wagon rental remains due", "")
+    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate", f"- {settled}\n- Ilsa is at the Ashbridge west gate")
+    assert "Waiting on the party" not in card(fenmoor)
+
+
+def test_the_waiting_line_lets_this_turn_s_answer_settle_it(fenmoor):
+    line = next(p for p in card(fenmoor, "We pay the 3 sp wagon rental now.").split(" | ")
+                if p.startswith("Waiting on the party"))
+    assert "unless this input answers it" in line

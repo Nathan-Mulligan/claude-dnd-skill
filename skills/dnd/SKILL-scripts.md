@@ -116,7 +116,7 @@ I="python3 ${CLAUDE_SKILL_DIR}/scripts/inventory.py"
 $I show    --campaign $CAMP [--character Nella]          # every character without --character
 $I buy     --campaign $CAMP --character Nella "Lantern" --price "5 gp" [--qty 1]
 $I sell    --campaign $CAMP --character Elbane "Blanket" --price "24 sp" [--qty 4]
-$I spend   --campaign $CAMP --character Elbane "3 sp"     # tolls, rent, bribes: makes change
+$I spend   --campaign $CAMP --character Elbane "3 sp"     # a toll, rent or bribe a player agreed to: makes change
 $I earn    --campaign $CAMP --character Elbane "26 sp"
 $I add     --campaign $CAMP --character Nella "Iron key" [--qty 1] [--category gear] [--notes "..."]
 $I remove  --campaign $CAMP --character Nella "Torch" [--qty 1 | --all]
