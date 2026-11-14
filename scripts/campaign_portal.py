@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -20,7 +21,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, redirect, render_template, request, send_file
+from werkzeug.serving import make_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import arc_pulse  # noqa: E402
@@ -30,6 +32,7 @@ import lore_sync  # noqa: E402  (helper choices only; the portal never runs it)
 import records  # noqa: E402
 import session_summary  # noqa: E402
 from runtime_paths import write_file  # noqa: E402
+from paths import CHOSEN_CAMPAIGN  # noqa: E402  (runtime_paths puts scripts/ on sys.path)
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -39,6 +42,13 @@ META_FILE = RUNTIME / "portal-session.json"
 SESSION = os.environ.get("DND_PORTAL_TMUX_SESSION", "dnd-campaign-portal")
 PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Only Safari, signed in through a link the portal opens itself, may use the /api/ routes (#139).
+SESSION_COOKIE = "dnd_portal_session"
+SESSION_MAX_AGE = 30 * 24 * 3600
+LOGIN_TTL = 300
+NEW_LINK_HINT = ("Restart the portal to get a new sign-in link: "
+                 f"bash {Path(__file__).resolve().parent}/start-campaign-portal.sh --restart")
+NOT_SIGNED_IN = "This browser isn't signed in to the portal. " + NEW_LINK_HINT
 class DmChoice(NamedTuple):
     launcher: str
     model: str
@@ -575,6 +585,11 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
                 dm_folder(name)
             except (OSError, ValueError):
                 return False, "Could not prepare the campaign folder. No model session was started."
+        try:
+            # Before the display selects it: the display then serves only this campaign.
+            write_file(DATA_ROOT / CHOSEN_CAMPAIGN, name, root=DATA_ROOT)
+        except OSError:
+            return False, "Could not record the chosen campaign. No model session was started."
         service = run("env", "DND_PORTAL_START=1", "bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", DM_CHOICES[provider].launcher, timeout=60)
         if service.returncode:
             return False, (service.stderr or service.stdout or "M5 services did not start.").strip()[-800:]
@@ -585,7 +600,7 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
         venv = [f"DND_VENV={os.environ['DND_VENV']}"] if os.environ.get("DND_VENV") else []
         command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", *venv,
-                               f"DND_ACTIVE_CAMPAIGN={name}",
+                               f"DND_ACTIVE_CAMPAIGN={name}", "DND_PORTAL_LAUNCH=1",
                                *model_args(provider, mode, name, description, onboarding, effort)])
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
         if result.returncode:
@@ -966,6 +981,23 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
                 path.unlink(missing_ok=True)
 
 
+def hand_out_login(link: str) -> None:
+    """Give the sign-in link to the owner only: Safari, and this terminal if there is one.
+
+    Never print it to portal.log, which sits in the runtime folder the DM can read.
+    """
+    if sys.stdout.isatty():
+        print(f"Sign-in link (works once, for {LOGIN_TTL // 60} minutes): {link}", flush=True)
+    if os.environ.get("DND_PORTAL_OPEN_BROWSER", "1") != "1" or sys.platform != "darwin":
+        print("The portal did not open Safari. Sign in with the link the portal prints in a terminal.", flush=True)
+        return
+    try:
+        opened = subprocess.run(["open", "-a", "Safari", link], capture_output=True, timeout=15).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        opened = False
+    print("Opened Safari to sign in." if opened else "Could not open Safari to sign in.", flush=True)
+
+
 def create_app() -> Flask:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", SESSION):
         raise ValueError("Invalid DND_PORTAL_TMUX_SESSION")
@@ -973,9 +1005,23 @@ def create_app() -> Flask:
         raise ValueError("Invalid DND_PORTAL_PORT")
     app = Flask(__name__, template_folder=str(REPO / "skills/dnd/display/templates"))
     app.config["MAX_CONTENT_LENGTH"] = 65536
-    token = secrets.token_urlsafe(32)
+    session_key = secrets.token_urlsafe(32)
+    login = {"code": "", "expires": 0.0}
+    login_lock = threading.Lock()
     lock = SESSION_LOCK
     last_browser_poll: float | None = None
+
+    def new_login_link() -> str:
+        """A sign-in link that works once, for LOGIN_TTL seconds. A new link cancels the last one."""
+        code = secrets.token_urlsafe(32)
+        with login_lock:
+            login.update(code=code, expires=time.monotonic() + LOGIN_TTL)
+        return f"http://127.0.0.1:{PORT}/login/{code}"
+
+    app.config["NEW_LOGIN_LINK"] = new_login_link
+
+    def signed_in() -> bool:
+        return hmac.compare_digest(request.cookies.get(SESSION_COOKIE, "").encode(), session_key.encode())
 
     @app.errorhandler(413)
     def too_large(error):
@@ -986,14 +1032,35 @@ def create_app() -> Flask:
         if request.host not in {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}:
             return jsonify(error="Invalid host"), 403
         if request.path.startswith("/api/"):
-            if request.headers.get("X-DND-Portal-Token") != token:
-                return jsonify(error="Invalid session token"), 403
+            if not signed_in():
+                return jsonify(error="Not signed in", message=NOT_SIGNED_IN), 403
             if request.method == "POST" and request.headers.get("Origin") != f"http://{request.host}":
                 return jsonify(error="Invalid origin"), 403
 
+    @app.get("/login/<code>")
+    def sign_in(code):
+        nonlocal last_browser_poll
+        with login_lock:
+            valid = (bool(login["code"]) and time.monotonic() < login["expires"]
+                     and hmac.compare_digest(code.encode(), login["code"].encode()))
+            if valid:
+                login.update(code="", expires=0.0)
+        if not valid:
+            response = app.make_response(("This sign-in link has already been used or has run out. "
+                                          + NEW_LINK_HINT, 403))
+            response.mimetype = "text/plain"
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        last_browser_poll = time.monotonic()
+        response = redirect("/", code=303)
+        response.set_cookie(SESSION_COOKIE, session_key, max_age=SESSION_MAX_AGE, path="/", httponly=True,
+                            samesite="Strict")
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @app.get("/")
     def home():
-        return render_template("campaign_portal.html", token=token, dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS,
+        return render_template("campaign_portal.html", dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS,
                                efforts=CODEX_EFFORTS, default_effort=DEFAULT_EFFORT, helpers=HELPER_CHOICES)
 
     @app.get("/icon.png")
@@ -1002,7 +1069,7 @@ def create_app() -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify(service="dnd-campaign-portal", ready=True, data_root=str(DATA_ROOT),
+        return jsonify(service="dnd-campaign-portal", ready=True, data_root=str(DATA_ROOT), busy=handoff_busy(),
                        browser_recent=last_browser_poll is not None and time.monotonic() - last_browser_poll < 5)
 
     @app.get("/api/state")
@@ -1155,4 +1222,7 @@ if __name__ == "__main__":
         print("Campaign checkpoint verified and acknowledged.")
         raise SystemExit(0)
     threading.Thread(target=party_input_loop, daemon=True, name="dnd-party-input").start()
-    create_app().run(host="127.0.0.1", port=PORT, debug=False, threaded=True)
+    app = create_app()
+    server = make_server("127.0.0.1", PORT, app, threaded=True)
+    hand_out_login(app.config["NEW_LOGIN_LINK"]())
+    server.serve_forever()

@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(DISPLAY_DIR, "..", "scripts"))
 PUSH = os.path.join(DISPLAY_DIR, "push_stats.py")
 
 try:
-    from paths import runtime_dir, find_campaign
+    from paths import runtime_dir, find_campaign, chosen_campaign
     RT = str(runtime_dir())
 except Exception:
     RT = os.path.join(os.environ.get("DND_CAMPAIGN_ROOT", os.path.expanduser("~/.claude/dnd")), ".runtime")
@@ -40,7 +40,7 @@ with open(SESSION_FILE, "w", encoding="utf-8") as f:
 interval = 60
 try:
     import re
-    camp = open(os.path.join(RT, ".campaign"), encoding="utf-8").read().strip()
+    camp = chosen_campaign() or open(os.path.join(RT, ".campaign"), encoding="utf-8").read().strip()
     txt = (find_campaign(camp) / "state.md").read_text(encoding="utf-8", errors="replace")
     m = re.search(r"autorun_interval:\s*(\d+)", txt)
     if m:

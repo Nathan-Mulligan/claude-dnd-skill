@@ -172,6 +172,8 @@ class TailLogicTest(unittest.TestCase):
             "os": __import__("os"),
             "sys": __import__("sys"),
             "CAMP_FILE": str(self.camp_file),
+            "_active_campaign_name": lambda: (self.camp_file.read_text(encoding="utf-8").strip() or None
+                                              if self.camp_file.exists() else None),
             "_find_campaign": (lambda name: self.campaign_root / name),
             "_campaigns_dir": (lambda: self.campaign_root),
             "write_file": runtime_paths.write_file,

@@ -43,7 +43,7 @@ from runtime_paths import rt  # noqa: E402  (also puts scripts/ on sys.path)
 
 import npc_entries  # noqa: E402
 import npc_describe  # noqa: E402
-from paths import campaign_dir  # noqa: E402
+from paths import campaign_dir, chosen_campaign  # noqa: E402
 
 LOG_NAME = "turn-log.md"
 LOG_HEADER = ("# Turn log\n\nWritten by send.py: what the table was shown, word for word, one entry per send. "
@@ -73,8 +73,9 @@ _LOCATION = re.compile(r"^[ \t]*[-*][ \t]*\*\*Location:\*\*[ \t]*(\S.*?)[ \t]*$"
 
 
 def campaign_folder() -> "Path | None":
-    """The campaign this send belongs to: DND_ACTIVE_CAMPAIGN, else the one the display shows."""
-    name = os.environ.get("DND_ACTIVE_CAMPAIGN", "").strip()
+    """The campaign this send belongs to: the owner's choice (#139), else DND_ACTIVE_CAMPAIGN, else the one
+    the display shows."""
+    name = chosen_campaign() or os.environ.get("DND_ACTIVE_CAMPAIGN", "").strip()
     if not name:
         try:
             name = Path(rt(".campaign")).read_text(encoding="utf-8").strip()

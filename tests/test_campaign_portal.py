@@ -3,8 +3,8 @@
 import importlib.util
 import io
 import json
-import re
 import subprocess
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -45,16 +45,20 @@ def client(tmp_path, monkeypatch):
     assert page.status_code == 200
     health = test_client.get("/health", base_url="http://127.0.0.1:5002")
     assert health.json["data_root"] == str(tmp_path)
-    token = re.search(rb'const token = "([^"]+)";', page.data).group(1).decode()
-    return test_client, token
+    sign_in(app, test_client)
+    return test_client, app
+
+
+def sign_in(app, test_client):
+    link = urllib.parse.urlsplit(app.config["NEW_LOGIN_LINK"]())
+    assert test_client.get(link.path, base_url="http://127.0.0.1:5002").status_code == 303
 
 
 def api(client, path, *, method="get", data=None, origin="http://127.0.0.1:5002", token=True):
-    test_client, secret = client
-    headers = {"Origin": origin}
-    if token:
-        headers["X-DND-Portal-Token"] = secret
-    return getattr(test_client, method)(path, base_url="http://127.0.0.1:5002", headers=headers, json=data)
+    test_client, app = client
+    if not token:
+        test_client = app.test_client()
+    return getattr(test_client, method)(path, base_url="http://127.0.0.1:5002", headers={"Origin": origin}, json=data)
 
 
 def test_missing_token_and_wrong_origin_rejected(client):
@@ -67,6 +71,9 @@ def test_health_reports_recent_browser_poll(client, monkeypatch):
     test_client, _ = client
     monkeypatch.setattr(portal, "running", lambda: False)
     health = lambda: test_client.get("/health", base_url="http://127.0.0.1:5002").json
+    assert health()["browser_recent"] is True  # signing in counts, so the Dock app opens no second tab
+    later = portal.time.monotonic() + 10
+    monkeypatch.setattr(portal.time, "monotonic", lambda: later)
     assert health()["browser_recent"] is False
     assert api(client, "/api/state").status_code == 200
     assert health()["browser_recent"] is True
