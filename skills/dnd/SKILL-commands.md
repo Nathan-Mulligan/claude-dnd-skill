@@ -108,7 +108,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
      This restores the last scene to the display before the recap. The tail is written continuously by `dnd-display-app.py` — it always contains the last session's final exchanges regardless of how the session ended.
    - Clear previous transcript: `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --clear`
 
-     ⚠ **`--clear` wipes both text log AND stats** (player card, world time, factions, quests). It must always be paired with the full `--replace-players ... --world-time ... --factions ... --quests ...` push from step 4 — otherwise the sidebar card and sheet tab render empty. Same rule applies any time you `--clear` mid-session (e.g. restoring scene state after a re-replay): always re-push the full character JSON + world-time + factions + quests in the same bash burst as the clear.
+     ⚠ **`--clear` wipes both text log AND stats** (player card, world time, factions, quests). It must always be paired with the full `--party <campaign-name> --replace-players --world-time ...` push from step 6 — otherwise the sidebar card and sheet tab render empty. Same rule applies any time you `--clear` mid-session (e.g. restoring scene state after a re-replay): always re-push the party and world-time in the same bash burst as the clear. Quests and factions come back from `state.md` by themselves within seconds of that push.
    - Register active campaign for DM Help: `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --set-campaign <campaign-name>`
    - If autorun **yes** → write `autorun: true` to `state.md → ## Session Flags`; enter the autorun wait after the recap paragraph.
    - If autorun **no** → continue without autorun; DM drives turns manually.
@@ -149,36 +149,28 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name> --replace-players \
-     --world-time '{...}' \
-     --factions '[...]' \
-     --quests '[...]'
+     --world-time '{...}'
    ```
 
    `--party` selects the campaign and reads every character sheet itself: race, class, level, HP, AC, initiative, speed, hit dice, XP, ability scores, spell slots, Heroic Inspiration, attacks, spells, features, inventory and the coin ledger. Never build the player JSON by hand. `--replace-players` clears stale characters from previous campaigns; leave it off mid-session, when `push_stats.py --party <campaign-name>` refreshes the sidebar after a sheet changes. If `inventory.py show --campaign <campaign-name>` reports `no ledger` for a character, run `inventory.py migrate` for them (dry run), show the player what it understood, and add `--write` only once they confirm.
 
    **Inspiration** comes from the sheet's `Heroic Inspiration` line at load (`--replace-players`); a mid-session `--party` refresh leaves the sidebar's live Inspiration alone. When `state.md → ## Current Situation → Party status` says otherwise, follow with `push_stats.py --player <name> --inspiration true/false`. It persists until spent, not reset by a long rest.
 
-   Push `--world-time`, `--factions` and `--quests` in the **same** call, as above, so the display never receives a partial update.
+   Push `--party` and `--world-time` in the **same** call, as above, so the display never receives a partial update.
 
-   Faction JSON structure — **`standing` is required**:
-   ```json
-   [{"name":"Pale Court","standing":"Allied"},{"name":"The Kept","standing":"Hostile"}]
+   **Quests and factions follow `state.md`; never push them.** Every few seconds the display reads `## Active Quests` and `## Faction Standings` from `state.md` and shows them in the sidebar, so keep those two sections current instead. Each panel appears once its section has a bullet. The format (also in DM-CORE section 16):
+   ```markdown
+   ## Active Quests
+   - **Short name** (active|threat|resolved|failed): what the party knows
+
+   ## Faction Standings
+   - **Faction**: Standing — what the party knows
    ```
-   `standing` values: `Allied`, `Friendly`, `Neutral`, `Suspicious`, `Hostile`. If the field is omitted, `dnd-display-app.py` defaults it to `"Neutral"` and logs a warning to stderr — but always include it explicitly. Map prose from `state.md` to exact values (e.g. "deep ally" → `"Allied"`, "active hostile" → `"Hostile"`). Use `[]` to clear.
+   Quest status colours: `active` (amber), `threat` (red), `resolved` (green), `failed` (muted). Standing is one of `Allied`, `Friendly`, `Neutral`, `Suspicious`, `Hostile`; map prose to the exact word ("deep ally" → `Allied`). Keep `## Live State Flags → Faction stances` saying the same thing.
 
-   The faction panel only appears when at least one faction is present — do not skip this push.
+   **A campaign without `## Faction Standings`** (made before the section existed): add it now, below `## Active Quests`, with one bullet per faction the party has dealt with, its standing taken from `## Live State Flags → Faction stances`. Until a section exists the display keeps whatever was last pushed, which is the only case where `push_stats.py --factions` or `--quests` still does anything.
 
-   Optional `detail` on any faction or quest: a sentence or two shown when a player clicks it in the sidebar. **Write only what the party knows.** Hidden faction moves, clocks, Next Hooks and DM-only notes never go here. Leave it out rather than guess. When you leave it out, `display/lore_sync.py` fills it in the background from the party-known sections of `state.md` (World State, Active Quests, Open Threads & Rumours, Recent Events, and an optional `## Party Knowledge`). Put anything players may see but those sections lack under `## Party Knowledge`. Example: `{"name":"Road Wardens","standing":"Neutral","detail":"Keep the Brackenford road and collect its toll. The toll recently doubled; nobody has said why."}`
-
-   Quest JSON structure:
-   ```json
-   [{"name":"The Missing Shipment","status":"resolved"},{"name":"Keth the Collector","status":"threat"}]
-   ```
-   Quest `status` values: `active` (amber), `threat` (red), `resolved` (green), `failed` (muted). Quests take the same optional party-known `detail` field as factions. Use `[]` to clear all quests:
-   ```bash
-   python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --quests '[...]'
-   ```
-   The quest panel only appears when at least one quest is present — do not skip this push.
+   The text after the colon or dash is the sidebar note a player sees on clicking the entry. **Write only what the party knows.** Hidden faction moves, clocks, Next Hooks and DM-only notes never go here. When a bullet has no note, `display/lore_sync.py` fills one in the background from the party-known sections of `state.md` (World State, Active Quests, Open Threads & Rumours, Recent Events, and an optional `## Party Knowledge`). Put anything players may see but those sections lack under `## Party Knowledge`. Example: `- **Road Wardens**: Neutral — they keep the Brackenford road and collect its toll. The toll recently doubled; nobody has said why.`
 7. **Pull scene-context from the campaign graph.** Always run, even if you suspect `graph.json` doesn't exist — the script exits cleanly with a notice when uninitialized.
    ```bash
    python3 ${CLAUDE_SKILL_DIR}/scripts/campaign_graph.py scene-context \
@@ -354,7 +346,7 @@ Campaign "<name>" created from <source title>.
 ---
 
 ## `/dm:dnd save`
-Write this session's entry in session-log.md: the judgement (Recap, decisions, XP, loot, open threads), not the play-by-play, which `send.py` already keeps word for word in `turn-log.md`. Head it `## Session N` with the number of the newest `## Session` in `turn-log.md` (the portal's save request names it). Update state.md (location, active quests, party HP/resources, recent events) and any characters/*.md that changed. Mirror each updated character to global roster (`~/.claude/dnd/characters/<name>.md`). Then refresh the sidebar from the saved sheets with `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name>`.
+Write this session's entry in session-log.md: the judgement (Recap, decisions, XP, loot, open threads), not the play-by-play, which `send.py` already keeps word for word in `turn-log.md`. Head it `## Session N` with the number of the newest `## Session` in `turn-log.md` (the portal's save request names it). Update state.md (location, `## Active Quests`, `## Faction Standings`, party HP/resources, recent events) and any characters/*.md that changed. Mirror each updated character to global roster (`~/.claude/dnd/characters/<name>.md`). Then refresh the sidebar from the saved sheets with `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name>`.
 
 **Inspiration tracking:** On every save, record each PC's Inspiration state in `state.md → ## Current Situation → Party status`. Use explicit text: `Inspiration ✓` if held, omit or `No Inspiration` if not. Inspiration persists across sessions and is NOT cleared by long rests. Example: `Mara: HP 24/24. Inspiration ✓. Theo: HP 24/24.`
 
@@ -842,7 +834,7 @@ Type how the **party** stands toward an NPC or faction on the normalized scale `
 
 Single-valued and current: setting a new stance **closes** any prior active party→target stance edge at `--since` (its arc stays queryable with `--at-session <old N>`) and adds the new level, so `scene-context` only ever surfaces the party's *current* stance. `scene-context` renders it as `The Party --[disposition:suspicious]--> Aldric` so the stance reads at a glance. Always pass `--since <current-session-N>`.
 
-Use it whenever the fiction shifts the party's standing — an NPC turns on them, a faction they wronged goes hostile, an alliance is earned. It is the graph-side counterpart to the `standing` values pushed to the display via `push_stats.py --factions` and to the NPC-disposition lines in `state.md → ## Live State Flags`; keep the three consistent when a stance changes.
+Use it whenever the fiction shifts the party's standing — an NPC turns on them, a faction they wronged goes hostile, an alliance is earned. It is the graph-side counterpart to the standings in `state.md → ## Faction Standings` (which the sidebar shows) and to the NPC-disposition lines in `state.md → ## Live State Flags`; keep the three consistent when a stance changes.
 
 ### `/dm:dnd graph close-edge --id <edge-id> --at-session N`
 Mark an edge as ended at session N (e.g. when an alliance breaks). Original edge is preserved with `until_session` set; it remains visible in historical queries but is excluded from "active at session ≥ N" results.

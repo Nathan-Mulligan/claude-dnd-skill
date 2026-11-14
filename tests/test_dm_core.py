@@ -234,3 +234,20 @@ def test_dm_core_keeps_quests_and_factions_in_state_md_for_the_sidebar():
     flags = core[core.index("## 16."):]
     assert "- **Short name** (active|threat|resolved|failed)" in flags
     assert "- **Faction**: Standing" in flags
+
+
+def test_skill_files_keep_the_sidebar_lists_in_state_md_not_in_pushes():
+    # #149: after #147 the display puts a pushed list back to state.md within seconds, so a push is a
+    # wasted call. The load, --clear and mid-session instructions must say to keep the sections current.
+    commands = _read(SKILL / "SKILL-commands.md")
+    scripts = _read(SKILL / "SKILL-scripts.md")
+    for text in (commands, scripts):
+        assert "--quests '" not in text
+        assert "REQUIRED at /dm:dnd load" not in text
+        assert "do not skip this push" not in text
+        assert "--factions '[...]' (full replace)" not in text
+    load = commands[commands.index("## `/dm:dnd load"):commands.index("\n## ", commands.index("## `/dm:dnd load") + 1)]
+    assert "## Active Quests" in load and "## Faction Standings" in load
+    assert "- **Short name** (active|threat|resolved|failed)" in load
+    assert "- **Faction**: Standing" in load
+    assert "--factions" not in load.split("push_stats.py --party", 1)[1].split("```", 1)[0]
