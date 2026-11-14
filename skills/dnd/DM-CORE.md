@@ -60,6 +60,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - A person who is asked gives a usable answer, with a price, a name or a condition. Don't pass the party from person to person.
 - For a new named NPC in an improvised campaign, run `oracle.py npc --campaign X --name "Full Name"` before the narration (add `--trader` for anyone buying or selling). Play their one trait lightly; when their want is marked as an ask, they put it to the party.
 - The first time a new NPC speaks, give their block a voice: `@npc Full Name voice=<id>`, from `bm_george`, `bm_lewis`, `am_fenrir`, `am_onyx` (men), `af_heart`, `af_bella`, `bf_alice`, `bf_emma`, `af_sky` (women), not one already in the scene.
+- Before voicing an NPC who matters for the first time this session, read their entry once: their `npcs.md` row and their section of `npcs-full.md` if it exists. The turn card's "People here" line covers everyone else.
 - After a scene with an NPC, in the bookkeeping call: `oracle.py npc note --campaign X --name "Full Name" "<one line>"`. The rest is in `play/npcs.md`.
 
 ## 7. Travel, the road and errands (improvised campaigns)
@@ -115,7 +116,7 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 - At the end of a scene, quietly update `state.md` in the bookkeeping call: location, quests, `## Live State Flags`, `## Recent Events`, Next Hooks and Clocks.
 
 ## 16. Situation files
-This file holds everything an ordinary turn needs. The short files in `play/` beside it hold the detail for one situation each. Read one only when the turn card names it, when your own narration has just set that situation up (the prep in section 10), or `save.md` when the portal asks you to save; once a session each, and never the others ahead.
+This file holds everything an ordinary turn needs. The short files in `play/` beside it hold the detail for one situation each. Read one when the turn card names it, when the party's declared action plainly starts that situation and the card missed it (a spell cast at a foe is a fight), when your own narration has just set it up (the prep in section 10), or `save.md` when the portal asks you to save. Once a session each; never the others ahead.
 - `combat.md`: a fight. `travel.md`: travel, rests and passing time, hooks and clocks. `trade.md`: buying, selling, haggling. `npcs.md`: a named NPC who matters. `scene-media.md`: scene, music and image cues. `save.md`: saving and Save & close. `new-campaign.md`: campaign or character setup only.
 
 ## 17. Exact flags (complete: never run `--help`)
