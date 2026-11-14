@@ -310,8 +310,11 @@ def _tail(text: "str | None", prompt: str = "") -> str:
     echoed = {line.strip() for line in prompt.splitlines()}
     picked = []
     for line in reversed((text or "").splitlines()):
-        line = line.strip()[:300]
-        if not line or line in echoed or line in picked:
+        line = line.strip()
+        if not line or line in echoed:
+            continue
+        line = line[:300]
+        if line in picked:
             continue
         if picked and len(line) + 3 + len(picked[0]) > 300:
             break

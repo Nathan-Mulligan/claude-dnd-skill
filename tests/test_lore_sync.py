@@ -532,7 +532,7 @@ def test_failed_codex_call_logs_the_reason_not_the_prompt(monkeypatch, tmp_path)
 
 def test_codex_prompt_lines_never_reach_the_log_even_at_the_end(monkeypatch, tmp_path):
     monkeypatch.setattr(lore_sync.Path, "home", lambda: tmp_path)
-    prompt = "SECRET-PROMPT notes\nSECRET-PROMPT last line"
+    prompt = "SECRET-PROMPT notes\n" + "SECRET-PROMPT a long campaign note " * 20
     monkeypatch.setattr(lore_sync.subprocess, "run",
                         fake_cli(returncode=1, stderr=f"user\n{prompt}\n", reply=None))
     with pytest.raises(Exception) as caught:
