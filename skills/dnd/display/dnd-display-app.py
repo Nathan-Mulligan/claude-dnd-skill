@@ -1390,6 +1390,7 @@ def index():
         "index.html",
         lan_token=_lan_token or "",
         narrator_voice=_read_narrator_voice(),
+        dice_input=_read_dice_input(),
         tts_available=(_tts is not None),
     )
 
@@ -1935,7 +1936,8 @@ def stats():
     if "campaign" in data:
         try:
             _set_campaign(str(data["campaign"]).strip())
-            _broadcast({"cast": _read_cast(_cast_file()), "narrator_voice": _read_narrator_voice()})
+            _broadcast({"cast": _read_cast(_cast_file()), "narrator_voice": _read_narrator_voice(),
+                        "dice_input": _read_dice_input()})
         except Exception:
             pass
         # Resolve and stash the ruleset for this campaign so the sidebar badge
@@ -2206,31 +2208,24 @@ def _voice_ok(voice: str) -> bool:
     return voice in _tts.VALID_VOICES or bool(_KOKORO_VOICE.fullmatch(voice))
 
 
-def _read_narrator_voice() -> str:
-    """Return the active campaign's tts_voice, or the module default."""
-    if _tts is None:
-        return ""
+def _read_session_flag(pattern: "re.Pattern") -> Optional[str]:
+    """Return the active campaign's Session Flags value for `pattern`, if set."""
     name = _active_campaign_name()
     if not name:
-        return _tts.DEFAULT_VOICE
+        return None
     try:
         state = _find_campaign(name) / "state.md"
         if not state.exists():
-            return _tts.DEFAULT_VOICE
+            return None
         text = state.read_text(encoding="utf-8", errors="replace")
     except (OSError, ValueError):
-        return _tts.DEFAULT_VOICE
-    m = _VOICE_PAT.search(text)
-    if not m:
-        return _tts.DEFAULT_VOICE
-    v = m.group(1).strip()
-    return v if _voice_ok(v) else _tts.DEFAULT_VOICE
+        return None
+    m = pattern.search(text)
+    return m.group(1).strip() if m else None
 
 
-def _write_narrator_voice(voice: str) -> bool:
-    """Persist tts_voice to the active campaign's state.md → ## Session Flags."""
-    if _tts is None or not _voice_ok(voice):
-        return False
+def _write_session_flag(pattern: "re.Pattern", new_line: str) -> bool:
+    """Set one line in the active campaign's state.md → ## Session Flags."""
     name = _active_campaign_name()
     if not name:
         return False
@@ -2243,29 +2238,71 @@ def _write_narrator_voice(voice: str) -> bool:
     except (OSError, ValueError):
         return False
 
-    new_line = f"tts_voice: {voice}"
-    if _VOICE_PAT.search(text):
-        text = _VOICE_PAT.sub(new_line, text, count=1)
+    nl = "\r\n" if "\r\n" in text else "\n"    # keep a Windows file's line endings
+    if pattern.search(text):
+        text = pattern.sub(new_line, text, count=1)
     else:
         # Append under ## Session Flags. If the section is missing, append at EOF.
         if "## Session Flags" in text:
             # Insert right after the header line. Keep the existing template
             # comment if present, but place the flag immediately under it.
             text = re.sub(
-                r"(## Session Flags\n(?:\*\(.*?\)\*\n)?)",
-                r"\1" + new_line + "\n",
+                r"(## Session Flags\r?\n(?:\*\(.*?\)\*\r?\n)?)",
+                lambda m: m.group(1) + new_line + nl,
                 text,
                 count=1,
             )
         else:
-            sep = "" if text.endswith("\n") else "\n"
-            text = f"{text}{sep}\n## Session Flags\n{new_line}\n"
+            sep = "" if text.endswith("\n") else nl
+            text = f"{text}{sep}{nl}## Session Flags{nl}{new_line}{nl}"
 
     try:
-        state.write_text(text, encoding="utf-8")
+        state.write_text(text, encoding="utf-8", newline="")
         return True
     except OSError:
         return False
+
+
+def _read_narrator_voice() -> str:
+    """Return the active campaign's tts_voice, or the module default."""
+    if _tts is None:
+        return ""
+    v = _read_session_flag(_VOICE_PAT)
+    return v if v and _voice_ok(v) else _tts.DEFAULT_VOICE
+
+
+def _write_narrator_voice(voice: str) -> bool:
+    """Persist tts_voice to the active campaign's state.md → ## Session Flags."""
+    if _tts is None or not _voice_ok(voice):
+        return False
+    return _write_session_flag(_VOICE_PAT, f"tts_voice: {voice}")
+
+
+# How the players' dice are rolled: "click" (the on-screen tray rolls) or
+# "real" (physical dice at the table, faces typed in). A table preference, so
+# it lives with the campaign and every display and phone follows it.
+_DICE_INPUT_PAT = re.compile(r"^[ \t]*dice_input:[ \t]*(\S+)[ \t]*(?=\r?$)", re.MULTILINE)
+_DICE_INPUTS = ("click", "real")
+
+
+def _read_dice_input() -> str:
+    mode = _read_session_flag(_DICE_INPUT_PAT)
+    return mode if mode in _DICE_INPUTS else "click"
+
+
+@app.route("/dice-input", methods=["GET", "POST"])
+def dice_input():
+    """Read or set the table's dice input. Body: {"mode": "click" | "real"}."""
+    if not _token_ok():
+        return "Forbidden", 403
+    if request.method == "GET":
+        return jsonify({"mode": _read_dice_input()}), 200
+    mode = (request.get_json(silent=True) or {}).get("mode")
+    if mode not in _DICE_INPUTS:
+        return jsonify({"error": "mode must be click or real"}), 400
+    persisted = _write_session_flag(_DICE_INPUT_PAT, f"dice_input: {mode}")
+    _broadcast({"dice_input": mode})
+    return jsonify({"mode": mode, "persisted": persisted}), 200
 
 
 @app.route("/tts", methods=["POST"])
@@ -2677,11 +2714,14 @@ def player_dice():
 
     Body: {"character": "Piper", "spec": "1d20", "modifier": 5,
            "advantage": "normal" | "advantage" | "disadvantage",
-           "label": "Stealth check"  (optional)}
+           "label": "Stealth check"  (optional),
+           "faces": [14, 7]  (optional, real dice)}
 
     Rolls server-side (secrets.randbelow → uniform, non-spoofable), broadcasts
     a dice-typed entry on the feed, and returns the result so the phone can
-    finish its slot-machine animation on the real value.
+    finish its slot-machine animation on the real value. With "faces", the
+    table rolled physical dice: one face per die, two for a d20 with
+    advantage or disadvantage, each checked against the die's sides.
     """
     if not _token_ok():
         return "Forbidden", 403
@@ -2701,11 +2741,22 @@ def player_dice():
     if not (1 <= n_dice <= 20 and 2 <= n_sides <= 100):
         return jsonify({"error": "out of range"}), 400
     modifier = max(-100, min(100, modifier))
+    two_d20 = adv in ("advantage", "disadvantage") and spec == "1d20"
+
+    manual = "faces" in data
+    if manual:
+        faces = data["faces"]
+        if (not isinstance(faces, list) or len(faces) != (2 if two_d20 else n_dice)
+                or not all(type(f) is int and 1 <= f <= n_sides for f in faces)):
+            return jsonify({"error": f"type one number from 1 to {n_sides} for each die"}), 400
+        typed = iter(faces)
 
     def _roll_once() -> list[int]:
+        if manual:
+            return [next(typed) for _ in range(n_dice)]
         return [secrets.randbelow(n_sides) + 1 for _ in range(n_dice)]
 
-    if adv in ("advantage", "disadvantage") and spec == "1d20":
+    if two_d20:
         r1, r2 = _roll_once(), _roll_once()
         chosen = max(r1[0], r2[0]) if adv == "advantage" else min(r1[0], r2[0])
         rolls  = [chosen]
@@ -2726,6 +2777,8 @@ def player_dice():
         breakdown += f" {mod_str}"
     suffix = f" — {label}" if label else ""
     text   = f"{character} rolls {spec}{mod_str}: {breakdown} = {total}{suffix}"
+    if manual:
+        text += " (rolled at the table)"
 
     payload   = {"text": text, "dice": True}
     log_entry = {"text": text, "dice": True}
@@ -2765,7 +2818,7 @@ def player_dice():
     if pending_changed:
         _broadcast({"dice_pending": _dice_pending_snapshot()})
 
-    return jsonify({
+    result = {
         "character": character,
         "spec": spec,
         "modifier": modifier,
@@ -2777,7 +2830,10 @@ def player_dice():
         "total": total,
         "text": text,
         "request_id": req_id or None,
-    }), 200
+    }
+    if manual:
+        result["manual"] = True
+    return jsonify(result), 200
 
 
 @app.route("/dice-request", methods=["POST"])
@@ -3269,8 +3325,9 @@ def stream():
     q.put_nowait({"music": _music.snapshot()})
     q.put_nowait({"background": _background.snapshot()})
     q.put_nowait({"party_feedback": _party_feedback_snapshot()})
-    # Voices may have changed while this browser was away.
+    # Voices and the dice setting may have changed while this browser was away.
     q.put_nowait({"cast": _read_cast(_cast_file())})
+    q.put_nowait({"dice_input": _read_dice_input()})
     if _setup_question:
         q.put_nowait({"setup_question": _setup_question})
 
