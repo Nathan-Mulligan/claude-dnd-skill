@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-FIXTURES = REPO / "tests/fixtures/enderal_sheets"
+FIXTURES = REPO / "tests/fixtures/merchant_sheets"
 DISPLAY = REPO / "skills/dnd/display"
 sys.path.insert(0, str(REPO / "skills/dnd/scripts"))
 sys.path.insert(0, str(DISPLAY))
@@ -38,24 +38,24 @@ def _player(campaign, stem):
 
 
 def test_the_header_stats_come_from_the_sheet(campaign):
-    nella = _player(campaign, "nella-reed")
-    assert nella["name"] == "Nella Reed"
-    assert (nella["race"], nella["class"], nella["level"]) == ("Human", "Paladin", 1)
-    assert nella["xp"] == {"current": 0, "next": 300}
-    assert nella["hp"] == {"current": 12, "max": 12, "temp": 0}
-    assert (nella["ac"], nella["initiative"], nella["speed"]) == (14, "+0", 30)
-    assert nella["hit_dice"] == {"max": 1, "remaining": 1, "die": "d10"}
-    assert nella["ability_scores"]["cha"] == {"score": 15, "mod": "+2"}
-    assert nella["ability_scores"]["int"] == {"score": 8, "mod": "-1"}
-    assert nella["spell_slots"] == {"1": {"used": 0, "max": 2}}
-    assert nella["inspiration"] is True
+    wynn = _player(campaign, "wynn-harrow")
+    assert wynn["name"] == "Wynn Harrow"
+    assert (wynn["race"], wynn["class"], wynn["level"]) == ("Human", "Paladin", 1)
+    assert wynn["xp"] == {"current": 0, "next": 300}
+    assert wynn["hp"] == {"current": 12, "max": 12, "temp": 0}
+    assert (wynn["ac"], wynn["initiative"], wynn["speed"]) == (15, "+1", 30)
+    assert wynn["hit_dice"] == {"max": 1, "remaining": 1, "die": "d10"}
+    assert wynn["ability_scores"]["str"] == {"score": 14, "mod": "+2"}
+    assert wynn["ability_scores"]["int"] == {"score": 10, "mod": "+0"}
+    assert wynn["spell_slots"] == {"1": {"used": 0, "max": 2}}
+    assert wynn["inspiration"] is True
 
 
 def test_the_sheet_view_carries_attacks_spells_features_and_inventory(campaign):
-    sheet = _player(campaign, "nella-reed")["sheet"]
+    sheet = _player(campaign, "wynn-harrow")["sheet"]
     assert sheet["attacks"][0] == {"name": "Longsword", "bonus": "+4", "damage": "1d8+2", "type": "slashing",
                                    "notes": "versatile 1d10; Sap mastery"}
-    assert sheet["spells"]["prepared"] == ["Bless", "Cure Wounds"]
+    assert sheet["spells"]["prepared"] == ["Heroism", "Shield of Faith"]
     assert sheet["spells"]["cantrips"] == []
     assert (sheet["spells"]["save_dc"], sheet["spells"]["attack_bonus"]) == (12, "+4")
     assert any(f["name"] == "Lucky" for f in sheet["features"])
@@ -63,9 +63,9 @@ def test_the_sheet_view_carries_attacks_spells_features_and_inventory(campaign):
 
 
 def test_a_character_without_spells_sends_no_spell_keys(campaign):
-    elbane = _player(campaign, "elbane-iii")
-    assert "spell_slots" not in elbane and "spells" not in elbane["sheet"]
-    assert elbane["hit_dice"]["die"] == "d8" and elbane["ac"] == 13
+    oswin = _player(campaign, "oswin-iv")
+    assert "spell_slots" not in oswin and "spells" not in oswin["sheet"]
+    assert oswin["hit_dice"]["die"] == "d8" and oswin["ac"] == 13
 
 
 def test_blank_template_fields_are_left_out_not_guessed(campaign):
@@ -87,7 +87,7 @@ def test_push_stats_party_selects_the_campaign_and_merges_every_player(campaign,
     payload = sent[0]
     assert payload["campaign"] == "Duskmoor"
     assert "replace_players" not in payload
-    assert sorted(p["name"] for p in payload["players"]) == ["Elbane III", "Nella Reed"]
+    assert sorted(p["name"] for p in payload["players"]) == ["Oswin IV", "Wynn Harrow"]
 
 
 def test_push_stats_party_can_replace_the_player_list(campaign, monkeypatch):
@@ -118,11 +118,11 @@ def test_spell_lists_on_separate_lines_stay_separate():
 
 @pytest.mark.parametrize("written, held", [("yes", True), ("✓", True), ("1", True), ("no", False), ("0", False)])
 def test_inspiration_written_as_a_word_or_a_tick_is_kept(campaign, written, held):
-    path = campaign / "characters" / "nella-reed.md"
+    path = campaign / "characters" / "wynn-harrow.md"
     text = path.read_text(encoding="utf-8")
     assert "**Heroic Inspiration:** 1" in text
     path.write_text(text.replace("**Heroic Inspiration:** 1", f"**Heroic Inspiration:** {written}"), encoding="utf-8")
-    assert _player(campaign, "nella-reed")["inspiration"] is held
+    assert _player(campaign, "wynn-harrow")["inspiration"] is held
 
 
 def test_a_mid_session_refresh_keeps_the_live_inspiration(campaign, monkeypatch):
@@ -135,4 +135,4 @@ def test_a_mid_session_refresh_keeps_the_live_inspiration(campaign, monkeypatch)
     assert all("inspiration" not in p for p in sent[0]["players"])
     monkeypatch.setattr(sys, "argv", ["push_stats.py", "--party", "Duskmoor", "--replace-players"])
     push_stats.main()
-    assert next(p for p in sent[1]["players"] if p["name"] == "Nella Reed")["inspiration"] is True
+    assert next(p for p in sent[1]["players"] if p["name"] == "Wynn Harrow")["inspiration"] is True
