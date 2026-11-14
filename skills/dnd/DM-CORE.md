@@ -93,7 +93,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - With the display running, the table hears only what you send. Every reply to the players goes through `send.py` in a real shell command, never as text in your reply. With no display (the `No display` choice), write the narration in your reply instead.
 - Nothing reaches the table until a whole command is written, so a turn is two calls and one word. A player roll is the one split: the stake goes out with the roll request (section 4), the result in the narration call after it.
   1. **Narration.** One `send.py` call holding every block, and nothing else in that command. Before it, run only what the narration reports: `calendar.py advance` on travel, `oracle.py npc` for a new NPC, `dice.py` for NPC rolls, `inventory.py` for a trade, `encounter_state.py` or `combat.py` (and `tracker.py`) to resolve a fight, and a read of a fact you must check. No `/health` or `paths.py` checks: `send.py` covers them. When the scene changes, re-read `state.md`'s `## Next Hooks`, `## Clocks` and `## Live State Flags` before you write, so the story keeps its threads.
-  2. **Bookkeeping.** Every file write you need (`state.md` facts, NPC notes, `arc.py`, `xp.py`, `push_stats.py --party X` after a sheet change) in one call after the narration. Never in or before the narration call. Skip it when nothing changed. The scribe writes the turn log (`turn-log.md`) and `## Recent Events` from what you sent; don't write either.
+  2. **Bookkeeping.** Every file write you need (`state.md` facts, NPC notes, `arc.py`, `xp.py`, `push_stats.py --party X` after a sheet change) in one call after the narration. Never in or before the narration call. Skip it when nothing changed. In portal play the scribe logs each turn to `turn-log.md` from what you sent, so never write per-turn log lines; refresh `## Recent Events` at scene ends from its newest lines. Without the portal there is no scribe: log each scene in `session-log.md` yourself.
   3. **Reply with one word: `done`.** No summary; nobody reads it. (With no display, the narration is your reply instead.)
 - In the narration heredoc, a line holding only a marker starts a block: `@player NAME` (their action, tidied), `@dice` (roll lines), `@narration`, `@npc NAME` (add ` voice=ID` the first time they speak), `@tutor` last. Text before the first marker is narration.
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`.
@@ -106,7 +106,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 ## 11. Opening a session
 The `load` procedure ends here. Every resume starts a fresh DM with no memory of play, so rebuild from the files and keep the reading lean.
 - First run `stop_point.py show --campaign X`: where play stopped, what is waiting, and the last exchanges word for word.
-- Then read `state.md` (its `## Story So Far` and `## Continuity Archive` cover older sessions), `world.md`, the `npcs.md` index, the character sheets and `campaign_graph.py scene-context`. Don't read `session-log.md`, `session-log-archive.md` or `npcs-full.md` whole. To check the last session's `### Recap`, read only its newest entry (`grep -n '^## Session' session-log.md`, then `sed -n`).
+- Then read `state.md` (its `## Story So Far` and `## Continuity Archive` cover older sessions), the last ten lines of `turn-log.md` if it exists, `world.md`, the `npcs.md` index, the character sheets and `campaign_graph.py scene-context`. Don't read `session-log.md`, `session-log-archive.md` or `npcs-full.md` whole. To check the last session's `### Recap`, read only its newest entry (`grep -n '^## Session' session-log.md`, then `sed -n`).
 - Give two or three sentences of "last time", then continue from the exact moment play stopped: answer the waiting question or call the pending roll. Don't restart the scene.
 - Only when the last scene had closed, open a scene already moving, drawn from a Next Hook or a clock that has fired. A person arrives, a deadline lands or something has gone missing. End on that pressure.
 - When the display and dice flags are saved, or the portal launched you, ask no setup questions. Just open.
@@ -132,7 +132,7 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 
 ## 15. Facts and saving
 - The campaign files and scripts are the truth. Before you claim a fact, re-read the smallest section that holds it.
-- At the end of a scene, quietly update `state.md`: location, quests, `## Live State Flags`, Next Hooks and Clocks. The scribe logs what happened.
+- At the end of a scene, quietly update `state.md`: location, quests, `## Live State Flags`, `## Recent Events`, Next Hooks and Clocks.
 - Keep `state.md` short. `## Story So Far` is one paragraph of at most 150 words. `## Continuity Archive` keeps the last five sessions; on save, fold older ones into Story So Far and move their bullets to the end of `session-log-archive.md`.
 
 ## 16. Exact flags (complete: never run `--help`)

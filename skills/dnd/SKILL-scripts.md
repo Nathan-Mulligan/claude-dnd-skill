@@ -308,7 +308,7 @@ If `check_input.py` returns output, prepend it to the player's terminal input wh
 ---
 
 ## Turn Log Scribe — `display/scribe.py`
-`send.py` hands every narration send to the scribe, which runs in the background. It summarises what the table heard, one line per turn, into `<campaign>/turn-log.md`, and keeps the newest six lines as `## Recent Events` in `state.md`. A turn starts at a send with an `@player` block. The model is the sidebar-notes helper chosen in the portal (Luna by default); when it is off or fails, the line is the turn's opening words, and `runtime/scribe.log` says why. `DND_SCRIBE=0` switches it off. The DM never calls it.
+In portal play (`DND_ACTIVE_CAMPAIGN` set), `send.py` hands every delivered narration send to the scribe, which runs in the background. It summarises what the table heard, one line per turn, into `<campaign>/turn-log.md`, under a `## Session from <date time>` heading after each save. A turn starts at a send with an `@player` block; a later send without one is logged as a continuation. The scribe is the only writer of `turn-log.md` and never writes `state.md`. The model is the sidebar-notes helper chosen in the portal (Luna by default), on the Codex subscription only; when it is off or fails, the line is the turn's opening words, and `runtime/scribe.log` says why. `DND_SCRIBE=0` switches it off. The DM never calls it.
 
 ## Tracker Script — `scripts/tracker.py`
 Tracks conditions, concentration, timed effects, and death saves. State persists at `~/.claude/dnd/campaigns/<name>/tracker.json`.

@@ -105,3 +105,12 @@ def test_push_stats_party_reports_a_missing_campaign(campaign, monkeypatch, caps
     with pytest.raises(SystemExit):
         push_stats.main()
     assert "--party" in capsys.readouterr().err
+
+
+def test_spell_lists_on_separate_lines_stay_separate():
+    section = ("- **Cantrips:** Fire Bolt, Light\n- **Prepared:** Shield, Magic Missile\n"
+               "- Spellcasting ability Intelligence; spell save DC 13, spell attack +5\n")
+    spells = sheet_extract._spells(section)
+    assert spells["cantrips"] == ["Fire Bolt", "Light"]
+    assert spells["prepared"] == ["Shield", "Magic Missile"]
+    assert (spells["save_dc"], spells["attack_bonus"]) == (13, "+5")

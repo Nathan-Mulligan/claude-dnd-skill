@@ -482,6 +482,42 @@ def fake_cli(returncode=0, stderr="", reply=GOOD, seen=None):
     return run
 
 
+@pytest.fixture(autouse=True)
+def codex_signed_in(monkeypatch, tmp_path):
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text(json.dumps({"auth_mode": "chatgpt", "OPENAI_API_KEY": None}), encoding="utf-8")
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    return home
+
+
+@pytest.mark.parametrize("auth", [None, {"auth_mode": "apikey", "OPENAI_API_KEY": "sk-x"},
+                                  {"auth_mode": "chatgpt", "OPENAI_API_KEY": "sk-x"}])
+def test_codex_is_never_called_without_a_subscription_login(monkeypatch, codex_signed_in, auth):
+    path = codex_signed_in / "auth.json"
+    path.unlink()
+    if auth is not None:
+        path.write_text(json.dumps(auth), encoding="utf-8")
+    monkeypatch.setattr(lore_sync.subprocess, "run", lambda *a, **k: pytest.fail("must not run codex"))
+    with pytest.raises(RuntimeError, match="subscription"):
+        lore_sync.ask_model("p", ("codex", "gpt-6-luna"))
+
+
+def test_codex_runs_without_api_keys_in_its_environment(monkeypatch):
+    monkeypatch.setenv("CODEX_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    seen = {}
+
+    def fake(cmd, **kw):
+        seen["env"] = kw["env"]
+        Path(cmd[cmd.index("-o") + 1]).write_text(json.dumps(GOOD), encoding="utf-8")
+        return lore_sync.subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(lore_sync.subprocess, "run", fake)
+    lore_sync.ask_model("p", ("codex", "gpt-6-luna"))
+    assert "CODEX_API_KEY" not in seen["env"] and "OPENAI_API_KEY" not in seen["env"]
+
+
 def home_with_codex(monkeypatch, tmp_path, executable=True):
     local = tmp_path / ".local" / "bin" / "codex"
     local.parent.mkdir(parents=True)

@@ -947,8 +947,10 @@ def main() -> None:
     # with no narration block carries it on its first block.
     music_kinds = {None} if any(b["kind"] is None for b in blocks) else {b["kind"] for b in blocks}
     music_pending = bool(music_id)
+    delivered: "list[dict]" = []
     for block in blocks:
         kind = block["kind"]
+        block_ok = True
         for chunk in _split_paragraphs(block["text"]):
             payload: dict = {"text": chunk}
             with_music = music_pending and kind in music_kinds
@@ -974,16 +976,19 @@ def main() -> None:
                       file=sys.stderr)
                 sys.exit(2)
             ok = _post(FLASK_URL, json.dumps(payload).encode("utf-8"), token)
+            block_ok = block_ok and ok
             if ok:
                 chunks_sent += 1
                 music_pending = music_pending and not with_music
+        if block_ok:
+            delivered.append(block)
 
     if music_event and chunks_sent == 0:
         print("send.py: music cue requires successfully sent narration", file=sys.stderr)
         sys.exit(2)
-    if chunks_sent and campaign_folder is not None:
+    if delivered and campaign_folder is not None:
         scribe.record(campaign_folder, [[" ".join(filter(None, (b["kind"] or "narration", b["name"]))), b["text"]]
-                                        for b in blocks])
+                                        for b in delivered])
     if scene_note:
         print(scene_note, file=sys.stderr if args.dice_request else sys.stdout)
 
