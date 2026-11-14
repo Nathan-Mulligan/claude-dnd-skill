@@ -8,8 +8,10 @@ the portal types it into the DM's terminal, where a newline would submit the mes
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -27,6 +29,8 @@ RULES = (
 ROLL_MODES = {"auto": "you roll openly", "players": "players roll (call for the roll and wait)"}
 CLOCK_WINDOW = 2
 MAX_NPCS = 3
+PREP_SCRIPT = Path(__file__).resolve().parents[1] / "skills/dnd/scripts/turn_prep.py"
+PREP_TIMEOUT = 5
 
 
 def _clip(text: str, limit: int) -> str:
@@ -197,6 +201,29 @@ def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
     return "People here: " + "; ".join(present) if present else ""
 
 
+def _load_prep():
+    # Loaded by path for its stdlib-only signal(); putting skills/dnd/scripts on sys.path would let its
+    # calendar.py shadow the stdlib. The prep itself runs in its own process for the same reason.
+    name = "dnd_turn_prep"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, PREP_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+def _prepared(campaign_dir: Path, party_input: str) -> str:
+    if not _load_prep().signal(party_input):
+        return ""
+    try:
+        done = subprocess.run([sys.executable, str(PREP_SCRIPT), str(campaign_dir), party_input],
+                              capture_output=True, text=True, encoding="utf-8", timeout=PREP_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
 def _table(state: str, runtime_dir: Path | None) -> str:
     parts = []
     target = _read(runtime_dir / "narration_target").strip() if runtime_dir else ""
@@ -234,6 +261,7 @@ def _lines(campaign_dir: Path, party_input: str, runtime_dir: Path | None, pulse
         lambda: _clocks(state, campaign_dir),
         lambda: _trade(state),
         lambda: _npcs(state, campaign_dir, party_input),
+        lambda: _prepared(campaign_dir, party_input),
         lambda: _table(state, runtime_dir),
     )
     lines = []

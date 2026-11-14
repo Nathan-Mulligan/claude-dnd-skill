@@ -235,11 +235,18 @@ def _print_road(campaign: str, start: dict, days: int) -> None:
         _advance_hours(cal, 24)
         labels.append(_short_date(cal))
     print(ROAD_HEADER)
-    for number, (day, label) in enumerate(zip(oracle.campaign_road(folder, days), labels), 1):
+    rolled = oracle.campaign_road(folder, days, start=oracle.calendar_day(start))
+    for number, (day, label) in enumerate(zip(rolled, labels), 1):
         print(oracle.format_road_day(day, number, days, label))
 
 
 def cmd_advance(campaign: str, amount: int, unit: str, road: bool = True) -> None:
+    # The lock keeps the turn card from preparing a road day between the new date and its road rolls.
+    with oracle.road_lock(_find_campaign(campaign)):
+        _advance(campaign, amount, unit, road)
+
+
+def _advance(campaign: str, amount: int, unit: str, road: bool) -> None:
     cal = _load(campaign)
     if not cal:
         print("Calendar not initialised. Run `calendar.py -c <campaign> init` first.")
