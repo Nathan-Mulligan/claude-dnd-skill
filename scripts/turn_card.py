@@ -41,16 +41,20 @@ TITLES = frozenset("""
 PREP_SCRIPT = Path(__file__).resolve().parents[1] / "skills/dnd/scripts/turn_prep.py"
 PREP_TIMEOUT = 5
 # A clause in the state that leaves money or a deal open, waiting on the party's answer. An offer, an ask
-# or a sum due counts only with money or a deal in the same clause; a settled clause closes what came before.
+# or a sum due counts only with money or a deal in the same clause. A payment settles its own clause; an
+# answer (accepted, agreed, declined) also closes the offer before it. A best-effort hint: the rule is DM-CORE's.
 OPEN = re.compile(r"\b(?:owed|owes|unpaid|(?:still|remains) due|no acceptance|not (?:yet )?(?:been )?"
                   r"(?:accepted|agreed|answered|paid|settled))\b", re.IGNORECASE)
 ASKED = re.compile(r"\b(?:offer(?:s|ed)?|asks? for|asking for)\b", re.IGNORECASE)
 SUM = r"\b\d+\s*(?:cp|sp|ep|gp|pp)\b"
-DUE = re.compile(SUM + r".*\b(?:is|are) due\b", re.IGNORECASE)
+DUE = re.compile(SUM + r"(?:\s+[\w'’-]+){0,2}\s+(?:is|are) (?:still )?due\b", re.IGNORECASE)
 DEAL = re.compile(SUM + r"|\b(?:coins?|silver|gold|copper|fee|toll|fare|price|pay|payment|wages?|rent|bribe|reward|"
-                  r"deal|job|work)\b", re.IGNORECASE)
-SETTLED = re.compile(r"\b(?:paid|accepted|agreed|declined|refused|turned (?:it )?down|settled)\b", re.IGNORECASE)
+                  r"deal|job)\b", re.IGNORECASE)
+PAID = re.compile(r"\b(?:paid|settled)\b", re.IGNORECASE)
+ANSWERED = re.compile(r"\b(?:accepted|agreed|declined|refused|turned (?:it )?down)\b", re.IGNORECASE)
 NEGATION = {"not", "never", "no", "none", "nothing", "nobody"}
+# "must be paid", "to be settled", "the agreed fee": a payment or answer still to come, or a description.
+NOT_DONE = {"be", "to", "the", "a", "an"}
 
 
 def _clip(text: str, limit: int) -> str:
@@ -169,15 +173,25 @@ def _trade(state: str) -> str:
 
 
 def _negated(clause: str, match) -> bool:
-    before = clause[:match.start()].lower().split()[-3:]
+    before = clause[:match.start()].lower().split()[-4:]
     return any(word in NEGATION or word.endswith("n't") for word in before)
+
+
+def _done(clause: str, pattern) -> bool:
+    for m in pattern.finditer(clause):
+        before = clause[:m.start()].lower().split()
+        if not _negated(clause, m) and not (before and before[-1] in NOT_DONE):
+            return True
+    return False
 
 
 def _left_open(sentence: str) -> bool:
     waiting = False
     for clause in re.split(r";|,?\s+but\s+|,\s+(?:and|so)\s+", sentence):
-        if any(not _negated(clause, m) for m in SETTLED.finditer(clause)):
+        if _done(clause, ANSWERED):
             waiting = False
+            continue
+        if _done(clause, PAID):
             continue
         opened = next((m for m in OPEN.finditer(clause) if not _negated(clause, m)), None)
         asked = next((m for m in ASKED.finditer(clause) if not _negated(clause, m)), None)

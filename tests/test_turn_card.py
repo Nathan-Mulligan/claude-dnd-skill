@@ -258,6 +258,10 @@ def _only(fenmoor, sentence):
     "Odile's salt debt is paid; the wagon rental remains due.",
     "The 2 sp gate toll is due.",
     "Garrick offers 2 sp to haul his flour; the party has not answered.",
+    "The 3 sp rental remains due; the salt debt is paid.",
+    "The 3 sp rental is owed and must be paid tomorrow.",
+    "The agreed 3 sp fee is still owed.",
+    "Garrick offered 2 sp; the offer has not yet actually been accepted.",
 ])
 def test_an_open_payment_or_offer_is_waiting_however_it_is_worded(fenmoor, sentence):
     assert sentence.rstrip(".") in _only(fenmoor, sentence)
@@ -268,6 +272,9 @@ def test_an_open_payment_or_offer_is_waiting_however_it_is_worded(fenmoor, sente
     "Rosa offered condolences for their loss.",
     "No wages are owed to Wren.",
     "The auditor is due tomorrow.",
+    "The party has 2 gp and the courier is due tomorrow.",
+    "Rosa offers help with the work.",
+    "No wages are still owed to Wren.",
 ])
 def test_an_agreed_deal_or_a_non_payment_is_not_waiting(fenmoor, sentence):
     assert _only(fenmoor, sentence) == ""
