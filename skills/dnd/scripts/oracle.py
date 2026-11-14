@@ -459,16 +459,18 @@ def day_number(cal: dict):
         return None
 
 
-_DATE_RE = re.compile(r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([A-Za-z]+)(?:,?\s+(\d{1,6}))?")
-
-
 def date_number(text: str, cal: dict):
-    """The day number of an in-world date such as "18 Duskfall 1247", read against the calendar."""
-    m = _DATE_RE.search(text or "")
-    months = [str(name).casefold() for name in (cal.get("months") or [])]
-    if not m or m.group(2).casefold() not in months:
+    """The day number of an in-world date such as "18 Duskfall 1247", read against the calendar's month names."""
+    months = cal.get("months")
+    if not isinstance(months, list) or not months:
         return None
-    return day_number({**cal, "day": int(m.group(1)), "month": months.index(m.group(2).casefold()) + 1,
+    names = sorted({str(name) for name in months if str(name).strip()}, key=len, reverse=True)
+    m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(" + "|".join(map(re.escape, names))
+                  + r")(?![\w-])(?:,?\s+(\d{1,6}))?", text or "", re.IGNORECASE)
+    if not m:
+        return None
+    month = [str(name).casefold() for name in months].index(m.group(2).casefold()) + 1
+    return day_number({**cal, "day": int(m.group(1)), "month": month,
                        "year": int(m.group(3)) if m.group(3) else cal.get("year")})
 
 
@@ -571,17 +573,21 @@ def _racing(clocks, day):
 
 
 def _journey(recent, day) -> list:
-    """The trailing road days that run on, day after day, into `day`: the journey so far."""
+    """The trailing road days that run on, day after day, into `day` (or overlap it): the journey so far."""
     if day is None:
         return []
     journey, expect = [], day
     for entry in reversed(recent):
         logged = entry.get("day")
-        if not isinstance(logged, int) or not 0 <= expect - logged <= 1:
+        if not isinstance(logged, int) or logged < expect - 1:
             break
         journey.append(entry)
-        expect = logged
+        expect = min(expect, logged)
     return journey[::-1]
+
+
+def _hazard_used(journey) -> bool:
+    return any(e["kind"] in HAZARDS or e.get("hazard_used") for e in journey)
 
 
 def road_day(rng=None, pacing: str = "mixed", context=None, recent=(), journey=(), racing=()) -> dict:
@@ -596,7 +602,7 @@ def road_day(rng=None, pacing: str = "mixed", context=None, recent=(), journey=(
     rows = [(weight, kind) for kind, weight in _ROAD_WEIGHTS.get(pacing, _ROAD_WEIGHTS["mixed"])
             if kind == "quiet" or kind != last_kind]
     _, kind = _weighted(rows, rng)
-    if kind in HAZARDS and (any(e["kind"] in HAZARDS for e in journey) or (racing and kind != "obstacle")):
+    if kind in HAZARDS and (_hazard_used(journey) or (racing and kind != "obstacle")):
         kind = "quiet"
     used = [entry["text"] for entry in recent]
     used_sources = {entry.get("source") for entry in recent}
@@ -633,6 +639,9 @@ def roll_road(days: int, rng=None, context=None, recent=(), party=None, first_da
                        racing=_racing(context.get("clocks", ()), number))
         if number is not None:
             day["day"] = number
+        # Carried on every later day, so a journey longer than the road log still remembers its hazard.
+        if _hazard_used(journey) or day["kind"] in HAZARDS:
+            day["hazard_used"] = True
         if day["kind"] == "danger":
             day["budget"] = encounter_budget(party, context.get("difficulty", "standard"))
         recent.append(_log_entry(day))
@@ -642,7 +651,7 @@ def roll_road(days: int, rng=None, context=None, recent=(), party=None, first_da
 
 
 def _log_entry(day: dict) -> dict:
-    return {key: day[key] for key in ("kind", "text", "source", "stakes", "day") if key in day}
+    return {key: day[key] for key in ("kind", "text", "source", "stakes", "day", "hazard_used") if key in day}
 
 
 def _read_road_log(folder) -> list:

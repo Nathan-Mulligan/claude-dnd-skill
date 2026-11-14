@@ -214,3 +214,35 @@ def test_oracle_road_cli_prints_the_rule(tmp_path):
                             capture_output=True, text=True, encoding="utf-8", env=env)
     assert result.returncode == 0, result.stderr
     assert oracle.ROAD_RULE in result.stdout and "Day 1 of 1" in result.stdout
+
+
+def test_a_journey_longer_than_the_log_keeps_its_hazard_used():
+    ctx = context()
+    for seed in range(60):
+        rolled = oracle.roll_road(11, rng=random.Random(seed), context=ctx, first_day=100)
+        recent = [oracle._log_entry(d) for d in rolled][-oracle.ROAD_LOG_KEEP:]
+        if not any(d["kind"] in HAZARDS for d in rolled):
+            continue
+        more = oracle.roll_road(3, rng=random.Random(seed), context=ctx, recent=recent, first_day=111)
+        assert not any(d["kind"] in HAZARDS for d in more), seed
+
+
+def test_rolling_the_same_dates_again_stays_in_the_journey():
+    ctx = context()
+    for seed in range(200):
+        first = oracle.roll_road(2, rng=random.Random(seed), context=ctx, first_day=50)
+        recent = [oracle._log_entry(d) for d in first]
+        again = oracle.roll_road(2, rng=random.Random(seed + 1), context=ctx, recent=recent, first_day=50)
+        assert sum(d["kind"] in HAZARDS for d in first + again) <= 1, seed
+
+
+@pytest.mark.parametrize("months", [12, "Frostmonth", None])
+def test_an_odd_calendar_does_not_break_clock_dates(months):
+    assert oracle.date_number("12 Rainmonth 900", {"day": 1, "month": 1, "year": 900, "months": months}) is None
+
+
+def test_clock_dates_match_any_month_name_the_calendar_uses():
+    cal = {"day": 9, "month": 2, "year": 900, "months": ["Night-Fall", "Mörkfall", "Month3"], "month_length": 30}
+    assert oracle.date_number("12 Mörkfall 900", cal) == oracle.day_number({**cal, "day": 12})
+    assert oracle.date_number("3 night-fall", cal) == oracle.day_number({**cal, "day": 3, "month": 1})
+    assert oracle.date_number("1 Month3 901", cal) == oracle.day_number({**cal, "day": 1, "month": 3, "year": 901})
