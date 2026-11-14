@@ -406,7 +406,7 @@ def test_graph_reader_run_by_the_help_button_never_backs_up_through_a_link(tmp_p
         (campaign / f"graph.json.corrupt-{stamp}").symlink_to(target)
     env = dict(os.environ, DND_CAMPAIGN_ROOT=str(root))
     subprocess.run([sys.executable, str(REPO / "skills/dnd/scripts/campaign_graph.py"), "scene-context",
-                    "--campaign", "demo", "--place", "x"], env=env, capture_output=True, text=True, timeout=30)
+                    "--campaign", "demo", "--place", "x"], env=env, capture_output=True, timeout=30)
     assert target.read_text(encoding="utf-8") == "keep me"
     assert any(p.is_file() and not p.is_symlink() for p in campaign.glob("graph.json.corrupt-*"))
 
