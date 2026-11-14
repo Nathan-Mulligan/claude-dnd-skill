@@ -8,6 +8,10 @@ Read once when the party sets off, travels or passes time.
 - A new place, or a place whose mood truly changes, gets `--scene "<place>: <what is happening>"` on that narration (see scene-media.md).
 - Reaching a new town by a played road earns milestone XP (`--difficulty medium`, below).
 
+## Road days
+- Most days are quiet or tied to the story (the beat, a hook, a clock or the errand). A story day is a scene; a quiet day is a line or two.
+- An unrelated obstacle, find or danger comes at most once a journey, and while a clock is close only as an obstacle that raises its stakes. Give it two or three lines and a real choice; once the party has chosen, settle it and carry on.
+
 ## Work and errands
 - Errands resolve briskly. One person handles what several would, or the town comes to the party: a buyer seeks them out, or a message finds them at the inn.
 - Work finds travellers. Once the party is known, people offer deliveries, messages and passengers along the route. Make one offer when it fits.

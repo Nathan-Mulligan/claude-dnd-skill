@@ -264,7 +264,7 @@ _TRADE_STANCES = ("names a fair price and barely haggles", "opens high and enjoy
                   "prefers a trade or favour to coin")
 
 _ROAD_ROWS = {
-    "quiet": ("Give it one vivid line and move on.", (
+    "quiet": ("Give it a line or two of colour and carry on.", (
         "Drizzle all morning; by noon the cloud lifts over a long valley of hedged fields.",
         "A heron lifts out of a ditch as they pass; otherwise only wind in the grass.",
         "Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney.",
@@ -279,17 +279,17 @@ _ROAD_ROWS = {
         "The road climbs all day through pine and birch, and the night is cold and starry.",
     )),
     "traveller": ("Give them a temperament and a want (oracle.py npc --campaign <name> --name \"<Full Name>\"); "
-                  "they bring news, a trade or a request.", (
+                  "they bring news, a trade or a request, and the party decides whether to stop.", (
         "A pedlar with a handcart, eager for news and selling needles, string and gossip.",
         "Pilgrims walking to a shrine, who ask to share the fire tonight.",
         "A patrol of the local lord's riders, asking who travels this road and why.",
         "A family moving everything they own on one cart, with a sick child in the back.",
         "A courier on a tired horse, asking how far it is to the next town.",
-        "Two drovers whose cattle block the road, in no hurry to clear it.",
+        "A carter heading the other way, glad to swap news of the road ahead.",
         "A tinker who mends pots and wants a lift for a day.",
         "A young runaway who claims to be older than they are.",
     )),
-    "obstacle": ("Offer two real options with different costs.", (
+    "obstacle": ("Offer two real options with different costs; the party picks.", (
         "The ford is swollen with rain: wait half a day, or risk the crossing.",
         "A fallen tree across the road: an hour's work to clear, or a muddy detour.",
         "A toll bridge whose bored keeper asks more than seems fair.",
@@ -297,8 +297,9 @@ _ROAD_ROWS = {
         "A mule goes lame: rest it, lighten the load, or buy another at the next farm.",
         "A washed-out stretch of road: the long way round, or a steep goat track.",
         "A wheel cracks on a stone: patch it here, or limp on to the next village.",
+        "Two drovers whose cattle fill the road: wait for the herd to pass, or cut across a farmer's field.",
     )),
-    "discovery": ("Investigating costs time; ignoring it may cost later.", (
+    "discovery": ("Two or three lines: investigating costs time, ignoring it may cost later, and the party decides.", (
         "An abandoned cart, one wheel off, its load gone and the harness cut.",
         "A roadside shrine with fresh offerings and a name newly scratched into the stone.",
         "Fresh tracks of several riders leaving the road for the woods.",
@@ -307,7 +308,7 @@ _ROAD_ROWS = {
         "A dead messenger bird with a capsule still tied to its leg.",
         "A ring of standing stones off the road, one of them newly toppled.",
     )),
-    "danger": ("Telegraph the threat, and let talk, flight or a fight all work.", (
+    "danger": ("Telegraph the threat, and let talk, flight or a fight all work; the party chooses.", (
         "Bandits at a narrow bend, demanding a toll for safe passage.",
         "Wolves circling the camp at dusk, bold with hunger.",
         "A rival who followed them from the last town, with friends.",
@@ -316,19 +317,31 @@ _ROAD_ROWS = {
         "Something with too many legs nesting in a stretch of old forest the road cuts through.",
         "Raiders driving off a farmer's sheep as the party passes.",
     )),
-    "story": ("The story catches up with them: run it as a concrete event that demands a response.", (
+    "story": ("The story catches up with them: play it as a scene with a concrete event, and end on the party's choice.", (
         "A messenger or rumour tied to the current arc beat's world_pressure catches up with them.",
         "Someone from the last town arrives with bad news about an open thread.",
         "Signs on the road that a faction has made its move ahead of them.",
         "A person caught up in the current beat needs the party, now.",
         "The road passes the aftermath of something the current beat set in motion.",
+        "A notice nailed to a milestone, about something the current beat set in motion.",
+        "Someone the party has met before turns up on the road, wanting something tied to an open thread.",
+        "Word comes down the road that a deadline the party knows of has moved closer.",
+        "A faction's people on the road, busy with the current beat's business and curious about the party.",
     )),
 }
+_RACE_GUIDANCE = ("Offer two real options, one quicker and riskier, one safer and slower, so the choice "
+                  "raises the stakes of the clock; the party picks.")
+# Most days are quiet or tied to the story; random hazards are rare and capped at one a journey.
 _ROAD_WEIGHTS = {
-    "mixed": (("quiet", 40), ("traveller", 20), ("obstacle", 15), ("discovery", 10), ("danger", 10), ("story", 5)),
-    "adventure": (("quiet", 20), ("traveller", 18), ("obstacle", 15), ("discovery", 13), ("danger", 16), ("story", 18)),
-    "downtime": (("quiet", 45), ("traveller", 28), ("obstacle", 10), ("discovery", 9), ("danger", 5), ("story", 3)),
+    "mixed": (("quiet", 50), ("traveller", 12), ("obstacle", 6), ("discovery", 4), ("danger", 4), ("story", 24)),
+    "adventure": (("quiet", 30), ("traveller", 12), ("obstacle", 6), ("discovery", 4), ("danger", 6), ("story", 42)),
+    "downtime": (("quiet", 58), ("traveller", 18), ("obstacle", 5), ("discovery", 4), ("danger", 3), ("story", 12)),
 }
+HAZARDS = ("obstacle", "discovery", "danger")
+TRAVELLER_LINK = 0.5
+RACE_DAYS = 3
+ROAD_RULE = ("Present each event and stop there: the party decides how to meet it. "
+             "Never pay, pick a route or spend time for them.")
 ROAD_LOG = "road_log.json"
 ROAD_LOG_KEEP = 10
 
@@ -419,7 +432,47 @@ def read_road_context(state_text: str) -> dict:
         "difficulty": _flag(flags, "difficulty", "standard"),
         "hooks": _bullets(_section(state_text, "Next Hooks")),
         "clocks": [_parse_clock(line) for line in _bullets(_section(state_text, "Clocks"))],
+        "errands": _bullets(_section(state_text, "Active Quests")),
+        "beat": _current_beat(state_text),
     }
+
+
+def _current_beat(state_text: str):
+    try:
+        import arc
+    except ImportError:  # pragma: no cover
+        return None
+    beat = arc.current(arc.read(state_text))
+    pressure = " ".join(str((beat or {}).get("world_pressure") or "").split())
+    if not pressure:
+        return None
+    return {"id": str(beat["id"]), "label": " ".join(str(beat.get("label") or "").split()), "pressure": pressure}
+
+
+def day_number(cal: dict):
+    """Days since the calendar's epoch, or None for a calendar without a date."""
+    try:
+        months = len(cal.get("months") or []) or 12
+        return ((int(cal["year"]) * months + int(cal["month"]) - 1) * int(cal.get("month_length") or 30)
+                + int(cal["day"]))
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return None
+
+
+def date_number(text: str, cal: dict):
+    """The day number of an in-world date such as "18 Duskfall 1247", read against the calendar's month names."""
+    months = cal.get("months")
+    if not isinstance(months, list) or not months:
+        return None
+    names = sorted({str(name) for name in months if str(name).strip()}, key=len, reverse=True)
+    m = re.search(r"(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(" + "|".join(map(re.escape, names))
+                  + r")(?![\w-])(?:,?\s+(\d{1,6}))?", text or "", re.IGNORECASE)
+    if not m:
+        return None
+    month = next(i for i, name in enumerate(months, 1)
+                 if re.fullmatch(re.escape(str(name)), m.group(2), re.IGNORECASE))
+    return day_number({**cal, "day": int(m.group(1)), "month": month,
+                       "year": int(m.group(3)) if m.group(3) else cal.get("year")})
 
 
 def _int(value):
@@ -485,35 +538,80 @@ def encounter_budget(party, difficulty: str = "standard") -> str:
 # ── the road ─────────────────────────────────────────────────────────────────
 
 
-def _plot_texts(kind: str, context: dict, rng) -> list:
-    """(source, text) pairs; the source lets one hook or clock be kept out of both story and traveller days."""
+def _plot_texts(kind: str, context: dict, racing=()) -> list:
+    """(source, text) pairs; the source lets one hook, clock or errand be kept out of both story and traveller days."""
     hooks = [h.rstrip(".") for h in context.get("hooks", ())]
+    errands = [e.rstrip(".") for e in context.get("errands", ())]
     clocks = context.get("clocks", ())
     if kind == "story":
         texts = [(f"hook:{h}", f"A hook ahead comes to meet them: {h}.") for h in hooks]
+        texts += [(f"errand:{e}", f"The road touches the errand they are on: {e}. Show one thing that bears on it.")
+                  for e in errands]
         for c in clocks:
             show = f"Show it on the road: {c['seen_by']}." if c["seen_by"] else "Show its first signs on the road."
             due = f" (due {c['date']})" if c["date"] else ""
             texts.append((f"clock:{c['what']}", f"A clock is ticking{due}: {c['what']}. {show}"))
-        return texts
-    if kind == "traveller" and (hooks or clocks) and rng.random() < 0.5:
+        beat = context.get("beat")
+        if beat:
+            texts.append((f"beat:{beat['id']}", f"The current beat ({beat['label'] or beat['id']}) reaches the road: "
+                                                f"{beat['pressure'].rstrip('.')}. Show one concrete sign of it."))
+        # A clock the party is racing comes up twice as often as anything else.
+        return texts + [t for t in texts if t[0] in {f"clock:{c['what']}" for c in racing}]
+    if kind == "traveller":
         texts = [(f"clock:{c['what']}", f"Travellers who have seen it ({c['seen_by']}) bring news: {c['what']}"
                   f"{' (due ' + c['date'] + ')' if c['date'] else ''}.") for c in clocks if c["seen_by"]]
+        texts += [(f"errand:{e}", f"A traveller with a bearing on their errand: {e}.") for e in errands]
         return texts + [(f"hook:{h}", f"A traveller tied to what lies ahead: {h}.") for h in hooks]
     return []
 
 
-def road_day(rng=None, pacing: str = "mixed", context=None, recent=()) -> dict:
+def _racing(clocks, day):
+    """Clocks due within RACE_DAYS of this travel day, soonest first."""
+    if day is None:
+        return []
+    near = [c for c in clocks if isinstance(c.get("due"), int) and 0 <= c["due"] - day <= RACE_DAYS]
+    return sorted(near, key=lambda c: c["due"])
+
+
+def _journey(recent, day) -> list:
+    """The logged road days in the unbroken run of dates through `day`: the journey so far,
+    including any dates rolled again."""
+    if day is None:
+        return []
+    logged = {e["day"] for e in recent if isinstance(e.get("day"), int)}
+    low = high = day
+    while low - 1 in logged:
+        low -= 1
+    while high + 1 in logged:
+        high += 1
+    return [e for e in recent if isinstance(e.get("day"), int) and low <= e["day"] <= high]
+
+
+def _hazard_used(journey) -> bool:
+    return any(e["kind"] in HAZARDS or e.get("hazard_used") for e in journey)
+
+
+def road_day(rng=None, pacing: str = "mixed", context=None, recent=(), journey=(), racing=()) -> dict:
     """One travel day. `recent` is the road log (oldest first): its texts are not reused,
-    and the last day's kind does not come straight back unless it was quiet."""
+    and the last day's kind does not come straight back unless it was quiet. `journey` is the
+    days already travelled on this journey: once it holds a hazard, no other comes. `racing`
+    is the clocks falling due within a few days: a hazard then only comes as an obstacle that
+    raises a clock's stakes, and travellers bring its news."""
     rng = rng or random.Random()
+    context = context or {}
     last_kind = recent[-1]["kind"] if recent else None
     rows = [(weight, kind) for kind, weight in _ROAD_WEIGHTS.get(pacing, _ROAD_WEIGHTS["mixed"])
             if kind == "quiet" or kind != last_kind]
     _, kind = _weighted(rows, rng)
+    if kind in HAZARDS and (_hazard_used(journey) or (racing and kind != "obstacle")):
+        kind = "quiet"
     used = [entry["text"] for entry in recent]
     used_sources = {entry.get("source") for entry in recent}
-    plot = [(src, t) for src, t in _plot_texts(kind, context or {}, rng) if src not in used_sources and t not in used]
+    plot = []
+    if kind == "story" or (kind == "traveller" and (racing or rng.random() < TRAVELLER_LINK)):
+        plot = [(src, t) for src, t in _plot_texts(kind, context, racing) if src not in used_sources and t not in used]
+    if kind == "traveller" and racing and not plot:
+        kind = "quiet"
     day = {"kind": kind, "guidance": _ROAD_ROWS[kind][0]}
     if plot:
         day["source"], day["text"] = rng.choice(plot)
@@ -522,26 +620,41 @@ def road_day(rng=None, pacing: str = "mixed", context=None, recent=()) -> dict:
     fresh = [t for t in examples if t not in used]
     # When a row is used up, the example seen longest ago is the least repetitive choice.
     day["text"] = rng.choice(fresh) if fresh else min(examples, key=lambda t: max(i for i, u in enumerate(used) if u == t))
+    if kind == "obstacle" and racing:
+        clock = racing[0]
+        due = f" (due {clock['date']})" if clock["date"] else ""
+        day.update(stakes=clock["what"], guidance=_RACE_GUIDANCE,
+                   text=f"{day['text']} The clock makes it matter: {clock['what'].rstrip('.')}{due}.")
     return day
 
 
-def roll_road(days: int, rng=None, context=None, recent=(), party=None) -> list:
+def roll_road(days: int, rng=None, context=None, recent=(), party=None, first_day=None) -> list:
+    """`first_day` is the day number of the first travel day; without one, this call is the whole journey."""
     rng = rng or random.Random()
     context = context or {}
     recent = list(recent)
+    journey = _journey(recent, first_day)
     rolled = []
-    for _ in range(days):
+    for i in range(days):
+        number = first_day + i if first_day is not None else None
         day = road_day(rng=rng, pacing=context.get("pacing", "mixed"), context=context,
-                       recent=recent[-ROAD_LOG_KEEP:])
+                       recent=recent[-ROAD_LOG_KEEP:], journey=journey,
+                       racing=_racing(context.get("clocks", ()), number))
+        if number is not None:
+            day["day"] = number
+        # Carried on every later day, so a journey longer than the road log still remembers its hazard.
+        if _hazard_used(journey) or day["kind"] in HAZARDS:
+            day["hazard_used"] = True
         if day["kind"] == "danger":
             day["budget"] = encounter_budget(party, context.get("difficulty", "standard"))
         recent.append(_log_entry(day))
+        journey.append(_log_entry(day))
         rolled.append(day)
     return rolled
 
 
 def _log_entry(day: dict) -> dict:
-    return {key: day[key] for key in ("kind", "text", "source") if key in day}
+    return {key: day[key] for key in ("kind", "text", "source", "stakes", "day", "hazard_used") if key in day}
 
 
 def _read_road_log(folder) -> list:
@@ -560,12 +673,27 @@ def _write_atomic(path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def campaign_road(folder, days: int, rng=None) -> list:
-    """Roll `days` travel days for the campaign in `folder` and record them in road_log.json."""
+def _read_calendar(folder) -> dict:
+    try:
+        cal = json.loads((folder / "calendar.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return cal if isinstance(cal, dict) else {}
+
+
+def campaign_road(folder, days: int, rng=None, start=None) -> list:
+    """Roll `days` travel days for the campaign in `folder` and record them in road_log.json.
+    `start` is the calendar before the journey (default: calendar.json as it stands)."""
     state = folder / "state.md"
     text = state.read_text(encoding="utf-8") if state.is_file() else ""
     log = _read_road_log(folder)
-    rolled = roll_road(days, rng=rng, context=read_road_context(text), recent=log, party=read_party(folder))
+    cal = start if start is not None else _read_calendar(folder)
+    today = day_number(cal)
+    context = read_road_context(text)
+    for clock in context["clocks"]:
+        clock["due"] = date_number(clock["date"], cal)
+    rolled = roll_road(days, rng=rng, context=context, recent=log, party=read_party(folder),
+                       first_day=today + 1 if today is not None else None)
     log += [_log_entry(d) for d in rolled]
     _write_atomic(folder / ROAD_LOG, json.dumps(log[-ROAD_LOG_KEEP:], indent=2, ensure_ascii=False) + "\n")
     return rolled
@@ -807,6 +935,7 @@ def cmd_road(args) -> int:
             print("Prebuilt campaign: use the module's own travel and wandering-encounter rules, not this table.")
             return 0
         days = campaign_road(folder, args.days, rng=rng)
+    print(ROAD_RULE)
     for number, day in enumerate(days, 1):
         print(format_road_day(day, number, len(days)))
     return 0
