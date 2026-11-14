@@ -21,8 +21,8 @@ RULES = (
     "End on something in motion, never a bare \"what do you do?\"",
     "Before any roll, name the DC and the stake, and resolve the roll this turn",
     "Never decide for the player characters",
-    "Turn shape: one send.py call with every block of narration first, bookkeeping in the next call, "
-    "then reply done",
+    "Turn shape: one send.py call with every block of narration first (a player roll splits it: stake with "
+    "the roll request, result after), bookkeeping in the next call, then reply done",
 )
 ROLL_MODES = {"auto": "you roll openly", "players": "players roll (call for the roll and wait)"}
 CLOCK_WINDOW = 2

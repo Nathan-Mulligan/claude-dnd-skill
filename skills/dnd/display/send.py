@@ -92,6 +92,7 @@ import os
 import re
 import select
 import ssl
+import stat
 import time
 import uuid
 import urllib.request
@@ -367,8 +368,11 @@ def parse_blocks(text: str) -> "list[dict]":
         if not marker:
             current["lines"].append(line)
             continue
-        blocks.append(current)
         kind, rest = _BLOCK_KINDS[marker.group(1)], (marker.group(2) or "").strip()
+        if rest and marker.group(1) not in _NAMED_BLOCKS:  # "@dice Nella rolls 17" is text, not a marker
+            current["lines"].append(line)
+            continue
+        blocks.append(current)
         voice = None
         if kind == "npc":
             with_voice = _MARKER_VOICE.match(rest)
@@ -403,14 +407,22 @@ def _flag_block(args, text: str) -> "list[dict]":
 
 
 def _waiting_stdin() -> str:
-    """Piped text, or "" when stdin is a terminal or an open, empty pipe. Never blocks."""
-    if sys.stdin.isatty():
-        return ""
+    """A heredoc or piped body for --dice-request; "" for a terminal, /dev/null or a pipe nobody writes.
+
+    A heredoc arrives as a regular file or a pipe that is ready at once. A pipe that stays empty for a
+    second is a caller's open stdin, not a body, and is never read, so a standalone request can't hang.
+    """
     try:
-        if os.name != "nt" and not select.select([sys.stdin], [], [], 0.05)[0]:
+        if sys.stdin.isatty():
             return ""
-    except (ValueError, OSError, TypeError):  # no file descriptor to wait on: read it directly
-        pass
+        mode = os.fstat(sys.stdin.fileno()).st_mode
+    except (ValueError, OSError, AttributeError):  # no file descriptor (tests, embedded callers)
+        mode = None
+    if mode is not None and stat.S_ISCHR(mode):
+        return ""
+    if mode is not None and not stat.S_ISREG(mode) and os.name != "nt":
+        if not select.select([sys.stdin], [], [], 1.0)[0]:
+            return ""
     try:
         return sys.stdin.read()
     except OSError:
@@ -792,18 +804,6 @@ def main() -> None:
         parser.error("--npc-voice requires --npc")
     if args.npc_voice is not None and not _VOICE_ID.fullmatch(args.npc_voice.strip()):
         parser.error("--npc-voice takes a voice id such as bf_alice or am_onyx")
-    music_event, music_setting, music_mood = args.music_event, args.music_setting, args.music_mood
-    _ensure_active_campaign()
-    scene_note = None
-    if args.scene is not None:
-        derived, unchanged = _derive_scene(args.scene, args.mood)
-        scene_note = (f"scene unchanged: {derived.scene.label} ({derived.scene.key})" if unchanged else
-                      f"scene: {derived.scene.label} ({derived.scene.key}; {derived.setting}, {derived.mood}"
-                      + (f", {derived.scene.era})" if derived.scene.era else ")"))
-        if not unchanged:
-            music_event, music_setting, music_mood, scene = "scene", derived.setting, derived.mood, derived.scene
-    music_id = uuid.uuid4().hex if music_event else None
-
     # Two categories of flags drive whether to read stdin:
     #   1. Content flags (--player/--npc/--dice/--tutor/--action): body REQUIRED.
     #      Always read stdin — script will abort below if the body is empty.
@@ -818,14 +818,6 @@ def main() -> None:
     # Plain narration piped with --dice-request goes out first, so the table hears the DC and the
     # stake before the phones ask for the roll.
     narration_first = bool(args.dice_request) and not _has_content_flag
-    if args.dice_request and not narration_first:
-        _dice_request(args)
-        _other = (args.player or args.npc or args.dice or args.tutor or args.action
-                  or args.inspiration_award or args.inspiration_spend
-                  or args.milestone_award or args.milestone_spend or args.xp_award
-                  or args.verify)
-        if not _other:
-            return
     if _has_content_flag:
         text = sys.stdin.read()
     elif narration_first:
@@ -840,6 +832,26 @@ def main() -> None:
         except ValueError as error:
             print(f"send.py: {error}", file=sys.stderr)
             sys.exit(2)
+    music_event, music_setting, music_mood = args.music_event, args.music_setting, args.music_mood
+    _ensure_active_campaign()
+    if args.dice_request and not narration_first:
+        _dice_request(args)
+        _other = (args.player or args.npc or args.dice or args.tutor or args.action
+                  or args.inspiration_award or args.inspiration_spend
+                  or args.milestone_award or args.milestone_spend or args.xp_award
+                  or args.verify)
+        if not _other:
+            return
+    scene_note = None
+    if args.scene is not None:
+        derived, unchanged = _derive_scene(args.scene, args.mood)
+        scene_note = (f"scene unchanged: {derived.scene.label} ({derived.scene.key})" if unchanged else
+                      f"scene: {derived.scene.label} ({derived.scene.key}; {derived.setting}, {derived.mood}"
+                      + (f", {derived.scene.era})" if derived.scene.era else ")"))
+        if not unchanged:
+            music_event, music_setting, music_mood, scene = "scene", derived.setting, derived.mood, derived.scene
+    music_id = uuid.uuid4().hex if music_event else None
+
     token = _read_token()
 
     # ── Inspiration award/spend ──────────────────────────────────────────────
@@ -925,14 +937,15 @@ def main() -> None:
 
     # ── Text send ─────────────────────────────────────────────────────────────
     chunks_sent = 0
-    # The scene cue rides on the first narration, never on the player's echoed action.
-    music_from = next((i for i, b in enumerate(blocks) if b["kind"] is None), 0)
+    # The scene cue rides on narration, never on the player's echoed action or NPC speech; a call
+    # with no narration block carries it on its first block.
+    music_kinds = {None} if any(b["kind"] is None for b in blocks) else {b["kind"] for b in blocks}
     music_pending = bool(music_id)
-    for index, block in enumerate(blocks):
+    for block in blocks:
         kind = block["kind"]
         for chunk in _split_paragraphs(block["text"]):
             payload: dict = {"text": chunk}
-            with_music = music_pending and index >= music_from
+            with_music = music_pending and kind in music_kinds
             if with_music:
                 payload["music"] = {"event": music_event.replace("-", "_"),
                                     "id": music_id, "setting": music_setting}
@@ -963,7 +976,7 @@ def main() -> None:
         print("send.py: music cue requires successfully sent narration", file=sys.stderr)
         sys.exit(2)
     if scene_note:
-        print(scene_note)
+        print(scene_note, file=sys.stderr if args.dice_request else sys.stdout)
 
     # ── Stat send (bundled) ───────────────────────────────────────────────────
     stats_payload = _build_stats_payload(args)

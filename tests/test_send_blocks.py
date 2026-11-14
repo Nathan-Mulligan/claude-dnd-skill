@@ -159,3 +159,56 @@ def test_dice_request_alone_never_hangs_on_an_open_empty_stdin(sender):
             sender.main()
     finally:
         os.close(write_fd)
+
+
+def test_a_bad_marker_is_refused_before_the_display_switches_campaign(sender, capsys):
+    with mock.patch.object(sender, "_ensure_active_campaign") as ensure, pytest.raises(SystemExit):
+        _run(sender, [], "@npc Hessa voice=not a voice\nHello.\n")
+    assert not ensure.called
+
+
+def test_an_unnamed_marker_with_text_after_it_stays_text(sender):
+    chunks = _run(sender, [], "@dice Nella rolls 1d20+3 = 17\n")
+    assert len(chunks) == 1 and chunks[0][1]["text"] == "@dice Nella rolls 1d20+3 = 17" and "dice" not in chunks[0][1]
+
+
+def test_a_failed_narration_post_keeps_the_scene_cue_for_the_next_narration(sender):
+    from scene_engine import SceneContext
+    scene = SceneContext.parse({"key": "ford", "label": "The ford", "description": "a flooded ford at dusk"})
+    derived = mock.Mock(setting="river", mood="tense", scene=scene)
+    posted, results = [], iter([False, True, True])
+
+    def post(url, data, token):
+        posted.append(json.loads(data))
+        return next(results)
+
+    with mock.patch.object(sender, "_derive_scene", return_value=(derived, False)), \
+         mock.patch.object(sys, "argv", ["send.py", "--scene", "The ford: flooded at dusk"]), \
+         mock.patch.object(sys, "stdin", io.StringIO("Water rises.\n@npc Edrin\n\"Back!\"\n@narration\nThe rope holds.\n")), \
+         mock.patch.object(sender, "_post", side_effect=post), \
+         mock.patch.dict(os.environ, {"DND_ACTIVE_CAMPAIGN": ""}):
+        sender.main()
+    assert "music" not in posted[1] and "music" in posted[2]
+
+
+def test_with_a_roll_request_stdout_keeps_only_the_request_id_and_rolls(sender, capsys):
+    from scene_engine import SceneContext
+    scene = SceneContext.parse({"key": "gate", "label": "Gate", "description": "the toll gate"})
+    derived = mock.Mock(setting="town", mood="tense", scene=scene)
+    replies = iter([_Response({"request_id": "abc", "pending": []})])
+    with mock.patch.object(sender, "_derive_scene", return_value=(derived, False)):
+        _run(sender, ["--scene", "Gate: the toll gate", "--dice-request", "--character", "any"],
+             "DC 13; fail and the toll doubles.\n", urlopen=lambda *a, **k: next(replies))
+    assert capsys.readouterr().out.split() == ["abc"]
+
+
+def test_a_heredoc_file_on_stdin_is_read_for_a_roll_request(sender, tmp_path):
+    body = tmp_path / "heredoc"
+    body.write_text("DC 13; fail and the price holds.\n", encoding="utf-8")
+    with open(body, encoding="utf-8") as stdin, mock.patch.object(sys, "stdin", stdin):
+        assert sender._waiting_stdin() == "DC 13; fail and the price holds.\n"
+
+
+def test_dev_null_on_stdin_is_no_body(sender):
+    with open(os.devnull, encoding="utf-8") as stdin, mock.patch.object(sys, "stdin", stdin):
+        assert sender._waiting_stdin() == ""

@@ -91,10 +91,10 @@ You decide what comes at the party. The players decide how to answer it. A table
 
 ## 10. A turn: narration first, paperwork after
 - With the display running, the table hears only what you send. Every reply to the players goes through `send.py` in a real shell command, never as text in your reply. With no display (the `No display` choice), write the narration in your reply instead.
-- Nothing reaches the table until a whole command is written, so a turn is two calls and one word:
-  1. **Narration.** One `send.py` call holding every block, and nothing else in that command. Before it, run only what the narration quotes: `calendar.py advance` on travel, `oracle.py npc` for a new NPC, `dice.py` for NPC rolls, `inventory.py` for a trade. No `/health`, `paths.py` or `state.md` re-reads: the turn card and `send.py` cover them.
+- Nothing reaches the table until a whole command is written, so a turn is two calls and one word. A player roll is the one split: the stake goes out with the roll request (section 4), the result in the narration call after it.
+  1. **Narration.** One `send.py` call holding every block, and nothing else in that command. Before it, run only what the narration reports: `calendar.py advance` on travel, `oracle.py npc` for a new NPC, `dice.py` for NPC rolls, `inventory.py` for a trade, `encounter_state.py` or `combat.py` (and `tracker.py`) to resolve a fight, and a read of a fact you must check. No `/health`, `paths.py` or `state.md` re-reads: the turn card and `send.py` cover them.
   2. **Bookkeeping.** Every file write (`state.md`, `session-log.md`, NPC notes, `arc.py`, `xp.py`, `push_stats.py`) in one call after the narration. Never in or before the narration call.
-  3. **Reply with one word: `done`.** No summary; nobody reads it.
+  3. **Reply with one word: `done`.** No summary; nobody reads it. (With no display, the narration is your reply instead.)
 - In the narration heredoc, a line holding only a marker starts a block: `@player NAME` (their action, tidied), `@dice` (roll lines), `@narration`, `@npc NAME` (add ` voice=ID` the first time they speak), `@tutor` last. Text before the first marker is narration.
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`.
 - Send the whole narration, word for word. Never send probe or debug text.
