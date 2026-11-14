@@ -666,6 +666,17 @@ def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool) -
     )
 
 
+def stop_voice() -> None:
+    """Stop Kokoro after play ends; a failure is logged and never blocks closing the session."""
+    try:
+        result = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--stop-voice", timeout=30)
+        detail = (result.stderr or result.stdout).strip()[-300:] if result.returncode else ""
+    except (OSError, subprocess.TimeoutExpired) as error:
+        detail = type(error).__name__
+    if detail:
+        print(f"Kokoro was not stopped: {detail}", flush=True)
+
+
 def perform_handoff(provider: str, mode: str, name: str, description: str,
                     previous: dict, identity: str, token: str, onboarding: dict | None = None,
                     effort: str = DEFAULT_EFFORT, close: bool = False) -> None:
@@ -734,6 +745,7 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
                 raise ValueError("Could not close the saved DM session")
             stopped = True
             if close:
+                stop_voice()
                 set_handoff("complete", "Session saved and the DM closed. Resume the campaign to start a fresh DM.",
                             campaign=name, provider=provider, action=action)
                 return

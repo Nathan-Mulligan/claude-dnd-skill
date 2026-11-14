@@ -594,3 +594,64 @@ def test_save_and_close_with_nothing_running_does_nothing(setup, monkeypatch):
     assert response.status_code == 409
     assert calls == []
     assert portal.handoff_state()["status"] == "idle"
+
+
+def stop_voice_calls(calls):
+    return [args for args in calls if args[-1:] == ("--stop-voice",)]
+
+
+def test_save_and_close_stops_the_voice_after_the_dm_closes(setup, monkeypatch):
+    old, previous, _, calls, _ = setup
+    token = "c" * 32
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_and_acknowledge(old, token))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    assert portal.handoff_state()["status"] == "complete"
+    [stop] = stop_voice_calls(calls)
+    assert stop == ("bash", str(portal.REPO / "scripts/launch-campaign-m5.sh"), "--stop-voice")
+    assert calls.index(stop) > calls.index(("tmux", "kill-session", "-t", "$7"))
+
+
+@pytest.mark.parametrize("failure", ["exit", "timeout", "missing"])
+def test_save_and_close_still_closes_when_the_voice_will_not_stop(setup, monkeypatch, capsys, failure):
+    old, previous, alive, calls, _ = setup
+    token = "d" * 32
+    original = portal.run
+
+    def flaky_run(*args, **kwargs):
+        if args[-1:] == ("--stop-voice",):
+            calls.append(args)
+            if failure == "timeout":
+                raise subprocess.TimeoutExpired(args, 30)
+            if failure == "missing":
+                raise FileNotFoundError("bash")
+            return subprocess.CompletedProcess(args, 1, "", "Kokoro could not be stopped.")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(portal, "run", flaky_run)
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_and_acknowledge(old, token))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "complete" and "closed" in state["message"]
+    assert not alive["value"]
+    assert len(stop_voice_calls(calls)) == 1
+    assert "Kokoro" in capsys.readouterr().out
+
+
+def test_a_fresh_dm_keeps_the_voice_running(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "e" * 32
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_and_acknowledge(old, token))
+    monkeypatch.setattr(portal, "start_session", lambda *args, **kwargs: alive.update(value=True) or (True, "Started"))
+    portal.perform_handoff("codex", "resume", "old", "", previous, "$7", token)
+    assert portal.handoff_state()["status"] == "complete"
+    assert ("tmux", "kill-session", "-t", "$7") in calls
+    assert stop_voice_calls(calls) == []
+
+
+def test_a_close_that_never_saved_keeps_the_voice_running(setup, monkeypatch):
+    _, previous, _, calls, _ = setup
+    monkeypatch.setattr(portal, "CLOSE_TIMEOUT", 0)
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: None)
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", "f" * 32, close=True)
+    assert portal.handoff_state()["status"] == "failed"
+    assert stop_voice_calls(calls) == []
