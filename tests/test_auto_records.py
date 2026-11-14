@@ -166,12 +166,25 @@ def test_someone_known_from_before_gets_no_new_met(camp, history):
     assert "- **Voice:** bf_alice" in text and history in text
 
 
-def test_a_written_up_npc_the_logs_know_by_first_name_gets_no_new_met(camp):
-    (camp / "npcs.md").write_text("# NPCs\n\n## Hessa Varn\nToll clerk; hides a timber advance.\n", encoding="utf-8")
+@pytest.mark.parametrize("heading, speaker, logged", [
+    ("Hessa Varn", "Hessa Varn", "Hessa let them stable the mule."),
+    ("Hessa Varn", "Hessa Varn", "They accepted Hessa's offer of lodging."),
+    ("Brother Aldous", "Brother Aldous", "Aldous let them sleep in the abbey."),
+])
+def test_a_written_up_npc_the_logs_know_by_first_name_gets_no_new_met(camp, heading, speaker, logged):
+    (camp / "npcs.md").write_text(f"# NPCs\n\n## {heading}\nKeeps the gate; hides a timber advance.\n", encoding="utf-8")
     with open(camp / "session-log.md", "a", encoding="utf-8") as log:
-        log.write("Hessa let them stable the mule.\n")
-    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
+        log.write(logged + "\n")
+    records.record_send(blocks(f'@npc {speaker}\n"Next."\n'), place="Gate", now=NOW)
     assert "- **Met:**" not in (camp / "npcs.md").read_text(encoding="utf-8")
+
+
+def test_a_title_alone_in_the_logs_is_not_a_meeting(camp):
+    (camp / "npcs.md").write_text("# NPCs\n\n## Brother Aldous\nA young monk at the abbey.\n", encoding="utf-8")
+    with open(camp / "session-log.md", "a", encoding="utf-8") as log:
+        log.write("Nella's brother wrote from Saltmere.\n")
+    records.record_send(blocks('@npc Brother Aldous\n"Peace."\n'), place="Abbey", now=NOW)
+    assert "- **Met:** Abbey, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_a_written_up_npc_the_logs_never_mention_still_gets_met(camp):
@@ -188,7 +201,8 @@ def test_a_new_npc_with_only_a_profile_still_gets_met(camp):
 
 
 @pytest.mark.parametrize("label", ["Warden rider", "Auditor", "Warden auditor", "Traveller", "Man at the barrier",
-                                   "Grey-cloaked rider", "The Ferryman", "Warden Rider", "Bridge Keeper", "Toll Clerk"])
+                                   "Grey-cloaked rider", "The Ferryman", "Warden Rider", "Bridge Keeper", "Toll Clerk",
+                                   "Watch Captain"])
 def test_an_unnamed_speaker_gets_no_entry(camp, label):
     records.record_send(blocks(f'@npc {label}\n"Move along."\n'), place="Road", now=NOW)
     assert not (camp / "npcs.md").exists()

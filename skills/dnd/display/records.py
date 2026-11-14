@@ -59,7 +59,10 @@ _SESSION_MENTION = re.compile(r"\bsession\s+(\d+)", re.IGNORECASE)
 _ROLE_WORDS = {"rider", "auditor", "keeper", "clerk", "guard", "guards", "warden", "traveller", "traveler", "carter",
                "drover", "bandit", "man", "woman", "stranger", "merchant", "courier", "driver", "soldier", "farmer",
                "innkeeper", "smith", "trader", "pedlar", "peddler", "tinker", "boy", "girl", "child", "watchman",
-               "bowman", "messenger", "sailor", "priest", "monk", "official", "officer", "voice", "crowd", "patron"}
+               "bowman", "messenger", "sailor", "priest", "monk", "official", "officer", "voice", "crowd", "patron",
+               "captain", "sergeant", "lieutenant", "guardsman", "sentry", "porter", "servant", "steward"}
+_TITLES = {"brother", "sister", "father", "mother", "captain", "sergeant", "lady", "lord", "sir", "dame", "master",
+           "mistress", "old", "young", "mayor", "elder", "reeve", "warden", "auditor", "clerk", "abbot", "abbess"}
 _NAME_PARTICLES = {"of", "the", "de", "del", "della", "di", "da", "du", "van", "von", "der", "den", "le", "la", "al",
                    "bin", "ibn", "ap"}
 _LOCATION = re.compile(r"^[ \t]*[-*][ \t]*\*\*Location:\*\*[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
@@ -220,9 +223,11 @@ def _met_before(folder: Path, path: Path, name: str, session: int) -> bool:
     if not described:
         return False
     heading = _ANNOTATION.split(lines[span[0]].lstrip("#").strip().strip("*"))[0]
-    names = {" ".join(heading.split()), heading.split()[0] if heading.split() else ""} - {""}
+    words = heading.split()
+    personal = [w for w in words if w.casefold() not in _TITLES]
+    names = {" ".join(words), personal[0] if personal else ""} - {""}
     logs = " ".join(_read(folder / f) for f in ("session-log.md", "session-log-archive.md", "state.md"))
-    return any(re.search(rf"(?<![\w']){re.escape(n)}(?![\w'])", logs, re.IGNORECASE) for n in names)
+    return any(re.search(rf"(?<![\w'’]){re.escape(n)}(?:['’]s)?(?![\w'’])", logs, re.IGNORECASE) for n in names)
 
 
 def _has_look(path: Path, name: str) -> bool:
