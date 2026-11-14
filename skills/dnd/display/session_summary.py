@@ -15,8 +15,9 @@ idle, after checking it changed nothing since its save, so each file has one
 writer at a time. Any failure raises; the portal then asks the DM to write the
 summary itself before stopping it, and logs why to runtime/session_summary.log.
 
-The helper sees only party-facing material: this session's log entry, the
-display lines since the last saved stop point (from the display's text log),
+The helper sees only party-facing material: this session's log entry, this
+session's turns word for word (from turn-log.md, which send.py keeps; else the
+display lines since the last saved stop point, from the display's text log),
 the new stop point, Recent Events, the last recap and the archive text being
 moved or folded. `### DM ...` subsections and lines that read as DM-only are
 stripped. A reply naming anyone or anything, or giving a number, that the
@@ -37,6 +38,7 @@ _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE.parent / "scripts"))
 import lore_sync  # noqa: E402
+import records  # noqa: E402
 import stop_point  # noqa: E402
 from runtime_paths import rt  # noqa: E402
 
@@ -249,9 +251,43 @@ class Material(NamedTuple):
     lines: list[str]
 
 
-def next_number(*texts: str) -> int:
-    numbers = [int(n) for text in texts for n in re.findall(r"^#{2,3} Session (\d+)\b", text, re.M)]
-    return max(numbers, default=0) + 1
+def turn_lines(text: str) -> list[str]:
+    """turn-log.md paragraphs as `Speaker: text` lines, without the tutor's hints (party-facing, not story)."""
+    lines = []
+    for para in re.split(r"\n\s*\n", text):
+        para = " ".join(para.split())
+        if para and not para.startswith(("## Session ", "**DM hint:**")):
+            lines.append(re.sub(r"^\*\*(.+?):\*\* ", r"\1: ", para))
+    return lines
+
+
+def this_session(folder: Path, log_text: str, archive_file: str, state: str,
+                 entries: list[Block]) -> "tuple[Optional[Block], int, Optional[records.Turns]]":
+    """This session's open session-log.md entry (if any), its number, and its turns from turn-log.md.
+
+    send.py numbers a turn-log.md session when it starts, so while that log runs ahead of
+    session-log.md and has turns newer than the last summary, its number is this session's,
+    and an entry with that number (even one the DM recapped mid-session) is filled in place.
+    Otherwise this session is the newest entry without a Recap, or a new one."""
+    turns = records.latest_session(folder)
+    by_number = {b.number: b for b in entries}
+    if turns and turns.number >= max(by_number, default=-1):
+        entry = by_number.get(turns.number)
+        log_file = folder / "session-log.md"
+        if (entry is None or not has_recap(entry.text) or not log_file.exists()
+                or turns.mtime_ns > log_file.stat().st_mtime_ns):
+            return entry, turns.number, turns
+    newest = max(entries, key=lambda b: b.number, default=None)
+    current = newest if newest and not has_recap(newest.text) else None
+    return current, (current.number if current else records.next_session(log_text, archive_file, state)), None
+
+
+def session_number(folder: Path) -> int:
+    """The session the summary goes under: the `## Session N` a DM writing it by hand should use."""
+    folder = Path(folder)
+    log_text = _read(folder / "session-log.md") or ""
+    return this_session(folder, log_text, _read(folder / "session-log-archive.md") or "",
+                        _read(folder / "state.md") or "", blocks(log_text, LOG_HEADING, LEVEL_2))[1]
 
 
 def gather(folder: Path, mark: "str | None") -> Material:
@@ -259,9 +295,7 @@ def gather(folder: Path, mark: "str | None") -> Material:
     log_text = _read(folder / "session-log.md") or ""
     archive_file = _read(folder / "session-log-archive.md") or ""
     entries = blocks(log_text, LOG_HEADING, LEVEL_2)
-    newest = max(entries, key=lambda b: b.number, default=None)
-    current = newest if newest and not has_recap(newest.text) else None
-    number = current.number if current else next_number(log_text, archive_file, state)
+    current, number, turns = this_session(folder, log_text, archive_file, state, entries)
     older = sorted((b for b in entries if b is not current), key=lambda b: b.number)
     rotate = older[:max(0, len(older) + 1 - KEEP_LOG_ENTRIES)][:MAX_ROTATE]
     span = section(state, "Continuity Archive")
@@ -269,7 +303,8 @@ def gather(folder: Path, mark: "str | None") -> Material:
                      key=lambda b: b.number)
     overflow = max(0, len(archive) + len(rotate) - KEEP_ARCHIVE)
     return Material(log_text, state, archive_file, current, number, rotate, archive,
-                    archive[:min(overflow, MAX_FOLD)], display_lines(folder, mark))
+                    archive[:min(overflow, MAX_FOLD)],
+                    turn_lines(turns.text) if turns else display_lines(folder, mark))
 
 
 def story_so_far(state: str) -> str:
@@ -300,7 +335,7 @@ def build_prompt(m: Material, folder: Path) -> str:
     parts = [
         f"LAST SESSION'S RECAP (already recorded; never repeat it as this session's events):\n{last_recap(m.log, m.current) or '(none)'}",
         f"THIS SESSION'S LOG (Session {m.number}):\n{clip(this_log) or '(none)'}",
-        "LINES THE DISPLAY SHOWED THIS SESSION, OLDEST FIRST:\n" + (clip("\n".join(m.lines), TRANSCRIPT_CHARS) or "(none)"),
+        "WHAT THE TABLE WAS SHOWN THIS SESSION, OLDEST FIRST:\n" + (clip("\n".join(m.lines), TRANSCRIPT_CHARS) or "(none)"),
         f"WHERE PLAY STOPPED (saved by the DM at the end of this session):\n{clip(stop_note(folder)) or '(none)'}",
         f"RECENT EVENTS (from the campaign notes; may reach back before this session):\n{clip(recent_events(m.state), 8000) or '(none)'}",
     ]

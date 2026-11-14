@@ -12,7 +12,8 @@ turn-log.md (in the campaign folder; this module is its only writer)
     **Hessa Varn:** "Twenty silver, or the wagon stays."
   Speakers: DM (narration), DM hint (tutor), Dice, XP, Inspiration, Milestone, else the
   player, action or NPC name. The session number is one more than the newest `## Session N`
-  in session-log.md. A replay (every block long and among the last RECENT_KEEP logged) is skipped.
+  in session-log.md, its archive or state.md. A replay (every block long and among the last
+  RECENT_KEEP logged) is skipped.
 
 npcs.md (shared with the DM and oracle.py, through npc_entries.edit and its lock)
   For each `@npc NAME` speaker: `- **Met:** <place>, session N (<in-world date>)` and
@@ -29,6 +30,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
@@ -48,6 +50,7 @@ REPLAY_MIN_CHARS = 40  # shorter lines ("Yes.") can honestly be said twice
 LOOK_LABELS = ("As seen", "Look", "Looks", "Appearance", "Description")
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _SESSION_HEADING = re.compile(r"^#{2,3}\s+Session\s+(\d+)\b", re.MULTILINE)
+_LOG_SECTION = re.compile(r"^## Session (\d+) · ", re.MULTILINE)
 _SESSION_COUNT = re.compile(r"\*\*Session count:\*\*\s*(\d+)")
 _LOCATION = re.compile(r"^[ \t]*[-*][ \t]*\*\*Location:\*\*[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
 
@@ -92,13 +95,40 @@ def _save_state(state: dict) -> None:
     os.replace(tmp, path)
 
 
-def session_number(folder: Path) -> int:
-    """One more than the newest session the DM has written up."""
-    numbers = [int(n) for n in _SESSION_HEADING.findall(_read(folder / "session-log.md"))]
+def next_session(log_text: str, archive_text: str, state_text: str) -> int:
+    """One more than the newest session written up in session-log.md, its archive or state.md's
+    Continuity Archive. session_summary.py numbers a new session-log.md entry the same way."""
+    numbers = [int(n) for text in (log_text, archive_text, state_text) for n in _SESSION_HEADING.findall(text)]
     if numbers:
         return max(numbers) + 1
-    count = _SESSION_COUNT.search(_read(folder / "state.md"))
+    count = _SESSION_COUNT.search(state_text)
     return int(count.group(1)) + 1 if count else 1
+
+
+def session_number(folder: Path) -> int:
+    return next_session(*(_read(folder / name) for name in ("session-log.md", "session-log-archive.md", "state.md")))
+
+
+class Turns(NamedTuple):
+    number: int
+    text: str  # every section of that session, oldest first
+    mtime_ns: int
+
+
+def latest_session(folder: Path) -> "Turns | None":
+    """The newest session in turn-log.md. A long break splits one session into several sections."""
+    path = folder / LOG_NAME
+    try:
+        text, mtime_ns = path.read_text(encoding="utf-8"), path.stat().st_mtime_ns
+    except OSError:
+        return None
+    starts = list(_LOG_SECTION.finditer(text))
+    if not starts:
+        return None
+    number = int(starts[-1].group(1))
+    parts = [text[m.start():(starts[i + 1].start() if i + 1 < len(starts) else len(text))]
+             for i, m in enumerate(starts) if int(m.group(1)) == number]
+    return Turns(number, "\n".join(part.strip() for part in parts), mtime_ns)
 
 
 def world_date(folder: Path) -> str:

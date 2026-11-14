@@ -752,6 +752,7 @@ def test_a_failed_helper_summary_falls_back_to_the_dm(setup, monkeypatch):
     assert len(prompts) == 2
     for needle in ("could not write", "session-log.md", "### Recap", "## Story So Far", "Continuity Archive"):
         assert needle in prompts[1]
+    assert f"## Session {portal.session_summary.session_number(old)}" in prompts[1]
     assert "\n" not in prompts[1]
     assert not any(event[0] == "write" for event in events)
     log = Path(portal.session_summary.rt("session_summary.log")).read_text(encoding="utf-8")
@@ -794,6 +795,7 @@ def test_with_the_helper_off_the_dm_writes_the_summary(setup, monkeypatch):
     assert portal.handoff_state()["status"] == "complete"
     [prompt] = prompts
     assert "Write this session's entry in session-log.md with its Recap" in prompt
+    assert f"## Session {portal.session_summary.session_number(old)}" in prompt
 
 
 def test_a_model_switch_never_uses_the_helper(setup, monkeypatch):

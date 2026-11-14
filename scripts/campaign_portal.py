@@ -684,6 +684,7 @@ def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool, h
     stop_point = f"python3 {STOP_POINT} write --campaign {campaign}"
     record_stop = (f"Record where play stopped with {stop_point} --where \"<one line>\" --waiting \"<open question or "
                    "pending roll, if any>\", piping in your last several exchanges verbatim as DM-CORE section 12 says. ")
+    heading = f"## Session {session_summary.session_number(folder)}"
     if close and helper_summary:
         return (
             f"Finish your response, then wrap up this session of campaign {campaign} in {folder} without asking "
@@ -699,15 +700,16 @@ def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool, h
         return (
             f"Finish your response, then wrap up this session of campaign {campaign} in {folder} without asking "
             "anything: run the end procedure in no-questions mode, as DM-CORE section 12 says. Write this session's "
-            "entry in session-log.md with its Recap, refresh ## Story So Far, update state.md (in-world date, "
-            "Active Quests, Clocks, Next Hooks) and save every character sheet and the party roster. " + record_stop +
+            f"entry in session-log.md with its Recap under {heading}, refresh ## Story So Far, update state.md "
+            "(in-world date, Active Quests, Clocks, Next Hooks) and save every character sheet and the party roster. " + record_stop +
             "Rewrite state.md and session-log.md even if unchanged. Send no narration except the closing line. "
             f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
             "Then stop generating; the portal will close this session."
         )
     return (
         f"Finish your response, then quietly save campaign {campaign} in {folder}. "
-        "Checkpoint state.md, session-log.md, all character sheets and graph using the D&D save procedure. " +
+        f"Checkpoint state.md, session-log.md (this session is {heading}), all character sheets and graph using "
+        "the D&D save procedure. " +
         record_stop + "Rewrite state.md and session-log.md even if unchanged. Do not narrate or ask a question. "
         f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
         "Then stop generating and wait for the portal to start a fresh DM."
@@ -717,7 +719,8 @@ def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool, h
 def summary_fallback_prompt(campaign: str, folder: Path, acknowledge: str) -> str:
     return (
         "The notes helper could not write the session summary, so write it yourself now, without asking anything, "
-        f"for campaign {campaign} in {folder}: this session's entry in session-log.md with its ### Recap, a refreshed "
+        f"for campaign {campaign} in {folder}: this session's entry in session-log.md "
+        f"(## Session {session_summary.session_number(folder)}) with its ### Recap, a refreshed "
         "## Story So Far, and the session-log archival and Continuity Archive fold from the save procedure (DM-CORE "
         "section 15). Change nothing else and send no narration. Rewrite session-log.md even if unchanged. "
         f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
