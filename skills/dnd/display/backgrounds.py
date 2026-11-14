@@ -5,16 +5,16 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import signal
 import struct
 import subprocess
-import tempfile
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from runtime_paths import config_path, write_file
+from runtime_paths import config_path, scratch_dir, write_file
 from scene_engine import (  # noqa: F401  (re-exported for callers of backgrounds)
     ENVIRONMENTS, MOODS, SETTINGS, SceneContext, image_prompt as prompt_for,
 )
@@ -94,8 +94,9 @@ def valid_png(path: Path) -> bool:
 
 
 def render_local(job: SceneJob, config: LocalConfig) -> None:
-    with tempfile.TemporaryDirectory(prefix="render-", dir=job.path.parent) as temporary:
-        directory = Path(temporary)
+    # Rendered outside the runtime dir: the renderer would follow a link the DM put there.
+    directory = Path(scratch_dir(".image-render-"))
+    try:
         prompt = directory / "prompt.txt"
         prompt.write_text(prompt_for(job.setting, job.mood, config.reference is not None, config.density_map,
                                      job.scene), encoding="utf-8")
@@ -136,7 +137,9 @@ def render_local(job: SceneJob, config: LocalConfig) -> None:
         output = directory / ("edit.png" if config.reference else "source.png")
         if not valid_png(output):
             raise RuntimeError("local renderer did not produce a PNG")
-        output.replace(job.path)
+        write_file(job.path, output.read_bytes(), root=job.path.parent.parent)
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
 
 
 class BackgroundDirector:

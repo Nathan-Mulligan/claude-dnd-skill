@@ -388,3 +388,92 @@ def test_portal_launcher_log_is_not_written_through_a_link(tmp_path):
     assert result.returncode == 0, result.stderr
     assert target.read_text(encoding="utf-8") == "keep me"
     assert "campaign_portal.py" in (data / ".runtime" / "portal.log").read_text(encoding="utf-8")
+
+
+# ── Found in review: more work done outside the sandbox ──────────────────────
+
+@posix_only
+def test_graph_reader_run_by_the_help_button_never_backs_up_through_a_link(tmp_path):
+    import datetime
+    target = outside_file(tmp_path)
+    root = tmp_path / "data"
+    campaign = root / "campaigns" / "demo"
+    campaign.mkdir(parents=True)
+    (campaign / "graph.json").write_text("not json", encoding="utf-8")
+    now = datetime.datetime.now()
+    for second in range(30):
+        stamp = (now + datetime.timedelta(seconds=second)).strftime("%Y%m%d-%H%M%S")
+        (campaign / f"graph.json.corrupt-{stamp}").symlink_to(target)
+    env = dict(os.environ, DND_CAMPAIGN_ROOT=str(root))
+    subprocess.run([sys.executable, str(REPO / "skills/dnd/scripts/campaign_graph.py"), "scene-context",
+                    "--campaign", "demo", "--place", "x"], env=env, capture_output=True, text=True, timeout=30)
+    assert target.read_text(encoding="utf-8") == "keep me"
+    assert any(p.is_file() and not p.is_symlink() for p in campaign.glob("graph.json.corrupt-*"))
+
+
+@pytest.mark.parametrize("text", ["/add-dir /checkout", "!touch x", "  #remember this", "&run", "/permissions"])
+def test_portal_reply_can_never_be_a_cli_command(data_root, monkeypatch, text):
+    monkeypatch.setattr(portal, "prepare_display", lambda name, **kwargs: None)
+    monkeypatch.setattr(portal, "running", lambda: True)
+    monkeypatch.setattr(portal, "submit_to_dm", lambda reply: pytest.fail("must not reach the DM"))
+    app = portal.create_app()
+    client = app.test_client()
+    base = "http://127.0.0.1:5002"
+    import re
+    token = re.search(r'const token = "([^"]+)";', client.get("/", base_url=base).get_data(as_text=True)).group(1)
+    response = client.post("/api/send", base_url=base, json={"text": text},
+                           headers={"Origin": base, "X-DND-Portal-Token": token})
+    assert response.status_code == 400
+
+
+def test_music_renders_outside_the_runtime_dir_and_publishes_safely(tmp_path):
+    import wave
+    import music
+    music_dir = tmp_path / "runtime" / "music"
+    music_dir.mkdir(parents=True)
+    job = music.Job(1, "entry", "intro", "prompt", 10, 100, 2.0, music_dir / "entry-intro.wav")
+    outs = []
+
+    def render(cmd, **kwargs):
+        out = Path(cmd[cmd.index("--out") + 1])
+        outs.append(out)
+        with wave.open(str(out), "wb") as wav:
+            wav.setparams((2, 2, 44100, 0, "NONE", "not compressed"))
+            wav.writeframes(b"\0" * 1764)
+
+    from unittest import mock
+    with mock.patch.object(music.subprocess, "run", side_effect=render):
+        music.render_cli(job, Path("/fake/sa3"), None)
+    assert music_dir not in outs[0].parents
+    assert Path(os.environ["DND_CAMPAIGN_ROOT"]).resolve() in outs[0].parents
+    assert job.path.is_file() and not outs[0].parent.exists()
+
+
+def test_background_renders_outside_the_runtime_dir(tmp_path):
+    import backgrounds
+    from unittest import mock
+    shown = tmp_path / "runtime" / "backgrounds"
+    shown.mkdir(parents=True)
+    config = backgrounds.LocalConfig(Path(sys.executable), tmp_path / "runner.py", tmp_path)
+    job = backgrounds.SceneJob("a" * 32, "cave", "ominous", shown / "image.png")
+    used = []
+
+    def launch(command, **kwargs):
+        directory = Path(command[command.index("--output") + 1])
+        used.append(directory)
+        (directory / "source.png").write_bytes(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR" + (64).to_bytes(4, "big") * 2 + b"\0" * 32)
+        return mock.Mock(wait=mock.Mock(return_value=0))
+
+    with mock.patch.object(backgrounds.subprocess, "Popen", side_effect=launch):
+        backgrounds.render_local(job, config)
+    assert shown not in used[0].parents and not used[0].exists()
+    assert backgrounds.valid_png(job.path)
+
+
+def test_tls_files_live_in_the_data_root_not_the_runtime_dir():
+    setup_tls = load("_write_limits_setup_tls", DISPLAY / "setup_tls.py")
+    root = Path(os.environ["DND_CAMPAIGN_ROOT"]).resolve()
+    assert Path(setup_tls.CERT_FILE) == root / "tls" / "cert.pem"
+    assert Path(setup_tls.KEY_FILE) == root / "tls" / "key.pem"
+    script = (DISPLAY / "start-display.sh").read_text(encoding="utf-8")
+    assert '--directory "$TLS_DIR/public"' in script and '--directory "$RT"' not in script

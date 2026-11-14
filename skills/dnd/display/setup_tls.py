@@ -7,8 +7,9 @@ Run this once, or any time your LAN IP changes:
 
     python3 setup_tls.py
 
-Produces cert.pem + key.pem in the writable runtime dir (update-safe), so the
-cert survives plugin updates and devices don't have to re-trust it each time.
+Produces cert.pem + key.pem in <data root>/tls (update-safe), so the cert
+survives plugin updates and devices don't have to re-trust it each time. Not in
+the runtime dir: a sandboxed DM can write there.
 SANs cover: localhost, 127.0.0.1, and the current LAN IP (en0 / en1 / wlan0).
 
 After regenerating, restart the display:
@@ -25,9 +26,9 @@ from typing import List, Optional
 
 DISPLAY_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, DISPLAY_DIR)
-from runtime_paths import rt          # writable runtime dir (update-safe)
-CERT_FILE   = rt("cert.pem")
-KEY_FILE    = rt("key.pem")
+from runtime_paths import config_path, write_file
+CERT_FILE   = config_path(os.path.join("tls", "cert.pem"))
+KEY_FILE    = config_path(os.path.join("tls", "key.pem"))
 
 
 def _lan_ip() -> Optional[str]:
@@ -109,18 +110,12 @@ def _generate_cert(lan_ip: Optional[str]) -> None:
         .sign(key, hashes.SHA256())
     )
 
-    with open(KEY_FILE, "wb") as f:
-        f.write(
-            key.private_bytes(
-                serialization.Encoding.PEM,
-                serialization.PrivateFormat.TraditionalOpenSSL,
-                serialization.NoEncryption(),
-            )
-        )
-    with open(CERT_FILE, "wb") as f:
-        f.write(cert.public_bytes(serialization.Encoding.PEM))
-
-    os.chmod(KEY_FILE, 0o600)
+    write_file(KEY_FILE, key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption(),
+    ), mode=0o600)
+    write_file(CERT_FILE, cert.public_bytes(serialization.Encoding.PEM))
 
 
 def _generate_cert_openssl(lan_ip: Optional[str]) -> None:
@@ -145,6 +140,7 @@ def _generate_cert_openssl(lan_ip: Optional[str]) -> None:
 
 def main() -> None:
     lan_ip = _lan_ip()
+    os.makedirs(os.path.dirname(CERT_FILE), mode=0o700, exist_ok=True)
 
     print("DnD Display — TLS cert setup")
     print(f"  Output dir : {DISPLAY_DIR}")

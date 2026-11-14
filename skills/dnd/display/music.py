@@ -14,7 +14,6 @@ import re
 import secrets
 import shutil
 import subprocess
-import tempfile
 import threading
 import uuid
 import wave
@@ -24,7 +23,7 @@ from pathlib import Path
 from typing import Callable
 
 from music_filter import lowpass_wav
-from runtime_paths import write_file
+from runtime_paths import scratch_dir, write_file
 from scene_engine import (  # noqa: F401  (re-exported for callers of music)
     MOOD_PROFILES, MOODS, SETTING_ALIASES, SETTINGS, SceneContext, music_prompt as prompt_for, theme_mood,
 )
@@ -62,8 +61,8 @@ def runtime_config(config_path: Path) -> tuple[Path | None, Path | None]:
 
 
 def render_cli(job: Job, cli: Path, hf_home: Path | None) -> None:
-    # A fresh folder: the renderer and the filter would follow a link the DM put at a predictable name.
-    work = Path(tempfile.mkdtemp(prefix=".render-", dir=job.path.parent))
+    # Rendered outside the runtime dir: the renderer and the filter would follow a link the DM put there.
+    work = Path(scratch_dir(".music-render-"))
     temp_path = work / "partial.wav"
     env = os.environ.copy()
     env["PATH"] = "/opt/homebrew/bin:" + env.get("PATH", "")
@@ -87,7 +86,7 @@ def render_cli(job: Job, cli: Path, hf_home: Path | None) -> None:
             lowpass_wav(temp_path, filtered_path)
         except (wave.Error, EOFError, ValueError, ImportError) as exc:
             raise RuntimeError(f"music filtering failed: {type(exc).__name__}") from exc
-        filtered_path.replace(job.path)
+        write_file(job.path, filtered_path.read_bytes(), root=job.path.parent.parent)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

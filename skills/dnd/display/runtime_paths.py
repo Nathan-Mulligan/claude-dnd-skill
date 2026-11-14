@@ -60,6 +60,13 @@ def config_path(name: str) -> str:
     return os.path.join(os.path.realpath(os.path.expanduser(root)), name)
 
 
+def scratch_dir(prefix: str) -> str:
+    """A new private folder in the data root, for work that a sandboxed DM must not reach mid-way."""
+    root = config_path("")
+    os.makedirs(root, exist_ok=True)
+    return tempfile.mkdtemp(prefix=prefix, dir=root)
+
+
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _DIRECTORY = getattr(os, "O_DIRECTORY", 0)
 _DIR_FD = {os.open, os.mkdir, os.rename, os.unlink} <= os.supports_dir_fd and bool(_NOFOLLOW)

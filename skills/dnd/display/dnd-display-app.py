@@ -3418,11 +3418,11 @@ if __name__ == "__main__":
 
     host = "0.0.0.0" if _LAN_MODE else "localhost"
     # TLS — only enabled when --tls is explicitly passed; HTTP is the default.
-    # Certs are runtime state (persist across plugin updates) → rt(); .scheme is a
-    # launch-time marker read by simple shell commands → stays in the code dir.
+    # Certs live in <data root>/tls (start-display.sh, setup_tls.py), out of the DM's reach;
+    # .scheme is a launch-time marker read by simple shell commands → stays in the code dir.
     _display_dir = os.path.dirname(os.path.abspath(__file__))
-    _cert = rt("cert.pem")
-    _key  = rt("key.pem")
+    _cert = config_path(os.path.join("tls", "cert.pem"))
+    _key  = config_path(os.path.join("tls", "key.pem"))
     ssl_ctx = (_cert, _key) if (_TLS_MODE and os.path.exists(_cert) and os.path.exists(_key)) else None
     scheme  = "https" if ssl_ctx else "http"
 

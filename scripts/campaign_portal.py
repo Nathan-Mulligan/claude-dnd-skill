@@ -67,6 +67,7 @@ DM_CHOICES = {
     "qwen": DmChoice("qwen", "Qwen 3.6 35B", ()),
 }
 ALLOWED_PROVIDERS = set(DM_CHOICES)
+CLI_COMMAND_PREFIXES = set("/!#&")
 CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
 SESSION_LOCK = threading.RLock()
 HANDOFF_TIMEOUT = 180
@@ -763,7 +764,7 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
         requested_at_ns = time.time_ns()
         pending = {"token": token, "campaign": old_campaign, "session": list(session_identity(previous)),
                    "requested_at_ns": requested_at_ns}
-        write_private_json(request_path, pending)
+        write_file(request_path, json.dumps(pending), root=RUNTIME, mode=0o600, durable=True)
         command = shlex.join(["env", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", sys.executable,
                               str(REPO / "scripts/campaign_portal.py"), "--acknowledge-handoff", token])
         prompt = handoff_prompt(old_campaign, old_path, command, close)
@@ -1001,6 +1002,9 @@ def create_app() -> Flask:
         text = str(data.get("text", ""))
         if not text or len(text) > 3000 or any(c in text for c in "\r\n\x00"):
             return jsonify(ok=False, message="Enter one reply, up to 3000 characters."), 400
+        if text.lstrip()[:1] in CLI_COMMAND_PREFIXES:
+            # The DM can reach this route too; `/add-dir` or `!cmd` would act outside its sandbox.
+            return jsonify(ok=False, message="A reply can't start with / ! # or &."), 400
         with lock:
             if handoff_busy():
                 return jsonify(ok=False, message="The campaign is being saved. Your reply was not sent; wait for the model change."), 409
