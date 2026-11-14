@@ -281,6 +281,24 @@ def test_a_name_the_material_never_mentions_is_refused(tmp_path, monkeypatch):
         summary.prepare(folder, summary.display_mark(folder), ("codex", "m"))
 
 
+@pytest.mark.parametrize("apostrophe", ["’", "'"])
+def test_a_name_the_material_gives_only_in_the_possessive_is_not_invented(tmp_path, monkeypatch, apostrophe):
+    # A real close was refused: the material named someone only as "X’s yard" and the reply said "X".
+    state = STATE.replace("Sold the flour to Marta at 18 sp.", f"Paid the salt debt at Brannoch Tull{apostrophe}s yard.")
+    reply = dict(GOOD, recap=GOOD["recap"] + " They had also repaid Brannoch Tull.")
+    run(campaign(tmp_path, state=state), monkeypatch, reply)
+    assert "repaid Brannoch Tull." in read(tmp_path / "test", "session-log.md")
+
+
+def test_possessives_in_capitals_still_match():
+    assert summary.invented(["They paid at TULL'S yard and thanked Tull."], "the salt sat in TULL'S YARD") == []
+
+
+@pytest.mark.parametrize("apostrophe", ["’", "'"])
+def test_a_possessive_in_the_material_does_not_excuse_a_shortened_name(apostrophe):
+    assert summary.invented(["Mile waved them on."], f"They camped in Miles{apostrophe}s yard.") == ["Mile"]
+
+
 def test_ordinary_sentence_openers_are_not_mistaken_for_names(tmp_path, monkeypatch):
     folder = campaign(tmp_path)
     reply = dict(GOOD, recap="Meanwhile Elbane asked Corwin Ash about the toll. Afterwards they waited.")
