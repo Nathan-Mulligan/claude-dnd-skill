@@ -115,8 +115,13 @@ def delivery(tmp_path, monkeypatch):
     portal.META_FILE.write_text('{"campaign":"Fenmoor","mode":"resume"}', encoding="utf-8")
     sent = []
     result = {"code": 0}
-    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: (
-        sent.append(" ".join(args)), subprocess.CompletedProcess(args, result["code"], "", ""))[1])
+
+    def fake_run(*args, **kwargs):
+        if args[:2] == ("tmux", "load-buffer"):
+            sent.append(Path(args[-1]).read_text(encoding="utf-8"))
+        return subprocess.CompletedProcess(args, result["code"], "", "")
+
+    monkeypatch.setattr(portal, "run", fake_run)
     return campaign(tmp_path, flags="steer_after: 2"), sent, result
 
 
@@ -128,9 +133,9 @@ def reply(text="[Corin Ashby]: We haggle over the flour."):
 def test_portal_adds_the_nudge_to_the_stalled_turn(delivery):
     folder, sent, _ = delivery
     assert reply()
-    assert "DM steering" not in sent[-2]
+    assert "DM steering" not in sent[-1]
     assert reply()
-    assert "DM steering" in sent[-2] and "We haggle over the flour" in sent[-2]
+    assert "DM steering" in sent[-1] and "We haggle over the flour" in sent[-1]
 
 
 def test_failed_delivery_does_not_count_a_turn(delivery):
@@ -152,7 +157,7 @@ def test_reply_still_reaches_the_dm_when_steering_breaks(delivery, monkeypatch):
     folder, sent, _ = delivery
     monkeypatch.setattr(portal.turn_card.arc_pulse, "plan", lambda folder, text="": 1 / 0)
     assert reply()
-    assert "We haggle over the flour" in sent[-2]
+    assert "We haggle over the flour" in sent[-1]
 
 
 def test_steering_notes_location_and_hooks_lead_the_directive(tmp_path):

@@ -313,9 +313,22 @@ def test_save_request_is_submitted_only_after_visible_probe(setup, monkeypatch):
     monkeypatch.setattr(portal, "run", fake_run)
     monkeypatch.setattr(portal.time, "sleep", lambda _: None)
     portal.send_checkpoint_request(prompt)
-    assert [args[1] for args in calls] == ["send-keys", "capture-pane", "send-keys"]
+    assert [args[1] for args in calls] == ["load-buffer", "paste-buffer", "capture-pane", "send-keys"]
     assert calls[-1][-1] == "Enter"
 
+
+def test_save_request_to_a_closed_pane_fails_without_enter(setup, monkeypatch):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 1 if args[1] == "paste-buffer" else 0, "", "")
+
+    monkeypatch.setattr(portal, "run", fake_run)
+    with pytest.raises(ValueError, match="save"):
+        portal.send_checkpoint_request("Save this campaign and wait for the next DM.")
+    assert not any(args[-1] == "Enter" for args in calls)
+    assert any(args[1] == "delete-buffer" for args in calls)
 
 def test_acknowledgement_cli_checks_files_without_starting_portal(setup):
     old, previous, _, _, _ = setup
@@ -341,7 +354,7 @@ def test_pending_party_reply_prevents_switch(setup):
     assert response.status_code == 409
     assert "queued" in response.json["message"]
     assert alive["value"]
-    assert not any(args[:2] == ("tmux", "send-keys") for args in calls)
+    assert not any(args[1] in {"send-keys", "paste-buffer"} for args in calls)
 
 
 def test_party_reply_during_save_keeps_original_running(setup, monkeypatch):
