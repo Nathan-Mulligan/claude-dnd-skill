@@ -7,7 +7,9 @@ does not have to.
 
 How it runs
   push_stats.py calls `kick()` whenever the DM pushes --factions or --quests.
-  `kick()` starts this file detached and returns at once; the DM never waits.
+  `kick()` only leaves a request (helper_jobs.py) and returns at once; the DM
+  never waits. The display server then starts this file, outside the DM's
+  sandbox, where the Codex CLI can run.
   The run fingerprints the displayed names and statuses plus the party-known
   sections of the campaign's state.md. It calls the model only when that
   fingerprint has changed, so ordinary narration costs nothing.
@@ -547,13 +549,12 @@ def run(settle_s: float = 2.0, max_passes: int = 3) -> str:
 
 
 def kick() -> None:
-    """Start a sync pass in the background. Never raises, never blocks."""
+    """Ask the display to run a sync pass (helper_jobs.py). Never raises, never blocks."""
     try:
         if choose_model() is None:
             return
-        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--run"],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        import helper_jobs
+        helper_jobs.request("lore_sync")
     except Exception as e:  # noqa: BLE001 — must never break the DM's push
         log(f"kick failed: {e}")
 
