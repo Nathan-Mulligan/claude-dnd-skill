@@ -88,6 +88,28 @@ def test_npc_named_in_the_party_input_is_listed_with_attitude(fenmoor):
     assert "People here: Bram Tully (jumpy, over-polite; unfriendly)" in text
 
 
+def test_npc_is_matched_by_their_name_not_a_title_or_role_word(fenmoor):
+    # #141: a first word such as "Captain" or "Warden" put the person on the card whenever it came up.
+    (fenmoor / "npcs.md").write_text(
+        "| Name | Role | Attitude |\n|---|---|---|\n| Captain Odell Marsh | Barge captain | wary |\n"
+        "| Warden rider | Road patrol | curt |\n| Sister Yara | Shrine keeper | kind |\n", encoding="utf-8")
+    for line in ("[Wren Talley]: I ask the Captain of the next barge for passage.",
+                 "[Wren Talley]: Is the Warden post open today?",
+                 "[Wren Talley]: My sister would love this town."):
+        assert "People here" not in card(fenmoor, line), line
+    assert "People here: Captain Odell Marsh (Barge captain; wary)" in card(fenmoor, "[Wren Talley]: We wave to Odell.")
+    assert "People here: Captain Odell Marsh" in card(fenmoor, "[Wren Talley]: Captain Odell Marsh, a word?")
+    assert "People here: Sister Yara (Shrine keeper; kind)" in card(fenmoor, "[Wren Talley]: I find Yara at the shrine.")
+    assert "People here: Warden rider (Road patrol; curt)" in card(fenmoor, "[Wren Talley]: We hail the warden rider.")
+
+
+def test_a_name_part_two_people_share_lists_neither(fenmoor):
+    (fenmoor / "npcs.md").write_text(
+        "| Name | Role |\n|---|---|\n| Captain Odell Marsh | Barge captain |\n| Odell Pike | Ferryman |\n", encoding="utf-8")
+    assert "People here" not in card(fenmoor, "[Wren Talley]: We wave to Odell.")
+    assert "People here: Odell Pike (Ferryman)" in card(fenmoor, "[Wren Talley]: We wave to Odell Pike.")
+
+
 def test_npc_saved_by_the_oracle_shows_temperament_and_want(fenmoor):
     oracle_spec = importlib.util.spec_from_file_location("oracle_for_card", REPO / "skills/dnd/scripts/oracle.py")
     oracle = importlib.util.module_from_spec(oracle_spec)

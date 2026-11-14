@@ -29,6 +29,14 @@ RULES = (
 ROLL_MODES = {"auto": "you roll openly", "players": "players roll (call for the roll and wait)"}
 CLOCK_WINDOW = 2
 MAX_NPCS = 3
+# Words that open a name without telling two people apart (#141): "Captain" or "Warden" comes up in play
+# far more often than the person it heads.
+TITLES = frozenset("""
+    abbess abbot aunt bailiff baron baroness bishop brother captain chief commander constable count countess
+    dame doctor duchess duke elder father general granny guard high king lady lieutenant lord madam madame
+    magister magistrate master mayor mistress mother old priest priestess prince princess queen reeve saint
+    sergeant sheriff sister steward uncle warden young
+""".split())
 PREP_SCRIPT = Path(__file__).resolve().parents[1] / "skills/dnd/scripts/turn_prep.py"
 PREP_TIMEOUT = 5
 
@@ -172,11 +180,20 @@ def _npc_entries(npcs: str) -> dict[str, dict]:
     return entries
 
 
-def _mentioned(name: str, text: str, first_names: dict[str, int]) -> bool:
+def _given_name(name: str) -> str:
+    """The part of an entry's name a mention would use: the first capitalised word that isn't a title."""
+    for word in name.split():
+        word = word.strip(".,'’\"()")
+        if len(word) >= 4 and word[0].isupper() and word.lower() not in TITLES:
+            return word
+    return ""
+
+
+def _mentioned(name: str, text: str, given_names: dict[str, int]) -> bool:
     if re.search(rf"\b{re.escape(name)}\b", text, re.IGNORECASE):
         return True
-    first = name.split()[0]
-    return len(first) >= 4 and first_names.get(first.lower()) == 1 and bool(re.search(rf"\b{re.escape(first)}\b", text))
+    given = _given_name(name)
+    return bool(given) and given_names.get(given.lower()) == 1 and bool(re.search(rf"\b{re.escape(given)}\b", text))
 
 
 def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
@@ -184,12 +201,13 @@ def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
     if not entries:
         return ""
     scene = " ".join((arc_pulse.location(state), field(state, "Current Situation", "Party status"), party_input))
-    first_names: dict[str, int] = {}
+    given_names: dict[str, int] = {}
     for name in entries:
-        first_names[name.split()[0].lower()] = first_names.get(name.split()[0].lower(), 0) + 1
+        given = _given_name(name).lower()
+        given_names[given] = given_names.get(given, 0) + 1
     present = []
     for name, info in entries.items():
-        if not _mentioned(name, scene, first_names):
+        if not _mentioned(name, scene, given_names):
             continue
         attitude = info.get("attitude", "")
         nature = info.get("temperament") or info.get("demeanor") or info.get("role") or info.get("summary", "")
