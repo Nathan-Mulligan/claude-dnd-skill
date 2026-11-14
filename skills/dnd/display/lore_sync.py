@@ -29,7 +29,8 @@ Which model
   qwen (local Ollama). Subscriptions and local models only, never an API key.
   Environment overrides win over the saved choice: DND_LORE_SYNC=0 switches
   the helper off; DND_LORE_MODEL names a choice above, or any other Codex
-  model name.
+  model name. Codex runs from ~/.local/bin/codex when that exists, else from
+  PATH.
 """
 import hashlib
 import json
@@ -296,19 +297,54 @@ CAMPAIGN NOTES (party-known sections only):
 """
 
 
+def _codex_bin() -> str:
+    # The M5 also has an older Homebrew codex that rejects current models, so
+    # the result must not depend on the PATH order of whoever started this run.
+    local = Path.home() / ".local" / "bin" / "codex"
+    return str(local) if local.is_file() and os.access(local, os.X_OK) else "codex"
+
+
+def _tail(text: "str | None", prompt: str = "") -> str:
+    """The last stderr line, and the one before it if both fit in 300 characters.
+    Lines of the prompt are skipped, because codex echoes it."""
+    echoed = {line.strip() for line in prompt.splitlines()}
+    picked = []
+    for line in reversed((text or "").splitlines()):
+        line = line.strip()[:300]
+        if not line or line in echoed or line in picked:
+            continue
+        if picked and len(line) + 3 + len(picked[0]) > 300:
+            break
+        picked.append(line)
+        if len(picked) == 2:
+            break
+    return " | ".join(reversed(picked)) or "no error output"
+
+
+def failure_reason(e: BaseException) -> str:
+    """One short log line. Never the command, which carries the prompt."""
+    if isinstance(e, subprocess.TimeoutExpired):
+        return f"{Path(e.cmd[0]).name} timed out after {e.timeout:g}s"
+    if isinstance(e, subprocess.CalledProcessError):
+        return f"{Path(e.cmd[0]).name} exited {e.returncode}: {_tail(e.stderr)}"
+    return f"{type(e).__name__}: {e}"[:300]
+
+
 def _ask_codex(prompt: str, model: str) -> object:
     with tempfile.TemporaryDirectory(prefix="lore_sync.") as work:
         schema = Path(work, "schema.json")
         out = Path(work, "out.json")
         schema.write_text(json.dumps(_SCHEMA), encoding="utf-8")
-        cmd = ["codex", "exec", "-m", model, "-c", 'model_reasoning_effort="low"',
+        cmd = [_codex_bin(), "exec", "-m", model, "-c", 'model_reasoning_effort="low"',
                "--ignore-user-config", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
                "-s", "read-only", "-C", work, "--output-schema", str(schema),
                "-o", str(out), prompt]
         env = dict(os.environ, AGENT_TASK="1")
-        subprocess.run(cmd, cwd=work, env=env, stdin=subprocess.DEVNULL,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                       timeout=MODEL_TIMEOUT_S, check=True)
+        done = subprocess.run(cmd, cwd=work, env=env, stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=MODEL_TIMEOUT_S, check=False)
+        if done.returncode:
+            raise RuntimeError(f"codex exited {done.returncode}: {_tail(done.stderr, prompt)}")
         return json.loads(out.read_text(encoding="utf-8"))
 
 
@@ -524,6 +560,6 @@ if __name__ == "__main__":
         try:
             log("run: " + run())
         except Exception as e:  # noqa: BLE001
-            log(f"run failed: {type(e).__name__}: {e}")
+            log("run failed: " + failure_reason(e))
     else:
         print(__doc__)

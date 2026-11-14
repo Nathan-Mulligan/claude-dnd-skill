@@ -458,3 +458,114 @@ def test_lore_endpoint_accepts_a_list_of_earlier_helper_notes(display):
     assert r.status_code == 204
     f = {x["name"]: x for x in module._current_stats["factions"]}
     assert f["Wardens"]["detail"] == "new"
+
+
+# ── codex binary and failure log ─────────────────────────────────────────────
+
+LUNA_REJECTED = ('ERROR: {"type":"error","status":400,"error":{"message":'
+                 '"The \'gpt-6-luna\' model is not supported when using Codex with a ChatGPT account."}}')
+
+
+def fake_cli(returncode=0, stderr="", reply=GOOD, seen=None):
+    """Behaves like subprocess.run: stderr reaches the caller only when captured."""
+    def run(cmd, **kw):
+        if seen is not None:
+            seen.update(cmd=cmd, **kw)
+        if "-o" in cmd and reply is not None:
+            Path(cmd[cmd.index("-o") + 1]).write_text(json.dumps(reply), encoding="utf-8")
+        captured = kw.get("capture_output") or kw.get("stderr") == lore_sync.subprocess.PIPE
+        err = (stderr if kw.get("text") else stderr.encode("utf-8")) if captured else None
+        out = ("" if kw.get("text") else b"") if captured else None
+        if kw.get("check") and returncode:
+            raise lore_sync.subprocess.CalledProcessError(returncode, cmd, out, err)
+        return lore_sync.subprocess.CompletedProcess(cmd, returncode, out, err)
+    return run
+
+
+def home_with_codex(monkeypatch, tmp_path, executable=True):
+    local = tmp_path / ".local" / "bin" / "codex"
+    local.parent.mkdir(parents=True)
+    local.write_text("#!/bin/sh\n", encoding="utf-8")
+    local.chmod(0o755 if executable else 0o644)
+    monkeypatch.setattr(lore_sync.Path, "home", lambda: tmp_path)
+    return local
+
+
+def test_codex_uses_the_local_bin_copy_when_present(monkeypatch, tmp_path):
+    local = home_with_codex(monkeypatch, tmp_path)
+    seen = {}
+    monkeypatch.setattr(lore_sync.subprocess, "run", fake_cli(seen=seen))
+    assert lore_sync.ask_model("p", ("codex", "gpt-6-luna")) == GOOD
+    assert seen["cmd"][0] == str(local)
+
+
+def test_codex_falls_back_to_path_without_a_local_copy(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync.Path, "home", lambda: tmp_path)
+    seen = {}
+    monkeypatch.setattr(lore_sync.subprocess, "run", fake_cli(seen=seen))
+    assert lore_sync.ask_model("p", ("codex", "gpt-6-luna")) == GOOD
+    assert seen["cmd"][0] == "codex"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="no execute bit on Windows")
+def test_codex_ignores_a_local_copy_that_cannot_run(monkeypatch, tmp_path):
+    home_with_codex(monkeypatch, tmp_path, executable=False)
+    seen = {}
+    monkeypatch.setattr(lore_sync.subprocess, "run", fake_cli(seen=seen))
+    lore_sync.ask_model("p", ("codex", "gpt-6-luna"))
+    assert seen["cmd"][0] == "codex"
+
+
+def test_failed_codex_call_logs_the_reason_not_the_prompt(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync.Path, "home", lambda: tmp_path)
+    prompt = "SECRET-PROMPT line one\nSECRET-PROMPT line two"
+    stderr = (f"OpenAI Codex v0.140.0-alpha.19\n--------\nmodel: gpt-6-luna\n--------\nuser\n{prompt}\n"
+              f"warning: Model metadata for `gpt-6-luna` not found.\n{LUNA_REJECTED}\n{LUNA_REJECTED}\n")
+    monkeypatch.setattr(lore_sync.subprocess, "run", fake_cli(returncode=1, stderr=stderr, reply=None))
+    with pytest.raises(Exception) as caught:
+        lore_sync.ask_model(prompt, ("codex", "gpt-6-luna"))
+    reason = lore_sync.failure_reason(caught.value)
+    assert "is not supported when using Codex" in reason and "exited 1" in reason
+    assert "SECRET-PROMPT" not in reason and "--output-schema" not in reason
+    assert reason.count("is not supported") == 1 and len(reason) <= 400
+
+
+def test_codex_prompt_lines_never_reach_the_log_even_at_the_end(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync.Path, "home", lambda: tmp_path)
+    prompt = "SECRET-PROMPT notes\nSECRET-PROMPT last line"
+    monkeypatch.setattr(lore_sync.subprocess, "run",
+                        fake_cli(returncode=1, stderr=f"user\n{prompt}\n", reply=None))
+    with pytest.raises(Exception) as caught:
+        lore_sync.ask_model(prompt, ("codex", "gpt-6-luna"))
+    reason = lore_sync.failure_reason(caught.value)
+    assert "SECRET-PROMPT" not in reason and "exited 1" in reason
+
+
+def test_failed_claude_call_log_line_is_short(monkeypatch):
+    monkeypatch.setattr(lore_sync.subprocess, "run", fake_cli(returncode=1, stderr="Not logged in\n"))
+    with pytest.raises(Exception) as caught:
+        lore_sync.ask_model("SECRET-PROMPT", ("claude", "haiku"))
+    reason = lore_sync.failure_reason(caught.value)
+    assert "Not logged in" in reason and "--system-prompt" not in reason and "SECRET-PROMPT" not in reason
+
+
+def test_long_warning_never_crowds_out_the_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(lore_sync.Path, "home", lambda: tmp_path)
+    warning = "warning: Skill descriptions were shortened to fit the context budget. " * 3
+    monkeypatch.setattr(lore_sync.subprocess, "run",
+                        fake_cli(returncode=1, stderr=f"{warning}\n{LUNA_REJECTED}\n", reply=None))
+    with pytest.raises(Exception) as caught:
+        lore_sync.ask_model("p", ("codex", "gpt-6-luna"))
+    reason = lore_sync.failure_reason(caught.value)
+    assert reason.endswith(LUNA_REJECTED) and len(reason) <= 400
+
+
+def test_timeout_log_line_is_short():
+    e = lore_sync.subprocess.TimeoutExpired(["codex", "exec", "SECRET-PROMPT " * 500], 180)
+    reason = lore_sync.failure_reason(e)
+    assert "180" in reason and "SECRET-PROMPT" not in reason and len(reason) <= 400
+
+
+def test_other_failures_are_cut_short():
+    reason = lore_sync.failure_reason(ValueError("x" * 5000))
+    assert reason.startswith("ValueError: ") and len(reason) <= 400
