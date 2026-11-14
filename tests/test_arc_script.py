@@ -127,3 +127,44 @@ def test_write_refuses_when_state_changed_underneath(tmp_path):
         arc._write_state(path, "new text", "an older read")
     assert path.read_text(encoding="utf-8") == STATE
     assert [p.name for p in tmp_path.iterdir()] == ["state.md"]
+
+
+def _fake_python(folder):
+    python = folder / "bin" / "python3"
+    python.parent.mkdir(parents=True)
+    python.write_text("#!/bin/sh\n", encoding="utf-8")
+    python.chmod(0o755)
+    return python
+
+
+def test_without_pyyaml_it_reruns_under_the_display_python(monkeypatch, tmp_path):
+    # A Codex DM's commands run in a login shell, which puts a python3 without PyYAML first on PATH.
+    venv = _fake_python(tmp_path / "venv")
+    monkeypatch.setattr(arc, "yaml", None)
+    monkeypatch.setenv("DND_VENV", str(tmp_path / "venv"))
+    monkeypatch.delenv("DND_ARC_REEXEC", raising=False)
+    calls = []
+    monkeypatch.setattr(arc.os, "execve", lambda path, argv, env: calls.append((path, argv, env)))
+    arc.main(["status", "--campaign", "Fenmoor"])
+    assert calls and calls[0][0] == str(venv)
+    assert calls[0][1][1:] == [str(SCRIPT), "status", "--campaign", "Fenmoor"]
+    assert calls[0][2]["DND_ARC_REEXEC"] == "1"
+
+
+def test_without_pyyaml_anywhere_it_says_so_once(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(arc, "yaml", None)
+    monkeypatch.setenv("DND_VENV", str(tmp_path / "missing"))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(tmp_path / "data"))
+    monkeypatch.setattr(arc.os, "execve", lambda *a: pytest.fail("no other python to run"))
+    assert arc.main(["status", "--campaign", "Fenmoor"]) == 1
+    assert "PyYAML" in capsys.readouterr().err
+
+
+def test_a_rerun_never_reruns_again(monkeypatch, tmp_path):
+    _fake_python(tmp_path / "venv")
+    monkeypatch.setattr(arc, "yaml", None)
+    monkeypatch.setenv("DND_VENV", str(tmp_path / "venv"))
+    monkeypatch.setenv("DND_ARC_REEXEC", "1")
+    monkeypatch.setattr(arc.os, "execve", lambda *a: pytest.fail("ran again"))
+    assert arc.main(["status", "--campaign", "Fenmoor"]) == 1

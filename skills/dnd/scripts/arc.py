@@ -229,6 +229,25 @@ def _write_state(path: Path, text: str, expected: str) -> None:
             os.unlink(tmp)
 
 
+def _rerun_with_pyyaml(argv: list) -> None:
+    """Run again under the display's Python, which has PyYAML, when this one lacks it.
+
+    A Codex DM's commands run in a login shell, which puts a python3 without PyYAML ahead of the
+    display's virtualenv on PATH. Same search order as scripts/play-local.sh. Returns if none is found.
+    """
+    if os.environ.get("DND_ARC_REEXEC") == "1":
+        return
+    root = Path(os.environ.get("DND_CAMPAIGN_ROOT", "").strip() or "~/.claude/dnd").expanduser()
+    for venv in (os.environ.get("DND_VENV", ""), "~/.local/share/dnd/venv", str(root / ".venv")):
+        if not venv or Path(venv).expanduser().resolve() == Path(sys.prefix).resolve():
+            continue
+        python = Path(venv).expanduser() / "bin" / "python3"
+        if os.access(python, os.X_OK):
+            os.execve(str(python), [str(python), os.path.abspath(__file__), *argv],
+                      {**os.environ, "DND_ARC_REEXEC": "1"})
+            return
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -243,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
             cmd.add_argument("--steering")
     args = parser.parse_args(argv)
     if yaml is None:
+        _rerun_with_pyyaml(sys.argv[1:] if argv is None else argv)
         print("arc.py needs PyYAML (pip install pyyaml).", file=sys.stderr)
         return 1
     from paths import find_campaign
