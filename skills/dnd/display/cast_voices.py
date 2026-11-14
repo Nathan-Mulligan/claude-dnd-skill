@@ -137,37 +137,46 @@ def repair(raw: dict, *, narrator: str, party: Iterable[str], pool: Iterable[str
     Player characters and the narrator keep their voices, and no NPC may share
     them. Of the NPCs sharing a voice, the one cast first (earliest in the file)
     keeps it. Each of the others gets an unused voice of the same gender, then
-    an unused same-gender blend. Returns (cast, sources, changes), where each
-    change is (name, old voice, new voice).
+    an unused same-gender blend. Returns (cast, sources, changes, unresolved):
+    each change is (name, old voice, new voice); unresolved lists the names
+    still clashing because no voice was left.
     """
     cast = voices(raw)
     src = sources(raw)
     pcs = {cast_key(cast, p) for p in party if p}
-    taken = {narrator} if narrator else set()
-    taken |= {cast[k] for k in pcs if k in cast}
-    own = set(taken)          # nobody's blend may contain these either
+    protected = ([narrator] if narrator else []) + [cast[k] for k in pcs if k in cast]
+    taken = {_canon(v) for v in protected}
+    # No blend may borrow the narrator's or a player character's voice.
+    own = {part for v in protected for part in v.split("+")}
     keep = set(pcs)
     for name, voice in cast.items():
-        if name not in keep and voice not in taken:
+        if name not in keep and _canon(voice) not in taken:
             keep.add(name)
-            taken.add(voice)
+            taken.add(_canon(voice))
     pool = list(dict.fromkeys(v for v in pool if v))
-    changes = []
+    free = lambda vs: [v for v in vs if _canon(v) not in taken]
+    changes, unresolved = [], []
     for name, voice in cast.items():
         if name in keep:
             continue
         gender = voice_gender(voice, male, female)
         same = [v for v in pool if voice_gender(v, male, female) == gender] or pool
-        new = (pick_voice(name, [v for v in same if v not in taken])
-               or pick_voice(name, [v for v in blends(v for v in same if v not in own) if v not in taken])
-               or pick_voice(name, [v for v in blends(v for v in pool if v not in own) if v not in taken]))
+        new = (pick_voice(name, free(v for v in same if v not in own))
+               or pick_voice(name, free(blends(v for v in same if v not in own)))
+               or pick_voice(name, free(blends(v for v in pool if v not in own))))
         if not new:
+            unresolved.append(name)
             continue
         cast[name] = new
         src[name] = AUTO
-        taken.add(new)
+        taken.add(_canon(new))
         changes.append((name, voice, new))
-    return cast, src, changes
+    return cast, src, changes, unresolved
+
+
+def _canon(voice: str) -> str:
+    """One spelling per blend: "bf_emma+bf_alice" and "bf_alice+bf_emma" are the same voice."""
+    return "+".join(sorted(str(voice).split("+")))
 
 
 def _campaign_party(folder: Path) -> list:
@@ -180,7 +189,13 @@ def _campaign_party(folder: Path) -> list:
         pass
     sheets = folder / "characters"
     if sheets.is_dir():
-        names += [p.stem.replace("-", " ") for p in sorted(sheets.glob("*.md"))]
+        for sheet in sorted(sheets.glob("*.md")):
+            try:
+                first = sheet.read_text(encoding="utf-8", errors="replace").lstrip().splitlines()[:1]
+            except OSError:
+                first = []
+            heading = first[0][2:] if first and first[0].startswith("# ") else ""
+            names.append(heading or sheet.stem.replace("-", " "))
     return [n.strip().lower() for n in names if n.strip()]
 
 
@@ -209,30 +224,41 @@ def main(argv=None) -> int:
 
     folder = Path(args.campaign).expanduser()
     path = folder / "cast.json"
+    try:
+        before = path.read_text(encoding="utf-8")
+    except OSError:
+        before = ""
     raw = read_raw(path)
-    if not raw:
+    if not voices(raw):
         print(f"No cast.json with voices in {folder}")
         return 1
-    narrator = _campaign_narrator(folder, tts.LOCAL_DEFAULT_VOICE)
+    gemini = any(v in tts.GEMINI_VALID_VOICES for v in voices(raw).values())
+    narrator = _campaign_narrator(folder, tts.GEMINI_DEFAULT_VOICE if gemini else tts.LOCAL_DEFAULT_VOICE)
     if narrator in tts.GEMINI_VALID_VOICES:
         male, female = tts.GEMINI_VOICES_MALE, tts.GEMINI_VOICES_FEMALE
     else:
         male, female = tts.LOCAL_VOICES_MALE, tts.LOCAL_VOICES_FEMALE
-    cast, src, changes = repair(raw, narrator=narrator, party=_campaign_party(folder),
-                                pool=list(male) + list(female), male=male, female=female)
-    if not changes:
-        print("No clashing voices. Nothing to change.")
-        return 0
+    cast, src, changes, unresolved = repair(
+        raw, narrator=narrator, party=_campaign_party(folder),
+        pool=list(male) + list(female), male=male, female=female)
     for name, old, new in changes:
         print(f"{name}: {old} -> {new}")
+    for name in unresolved:
+        print(f"{name}: still clashing, no free voice left")
+    if not changes:
+        print("Nothing to change." if not unresolved else "No free voices to fix the clashes above.")
+        return 1 if unresolved else 0
     if not args.write:
         print("Dry run. Add --write to save.")
-        return 0
+        return 1 if unresolved else 0
+    if path.read_text(encoding="utf-8") != before:
+        print("cast.json changed while this ran (is a game in progress?). Nothing saved; run it again.")
+        return 1
     backup = path.with_name(f"cast.json.before-repair-{time.strftime('%Y%m%d-%H%M%S')}")
-    backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    backup.write_text(before, encoding="utf-8")
     write_raw(path, cast, src, raw.get("_comment"))
     print(f"Saved. The old file is {backup.name}.")
-    return 0
+    return 1 if unresolved else 0
 
 
 if __name__ == "__main__":

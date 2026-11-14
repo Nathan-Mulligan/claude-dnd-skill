@@ -48,13 +48,13 @@ def _repair(raw=None, party=PARTY, narrator="bm_fable"):
 
 
 def test_every_speaker_ends_up_with_a_different_voice():
-    cast, _, _ = _repair()
+    cast, _, _, _ = _repair()
     assert len(set(cast.values())) == len(cast)
     assert "bm_fable" not in cast.values()
 
 
 def test_only_the_clashing_npcs_change():
-    cast, src, changes = _repair()
+    cast, src, changes, _ = _repair()
     changed = {name for name, _, _ in changes}
     assert changed == {"bera holt", "jessa pike", "meren vale", "disarmed bandit"}
     for name, voice in CLASHING.items():
@@ -65,19 +65,19 @@ def test_only_the_clashing_npcs_change():
 
 def test_player_characters_keep_their_voice_even_when_cast_later():
     raw = {"jessa pike": "bf_emma", "nella reed": "bf_emma"}
-    cast, _, changes = _repair(raw)
+    cast, _, changes, _ = _repair(raw)
     assert cast["nella reed"] == "bf_emma"
     assert [c[0] for c in changes] == ["jessa pike"]
 
 
 def test_an_npc_on_the_narrator_voice_is_moved():
-    cast, _, changes = _repair({"old tam": "bm_fable"})
+    cast, _, changes, _ = _repair({"old tam": "bm_fable"})
     assert cast["old tam"] != "bm_fable"
     assert changes[0][0] == "old tam"
 
 
 def test_new_voices_keep_the_gender_and_use_blends_when_plain_ones_run_out():
-    cast, _, changes = _repair()
+    cast, _, changes, _ = _repair()
     for name, old, new in changes:
         assert cast_voices.voice_gender(new) == cast_voices.voice_gender(old), (name, new)
     # every plain female voice is held by someone who keeps it, so the
@@ -87,14 +87,14 @@ def test_new_voices_keep_the_gender_and_use_blends_when_plain_ones_run_out():
 
 
 def test_no_blend_borrows_the_narrator_or_a_player_character():
-    _, _, changes = _repair()
+    _, _, changes, _ = _repair()
     for name, _, new in changes:
         parts = set(new.split("+"))
         assert not parts & {"bm_fable", "bm_lewis", "bf_emma"}, (name, new)
 
 
 def test_a_cast_without_clashes_is_left_alone():
-    _, _, changes = _repair({"mara venn": "bf_alice", "tovin pell": "bm_george"})
+    _, _, changes, _ = _repair({"mara venn": "bf_alice", "tovin pell": "bm_george"})
     assert changes == []
 
 
@@ -120,3 +120,27 @@ def test_the_command_only_writes_with_write_and_keeps_a_backup(tmp_path, capsys)
 
     assert cast_voices.main(["repair", str(camp), "--write"]) == 0
     assert "Nothing to change" in capsys.readouterr().out.splitlines()[-1]
+
+
+def test_a_player_blend_is_not_handed_out_spelled_the_other_way():
+    raw = {"nella reed": "bf_emma+bf_alice", "a": "af_heart", "b": "af_sky", "c": "af_bella",
+           "d": "bf_alice", "jessa pike": "af_heart"}
+    cast, _, changes, _ = _repair(raw, party=["Nella Reed"])
+    canon = ["+".join(sorted(v.split("+"))) for v in cast.values()]
+    assert len(set(canon)) == len(canon)
+    assert not any({"bf_emma", "bf_alice"} & set(new.split("+")) for _, _, new in changes if "+" in new)
+
+
+def test_clashes_with_no_voice_left_are_reported_not_hidden():
+    pool = ["bm_fable", "bm_george"]
+    _, _, changes, unresolved = cast_voices.repair(
+        {"x": "bm_george", "y": "bm_george"}, narrator="bm_fable", party=[], pool=pool,
+        male=pool, female=[])
+    assert changes == [] and unresolved == ["y"]
+
+
+def test_the_player_name_comes_from_the_sheet_heading(tmp_path):
+    camp = tmp_path / "C"
+    (camp / "characters").mkdir(parents=True)
+    (camp / "characters" / "ka-el.md").write_text("# Ka-El\n", encoding="utf-8")
+    assert cast_voices._campaign_party(camp) == ["ka-el"]
