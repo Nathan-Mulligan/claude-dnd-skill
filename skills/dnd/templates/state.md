@@ -21,7 +21,11 @@
   - <Faction Name>: <one-line>
 
 ## Active Quests
+*The sidebar shows these as written, party-known only. One bullet each: `- **Short name** (active|threat|resolved|failed): what the party knows`*
 *(none yet)*
+
+## Faction Standings
+*Factions the party has dealt with, shown in the sidebar. One bullet each: `- **Faction**: Standing — what the party knows` (Allied, Friendly, Neutral, Suspicious, Hostile)*
 
 ## Open Threads & Rumours
 
