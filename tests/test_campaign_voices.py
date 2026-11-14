@@ -275,3 +275,106 @@ def test_page_takes_cast_updates_from_the_stream():
     app = (DISPLAY / 'dnd-display-app.py').read_text(encoding='utf-8')
     stream = app[app.index('def stream():'):app.index('replay_batch', app.index('def stream():'))]
     assert '"cast"' in stream
+
+
+# ── A DM-chosen voice another speaker already has (issue #129) ─────────────
+
+def _gender(voice):
+    sys.path.insert(0, str(DISPLAY))
+    import cast_voices
+    return cast_voices.voice_gender(voice)
+
+
+def _canon(voice):
+    return '+'.join(sorted(voice.split('+')))
+
+
+def test_a_new_npc_given_a_companions_voice_gets_a_free_one_of_the_same_gender(cast_display):
+    module, client, sent = cast_display
+    with module._stats_lock:
+        module._current_stats['players'] = [{'name': 'Corin Ash'}]
+    client.post('/cast', json={'name': 'Corin Ash', 'voice': 'bm_george'})
+    client.post('/cast', json={'name': 'Tamsin Reeve', 'voice': 'bf_alice'})
+    for name, asked in (('Ilse Marrow', 'bf_alice'), ('Garrow Pike', 'bm_george')):
+        r = _npc(client, name, npc_voice=asked)
+        cast = client.get('/cast').json
+        voice = cast[name.lower()]
+        assert voice != asked and _gender(voice) == _gender(asked)
+        assert voice not in ('bm_fable',) and len({_canon(v) for v in cast.values()}) == len(cast)
+        note = r.json['note']
+        assert name in note and asked in note and voice in note
+    # The people who had those voices keep them, hand picks still.
+    cast = client.get('/cast').json
+    assert cast['corin ash'] == 'bm_george' and cast['tamsin reeve'] == 'bf_alice'
+    raw = json.loads(module._cast_file().read_text(encoding='utf-8'))
+    assert 'corin ash' not in raw['_sources'] and 'tamsin reeve' not in raw['_sources']
+    # The new voice reached the page before the line.
+    order = [p for p in sent if 'cast' in p or 'npc' in p]
+    assert order[-2]['cast']['garrow pike'] == cast['garrow pike']
+
+
+def test_a_new_npc_given_the_narrators_voice_gets_another(cast_display):
+    module, client, sent = cast_display
+    r = _npc(client, 'Old Wendel', npc_voice='bm_fable')
+    voice = client.get('/cast').json['old wendel']
+    assert voice != 'bm_fable' and _gender(voice) == 'm'
+    assert 'narrator' in r.json['note']
+
+
+def test_a_free_dm_voice_is_kept_and_says_nothing(cast_display):
+    module, client, sent = cast_display
+    client.post('/cast', json={'name': 'Tamsin Reeve', 'voice': 'bf_alice'})
+    assert _npc(client, 'Ilse Marrow', npc_voice='bf_emma').status_code == 204
+    assert client.get('/cast').json['ilse marrow'] == 'bf_emma'
+
+
+def test_a_blend_spelled_the_other_way_is_the_same_voice(cast_display, monkeypatch):
+    module, client, sent = cast_display
+    monkeypatch.setattr(module, '_voice_ok', lambda voice: all(p in KOKORO for p in voice.split('+')))
+    client.post('/cast', json={'name': 'Tamsin Reeve', 'voice': 'bf_alice+bf_emma'})
+    _npc(client, 'Ilse Marrow', npc_voice='bf_emma+bf_alice')
+    assert _canon(client.get('/cast').json['ilse marrow']) != 'bf_alice+bf_emma'
+
+
+def test_an_existing_npc_is_never_moved_onto_someone_elses_voice(cast_display):
+    module, client, sent = cast_display
+    client.post('/cast', json={'name': 'Tamsin Reeve', 'voice': 'bf_alice'})
+    _npc(client, 'Ilse Marrow', npc_voice='bf_emma')
+    # Repeating a clashing voice= on later lines changes nobody.
+    for _ in range(2):
+        r = _npc(client, 'Ilse Marrow', npc_voice='bf_alice')
+        assert 'bf_emma' in r.json['note']
+    assert client.get('/cast').json == {'tamsin reeve': 'bf_alice', 'ilse marrow': 'bf_emma'}
+    # The second line of a speaker cast in place of a clash keeps the same voice and note.
+    first = _npc(client, 'Garrow Pike', npc_voice='bf_alice').json['note']
+    voice = client.get('/cast').json['garrow pike']
+    assert _npc(client, 'Garrow Pike', npc_voice='bf_alice').json['note'] == first
+    assert client.get('/cast').json['garrow pike'] == voice
+
+
+def test_when_no_voice_of_that_gender_is_free_the_dm_is_told(cast_display, monkeypatch):
+    module, client, sent = cast_display
+    monkeypatch.setattr(module, '_cast_voice_genders', lambda narrator: (['bm_fable', 'bm_george'], []))
+    client.post('/cast', json={'name': 'Tamsin Reeve', 'voice': 'bm_george'})
+    r = _npc(client, 'Garrow Pike', npc_voice='bm_george')
+    assert client.get('/cast').json['garrow pike'] == 'bm_george'
+    assert 'no free voice' in r.json['note']
+
+
+def test_send_prints_the_displays_note_once(monkeypatch, capsys):
+    sys.path.insert(0, str(DISPLAY))
+    import importlib
+    send = importlib.import_module('send')
+    note = "Ilse Marrow speaks as bf_emma: bf_alice is already tamsin reeve's voice."
+
+    class Reply:
+        status = 200
+        def read(self, n=-1):
+            return json.dumps({'note': note}).encode('utf-8')
+
+    monkeypatch.setattr(send.urllib.request, 'urlopen', lambda *a, **k: Reply())
+    monkeypatch.setattr(send, '_NOTES', set())
+    assert send._post('http://display/chunk', b'{}', '') is True
+    assert send._post('http://display/chunk', b'{}', '') is True
+    err = capsys.readouterr().err
+    assert err.count(note) == 1 and err.startswith('send.py: ')
