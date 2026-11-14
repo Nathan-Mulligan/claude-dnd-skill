@@ -361,6 +361,35 @@ def test_when_no_voice_of_that_gender_is_free_the_dm_is_told(cast_display, monke
     assert 'no free voice' in r.json['note']
 
 
+def test_with_no_free_voice_a_new_npc_never_takes_a_player_characters_or_the_narrators(cast_display, monkeypatch):
+    # Seen in the integration play-through: every male NPC voice and blend was in use, the DM named the
+    # player character's voice for a new NPC, and the NPC got it.
+    module, client, sent = cast_display
+    monkeypatch.setattr(module, '_cast_voice_genders',
+                        lambda narrator: (['bm_fable', 'bm_george', 'bm_lewis'], ['bf_alice']))
+    with module._stats_lock:
+        module._current_stats['players'] = [{'name': 'Corin Ash'}]
+    client.post('/cast', json={'name': 'Corin Ash', 'voice': 'bm_lewis'})
+    client.post('/cast', json={'name': 'Garrow Pike', 'voice': 'bm_george'})
+    for name, asked in (('Harl Brenn', 'bm_lewis'), ('Old Wendel', 'bm_fable')):
+        r = _npc(client, name, npc_voice=asked)
+        assert client.get('/cast').json[name.lower()] == 'bm_george'
+        assert asked in r.json['note'] and 'bm_george' in r.json['note']
+    assert client.get('/cast').json['corin ash'] == 'bm_lewis'
+
+
+def test_when_the_narrator_and_party_hold_every_catalogue_voice_an_npc_voice_is_shared(cast_display, monkeypatch):
+    module, client, sent = cast_display
+    monkeypatch.setattr(module, '_voice_ok', lambda voice: all(p in KOKORO for p in voice.split('+')))
+    monkeypatch.setattr(module, '_cast_voice_genders', lambda narrator: (['bm_fable', 'bm_lewis'], ['bf_alice']))
+    with module._stats_lock:
+        module._current_stats['players'] = [{'name': 'Corin Ash'}]
+    client.post('/cast', json={'name': 'Corin Ash', 'voice': 'bm_lewis'})
+    client.post('/cast', json={'name': 'Garrow Pike', 'voice': 'am_onyx'})
+    _npc(client, 'Harl Brenn', npc_voice='bm_lewis')
+    assert client.get('/cast').json['harl brenn'] == 'am_onyx'
+
+
 def test_send_prints_the_displays_note_once(monkeypatch, capsys):
     sys.path.insert(0, str(DISPLAY))
     import importlib

@@ -198,8 +198,9 @@ def dm_voice(cast: dict, name: str, voice: str, *, narrator: str, party: Iterabl
 
     Returns (voice, holder). holder is "" when nobody else has the voice, else
     "the narrator" or the other speaker's cast name; then the voice is a free
-    one of the same gender (`free_voice`), or the one asked for when none is
-    left. `party` holds the player characters' voices.
+    one of the same gender (`free_voice`). When none is left the speaker shares
+    a voice: never the narrator's or a player character's, so the one asked for
+    only when it is another NPC's. `party` holds the player characters' voices.
     """
     others = {k: v for k, v in cast.items() if k != name}
     want = _canon(voice)
@@ -213,6 +214,10 @@ def dm_voice(cast: dict, name: str, voice: str, *, narrator: str, party: Iterabl
     own = {part for v in protected for part in v.split("+")}
     free = free_voice(name, voice, pool, [*others.values(), *protected],
                       own=own, male=male, female=female)
+    if not free and want in {_canon(v) for v in protected}:
+        gender = voice_gender(voice, male, female)
+        free = pick_voice(name, [v for v in dict.fromkeys([*pool, *others.values()])
+                                 if v and not own & set(v.split("+")) and voice_gender(v, male, female) == gender])
     return free or voice, holder
 
 
