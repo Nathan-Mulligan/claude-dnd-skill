@@ -26,6 +26,15 @@ RULES = (
 )
 ROLL_MODES = {"auto": "you roll openly", "players": "players roll (call for the roll and wait)"}
 CLOCK_WINDOW = 2
+# Situation -> words in the party's input that announce it. The card names the file to read.
+SITUATIONS = {
+    "combat": r"attack|fight|charge|stab|shoot|strike|ambush|draws? (?:a |an |his |her |their |my |our )?"
+              r"(?:sword|blade|dagger|bow|weapon|steel|axe|mace)|swing at|punch|tackle",
+    "trade": r"buy|sell|sold|haggle|bargain|barter|price|trade|market|merchant|how much|pay for|purchase",
+    "travel": r"travel|ride|set (?:off|out)|head (?:to|for|out|back|toward|towards|east|west|north|south)|"
+              r"push on|journey|leave for|make camp|camp for|move on|on the road|continue (?:to|toward|on)|"
+              r"long rest|short rest|wait (?:until|till|for (?:the )?(?:morning|night|dawn))",
+}
 MAX_NPCS = 3
 
 
@@ -197,6 +206,22 @@ def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
     return "People here: " + "; ".join(present) if present else ""
 
 
+def _in_combat(state: str) -> bool:
+    body = clean(section(state, "Active Combat")).lower().strip(" .*_()")
+    return bool(body) and not body.startswith(("none", "no combat", "n/a"))
+
+
+def _situation(state: str, party_input: str) -> str:
+    found = ["combat"] if _in_combat(state) else []
+    for name, words in SITUATIONS.items():
+        if name not in found and re.search(rf"\b(?:{words})\b", party_input, re.IGNORECASE):
+            found.append(name)
+    if not found:
+        return ""
+    files = " and ".join(f"skills/dnd/play/{name}.md" for name in found[:2])
+    return f"Situation: {', '.join(found[:2])}. Read {files} once this session if you haven't, before you narrate"
+
+
 def _table(state: str, runtime_dir: Path | None) -> str:
     parts = []
     target = _read(runtime_dir / "narration_target").strip() if runtime_dir else ""
@@ -234,6 +259,7 @@ def _lines(campaign_dir: Path, party_input: str, runtime_dir: Path | None, pulse
         lambda: _clocks(state, campaign_dir),
         lambda: _trade(state),
         lambda: _npcs(state, campaign_dir, party_input),
+        lambda: _situation(state, party_input),
         lambda: _table(state, runtime_dir),
     )
     lines = []

@@ -165,3 +165,29 @@ def test_every_card_asks_for_narration_first_and_a_one_word_close(fenmoor):
     assert "one send.py call with every block" in rule
     assert "bookkeeping in the next call" in rule
     assert "reply done" in rule
+
+
+@pytest.mark.parametrize("said,situation", [
+    ("We push on toward Brackenford before dark.", "travel"),
+    ("Corin draws his sword and charges the bandit.", "combat"),
+    ("Ilsa tries to haggle the price of the flour down.", "trade"),
+])
+def test_the_card_names_the_situation_file_to_read(fenmoor, said, situation):
+    text = card(fenmoor, said)
+    line = next(part for part in text.split(" | ") if part.startswith("Situation"))
+    assert f"skills/dnd/play/{situation}.md" in line
+    assert "once" in line
+
+
+def test_an_ordinary_turn_names_no_situation_file(fenmoor):
+    assert "Situation" not in card(fenmoor, "Corin asks Rosa how her daughter is.")
+
+
+def test_an_open_fight_in_the_state_names_the_combat_file(fenmoor):
+    edit_state(fenmoor, "## Active Combat\nNone.", "## Active Combat\n- round 2, Corin vs two bandits")
+    assert "skills/dnd/play/combat.md" in card(fenmoor, "Ilsa keeps her head down.")
+
+
+def test_every_named_situation_file_exists():
+    for name in turn_card.SITUATIONS:
+        assert (REPO / "skills/dnd/play" / f"{name}.md").is_file(), name

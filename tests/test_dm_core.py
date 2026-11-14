@@ -224,3 +224,30 @@ def test_dm_core_keeps_the_resume_load_lean_and_documents_the_wrap_up():
     for needle in ("stop_point.py show", "stop_point.py write", "## Story So Far",
                    "session-log-archive.md", "Save & close", "exact moment"):
         assert needle in core
+
+
+PLAY = SKILL / "play"
+SITUATION_FILES = ["combat", "travel", "trade", "npcs", "scene-media", "new-campaign", "save"]
+
+
+@pytest.mark.parametrize("name", SITUATION_FILES)
+def test_each_situation_file_is_one_short_read_named_by_dm_core(name):
+    path = PLAY / f"{name}.md"
+    assert path.is_file()
+    assert len(_read(path).splitlines()) <= 40
+    assert f"`{name}.md`" in _read(CORE)
+
+
+@pytest.mark.parametrize("name,needles", [
+    ("combat", ["encounter_state.py start", "--music-event combat-start", "--turn-clear", "xp.py award"]),
+    ("travel", ["advance N days", "--no-road", "## Next Hooks", "## Clocks", "seen by:"]),
+    ("trade", ["Trade policy:", "inventory.py buy", "@tutor", "10% per band"]),
+    ("npcs", ["oracle.py npc --campaign", "voice=", "npc note"]),
+    ("scene-media", ["--scene", "--mood", "combat-end"]),
+    ("save", ["stop_point.py write", "Save & close", "turn-log.md", "## Story So Far", "session-log-archive.md"]),
+    ("new-campaign", ["--setup-question", "push_stats.py --party", "paths.py campaign-path"]),
+])
+def test_situation_files_carry_their_rules(name, needles):
+    text = _read(PLAY / f"{name}.md")
+    for needle in needles:
+        assert needle in text, (name, needle)
