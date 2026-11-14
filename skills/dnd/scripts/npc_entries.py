@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import stat
 import tempfile
 import time
 from contextlib import contextmanager, suppress
@@ -134,8 +135,9 @@ def write_atomic(path: Path, text: str, mode: int = 0o644) -> None:
     fd, tmp = tempfile.mkstemp(dir=Path(path).parent, prefix=f".{Path(path).name}.")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            if hasattr(os, "fchmod"):  # on the open file: its name could be a link by the time chmod ran
+                os.fchmod(fd, mode)
             stream.write(text)
-        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         with suppress(OSError):
@@ -143,17 +145,51 @@ def write_atomic(path: Path, text: str, mode: int = 0o644) -> None:
         raise
 
 
-def open_lock(path) -> int:
-    """Open a lock file without following a link: the display and the portal take locks from outside the
-    DM's sandbox, in folders the DM can write. A link found there is replaced, never followed."""
-    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_DIR_FD = {os.open, os.mkdir, os.unlink} <= os.supports_dir_fd and bool(_NOFOLLOW)
+
+
+def _open_no_link(name: str, dir_fd: int, flags: int, folder: bool = False) -> int:
+    """Open `name` in `dir_fd`, replacing a link found there instead of following it."""
+    flags |= _NOFOLLOW | (getattr(os, "O_DIRECTORY", 0) if folder else 0)
+    for attempt in (1, 2):
+        if folder:
+            with suppress(FileExistsError):
+                os.mkdir(name, 0o700, dir_fd=dir_fd)
+        try:
+            return os.open(name, flags, 0o600, dir_fd=dir_fd)
+        except OSError:
+            if attempt == 2 or not _is_link(name, dir_fd):
+                raise
+            os.unlink(name, dir_fd=dir_fd)
+    raise AssertionError("unreachable")
+
+
+def _is_link(name: str, dir_fd) -> bool:
     try:
-        return os.open(path, flags, 0o600)
+        return stat.S_ISLNK(os.stat(name, dir_fd=dir_fd, follow_symlinks=False).st_mode)
     except OSError:
-        if not os.path.islink(path):
-            raise
-        os.unlink(path)
-        return os.open(path, flags | os.O_EXCL, 0o600)
+        return False
+
+
+def open_lock(path) -> int:
+    """Open a lock file, creating it and its folder, without following a link at either: the display and
+    the portal take locks from outside the DM's sandbox, in folders the DM can write. A link is replaced.
+    The folder's parent must be one the DM cannot replace: the runtime dir, or the campaigns folder."""
+    folder, name = os.path.split(os.path.abspath(path))
+    if not _DIR_FD:  # Windows: no dir_fd or O_NOFOLLOW
+        os.makedirs(folder, exist_ok=True)
+        return os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    parent, base = os.path.split(folder)
+    parent_fd = os.open(parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        folder_fd = _open_no_link(base, parent_fd, os.O_RDONLY, folder=True)
+    finally:
+        os.close(parent_fd)
+    try:
+        return _open_no_link(name, folder_fd, os.O_RDWR | os.O_CREAT)
+    finally:
+        os.close(folder_fd)
 
 
 @contextmanager
@@ -163,7 +199,7 @@ def locked(key: str):
     Raises TimeoutError when another holder keeps it longer than LOCK_WAIT_S.
     """
     folder = runtime_dir() / "locks"
-    folder.mkdir(parents=True, exist_ok=True)
+    folder.parent.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
     fd = open_lock(folder / f"{digest}.lock")
     try:

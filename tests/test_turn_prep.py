@@ -250,3 +250,11 @@ def test_the_portal_never_writes_the_road_prep_through_a_link_the_dm_placed(fenm
     oracle.prepare_road(fenmoor)
     assert target.read_text(encoding="utf-8") == "keep\n"
     assert not (elsewhere / "made-by-the-lock").exists()
+
+
+def test_the_road_prep_never_changes_permissions_through_a_path(fenmoor, monkeypatch):
+    # Between closing a temporary file and a chmod by name, the DM could swap the name for a link.
+    monkeypatch.setattr(oracle.os, "chmod", lambda *a, **k: pytest.fail("chmod by path"))
+    oracle.prepare_road(fenmoor)
+    if os.name != "nt":
+        assert (fenmoor / oracle.ROAD_NEXT).stat().st_mode & 0o777 == 0o644
