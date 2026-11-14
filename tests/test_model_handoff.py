@@ -611,7 +611,7 @@ def test_save_and_close_stops_the_voice_after_the_dm_closes(setup, monkeypatch):
     assert calls.index(stop) > calls.index(("tmux", "kill-session", "-t", "$7"))
 
 
-@pytest.mark.parametrize("failure", ["exit", "timeout", "missing"])
+@pytest.mark.parametrize("failure", ["exit", "silent", "timeout", "missing"])
 def test_save_and_close_still_closes_when_the_voice_will_not_stop(setup, monkeypatch, capsys, failure):
     old, previous, alive, calls, _ = setup
     token = "d" * 32
@@ -624,6 +624,8 @@ def test_save_and_close_still_closes_when_the_voice_will_not_stop(setup, monkeyp
                 raise subprocess.TimeoutExpired(args, 30)
             if failure == "missing":
                 raise FileNotFoundError("bash")
+            if failure == "silent":
+                return subprocess.CompletedProcess(args, -9, "", "")
             return subprocess.CompletedProcess(args, 1, "", "Kokoro could not be stopped.")
         return original(*args, **kwargs)
 
@@ -634,7 +636,7 @@ def test_save_and_close_still_closes_when_the_voice_will_not_stop(setup, monkeyp
     assert state["status"] == "complete" and "closed" in state["message"]
     assert not alive["value"]
     assert len(stop_voice_calls(calls)) == 1
-    assert "Kokoro" in capsys.readouterr().out
+    assert "Kokoro was not stopped" in capsys.readouterr().out
 
 
 def test_a_fresh_dm_keeps_the_voice_running(setup, monkeypatch):

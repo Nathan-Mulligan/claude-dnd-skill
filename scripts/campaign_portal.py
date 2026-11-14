@@ -670,7 +670,8 @@ def stop_voice() -> None:
     """Stop Kokoro after play ends; a failure is logged and never blocks closing the session."""
     try:
         result = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--stop-voice", timeout=30)
-        detail = (result.stderr or result.stdout).strip()[-300:] if result.returncode else ""
+        output = (result.stderr or result.stdout).strip()[-300:]
+        detail = (output or f"exit status {result.returncode}") if result.returncode else ""
     except (OSError, subprocess.TimeoutExpired) as error:
         detail = type(error).__name__
     if detail:
