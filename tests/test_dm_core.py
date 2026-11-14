@@ -227,7 +227,7 @@ def test_dm_core_keeps_the_resume_load_lean_and_documents_the_wrap_up():
 
 
 PLAY = SKILL / "play"
-SITUATION_FILES = ["combat", "travel", "trade", "npcs", "scene-media", "new-campaign", "save"]
+SITUATION_FILES = ["combat", "travel", "trade", "npc-rules", "scene-media", "new-campaign", "save"]
 
 
 @pytest.mark.parametrize("name", SITUATION_FILES)
@@ -242,7 +242,7 @@ def test_each_situation_file_is_one_short_read_named_by_dm_core(name):
     ("combat", ["encounter_state.py start", "--music-event combat-start", "--turn-clear", "xp.py award"]),
     ("travel", ["advance N days", "--no-road", "## Next Hooks", "## Clocks", "seen by:"]),
     ("trade", ["Trade policy:", "inventory.py buy", "@tutor", "10% per band"]),
-    ("npcs", ["oracle.py npc --campaign", "voice=", "npc note"]),
+    ("npc-rules", ["oracle.py npc --campaign", "voice=", "npc note"]),
     ("scene-media", ["--scene", "--mood", "combat-end"]),
     ("save", ["stop_point.py write", "Save & close", "turn-log.md", "## Story So Far", "session-log-archive.md"]),
     ("new-campaign", ["--setup-question", "push_stats.py --party", "paths.py campaign-path"]),

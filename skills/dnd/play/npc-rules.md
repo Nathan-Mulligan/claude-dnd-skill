@@ -1,6 +1,6 @@
-# NPCs
+# NPC rules
 
-Read once when a named NPC first matters this session.
+Detail for running NPCs; DM-CORE section 6 covers an ordinary turn. Not to be confused with the campaign's own `npcs.md`, which holds the people.
 
 - Skip the name-and-price greeting. Open on what the person is doing or worried about.
 - The main NPC in each scene wants one thing from the party. When their want is marked as an ask, they put it to the party.
