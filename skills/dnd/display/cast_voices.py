@@ -8,6 +8,9 @@ entries it keeps `_sources`, which records who chose each voice:
     absent  picked by hand in the voice menu (and every older entry)
 
 A hand pick always wins: neither the DM nor the fallback ever replaces it.
+No two speakers share a voice, and none shares the narrator's: when the DM
+names a voice someone else has, the new speaker gets a free one of the same
+gender instead (`dm_voice`).
 
 Older campaigns can hold clashing hand picks. A one-off repair re-casts only
 the NPCs that share a voice with the narrator, a player character or an NPC
@@ -154,16 +157,13 @@ def repair(raw: dict, *, narrator: str, party: Iterable[str], pool: Iterable[str
             keep.add(name)
             taken.add(_canon(voice))
     pool = list(dict.fromkeys(v for v in pool if v))
-    free = lambda vs: [v for v in vs if _canon(v) not in taken]
     changes, unresolved = [], []
     for name, voice in cast.items():
         if name in keep:
             continue
-        gender = voice_gender(voice, male, female)
-        same = [v for v in pool if voice_gender(v, male, female) == gender] or pool
-        new = (pick_voice(name, free(v for v in same if v not in own))
-               or pick_voice(name, free(blends(v for v in same if v not in own)))
-               or pick_voice(name, free(blends(v for v in pool if v not in own))))
+        new = (free_voice(name, voice, pool, taken, own=own, male=male, female=female)
+               or pick_voice(name, [v for v in blends(v for v in pool if v not in own)
+                                    if _canon(v) not in taken]))
         if not new:
             unresolved.append(name)
             continue
@@ -172,6 +172,48 @@ def repair(raw: dict, *, narrator: str, party: Iterable[str], pool: Iterable[str
         taken.add(_canon(new))
         changes.append((name, voice, new))
     return cast, src, changes, unresolved
+
+
+def free_voice(name: str, voice: str, pool: Iterable[str], taken: Iterable[str], *,
+               own: Iterable[str] = (), male: Iterable[str] = (), female: Iterable[str] = ()) -> str:
+    """An unused voice for `name` of the same gender as `voice`, or "" when none is left.
+
+    A plain voice first, then a two-voice blend. `taken` holds the voices in
+    use; `own` the voices (the narrator's, the player characters') that no
+    blend may borrow from.
+    """
+    pool = list(dict.fromkeys(v for v in pool if v))
+    taken = {_canon(v) for v in taken}
+    own = set(own)
+    gender = voice_gender(voice, male, female)
+    same = [v for v in pool if voice_gender(v, male, female) == gender] or pool
+    same = [v for v in same if v not in own]
+    return (pick_voice(name, [v for v in same if _canon(v) not in taken])
+            or pick_voice(name, [v for v in blends(same) if _canon(v) not in taken]))
+
+
+def dm_voice(cast: dict, name: str, voice: str, *, narrator: str, party: Iterable[str],
+             pool: Iterable[str], male: Iterable[str] = (), female: Iterable[str] = ()) -> "tuple[str, str]":
+    """The voice speaker `name` gets when the DM names `voice`, and who already has it.
+
+    Returns (voice, holder). holder is "" when nobody else has the voice, else
+    "the narrator" or the other speaker's cast name; then the voice is a free
+    one of the same gender (`free_voice`), or the one asked for when none is
+    left. `party` holds the player characters' voices.
+    """
+    others = {k: v for k, v in cast.items() if k != name}
+    want = _canon(voice)
+    if narrator and _canon(narrator) == want:
+        holder = "the narrator"
+    else:
+        holder = next((k for k, v in others.items() if _canon(v) == want), "")
+    if not holder:
+        return voice, ""
+    protected = [v for v in (narrator, *party) if v]
+    own = {part for v in protected for part in v.split("+")}
+    free = free_voice(name, voice, pool, [*others.values(), *protected],
+                      own=own, male=male, female=female)
+    return free or voice, holder
 
 
 def _canon(voice: str) -> str:
