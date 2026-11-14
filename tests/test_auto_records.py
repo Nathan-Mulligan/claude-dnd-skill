@@ -182,7 +182,7 @@ def test_a_written_up_npc_the_logs_know_by_first_name_gets_no_new_met(camp, head
 def test_a_title_alone_in_the_logs_is_not_a_meeting(camp):
     (camp / "npcs.md").write_text("# NPCs\n\n## Brother Aldous\nA young monk at the abbey.\n", encoding="utf-8")
     with open(camp / "session-log.md", "a", encoding="utf-8") as log:
-        log.write("Nella's brother wrote from Saltmere.\n")
+        log.write("The miller's brother wrote from the coast.\n")
     records.record_send(blocks('@npc Brother Aldous\n"Peace."\n'), place="Abbey", now=NOW)
     assert "- **Met:** Abbey, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
 
@@ -209,7 +209,7 @@ def test_an_unnamed_speaker_gets_no_entry(camp, label):
     assert f"**{label}:** \"Move along.\"" in log_text(camp)
 
 
-@pytest.mark.parametrize("name", ["Mira Kett", "Brother Aldous", "Anselm of Brackenford", "Tam O'Rourke"])
+@pytest.mark.parametrize("name", ["Mira Kett", "Brother Aldous", "Anselm of Ashbridge", "Tam O'Rourke"])
 def test_a_named_newcomer_gets_an_entry(camp, name):
     records.record_send(blocks(f'@npc {name}\n"Move along."\n'), place="Road", now=NOW)
     assert f"### {name}\n" in (camp / "npcs.md").read_text(encoding="utf-8")

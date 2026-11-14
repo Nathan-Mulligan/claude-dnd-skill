@@ -200,7 +200,7 @@ def _npc_file(folder: Path, name: str) -> Path:
 
 
 def is_full_name(name: str) -> bool:
-    """"Mira Kett" or "Anselm of Brackenford", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
+    """"Mira Kett" or "Anselm of Ashbridge", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
     words = name.split()
     if len(words) < 2 or words[0].casefold() in ("the", "a", "an") or words[-1].casefold() in _ROLE_WORDS:
         return False
