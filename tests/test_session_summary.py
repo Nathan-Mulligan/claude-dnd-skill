@@ -550,3 +550,18 @@ def test_a_failed_write_puts_back_what_it_already_wrote(tmp_path, monkeypatch):
     assert not (folder / "session-log-archive.md").exists()
     assert not [p.name for p in folder.iterdir() if p.name.startswith(".")]
     assert summary.session_number(folder) == 8  # the DM's fallback writes the same session
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="no O_NOFOLLOW on this platform")
+def test_the_portal_never_writes_through_a_link_the_dm_placed_in_the_runtime_folder(tmp_path, monkeypatch):
+    # The portal runs the summary and ends the turn-log session outside the DM's sandbox; the DM can write runtime/.
+    runtime = Path(os.environ["DND_RUNTIME_DIR"])
+    runtime.mkdir(parents=True, exist_ok=True)
+    target = tmp_path / "code.py"
+    target.write_text("keep\n", encoding="utf-8")
+    for name in ("session_summary.log", "records-state.json.tmp"):
+        (runtime / name).symlink_to(target)
+    folder = campaign(tmp_path, lines=[])
+    summary.log("test: a helper failure")
+    summary.records.end_session(folder)
+    assert target.read_text(encoding="utf-8") == "keep\n"
