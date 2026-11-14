@@ -218,7 +218,7 @@ def test_codex_dm_has_no_screen_control(tmp_path, monkeypatch):
     for setting in ('plugins."computer-use@openai-bundled".enabled=false',
                     'plugins."unified-computer-use@openai-bundled".enabled=false',
                     'mcp_servers.cua_repl={command="true",enabled=false}',
-                    "mcp_servers.node_repl.enabled=false"):
+                    'mcp_servers.node_repl={command="true",enabled=false}'):
         assert setting in args
     assert args.index("--disable") < len(args) - 1
 

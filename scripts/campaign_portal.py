@@ -50,7 +50,7 @@ CODEX_NO_SCREEN = ("--disable", "computer_use",
                    "-c", 'plugins."computer-use@openai-bundled".enabled=false',
                    "-c", 'plugins."unified-computer-use@openai-bundled".enabled=false',
                    "-c", 'mcp_servers.cua_repl={command="true",enabled=false}',
-                   "-c", "mcp_servers.node_repl.enabled=false")
+                   "-c", 'mcp_servers.node_repl={command="true",enabled=false}')
 # Sidebar-notes helper (display/lore_sync.py); the choice is saved where lore_sync reads it.
 HELPER_CHOICES = {key: label for key, (_, _, label) in lore_sync.HELPERS.items()}
 # Keys are stored in portal-session.json as "provider"; "codex" and "claude" keep their original meaning.
