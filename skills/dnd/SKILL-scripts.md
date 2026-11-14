@@ -467,8 +467,8 @@ Nothing to run: `send.py` keeps both after each send reaches the display. A bloc
 - A replay is skipped: a send whose blocks were all logged in the last 40 and are each 40 characters or longer. Awards and short lines are always logged. A long block cut short by a failed post is logged as far as it was shown.
 - Read the newest session with `grep -n '^## Session' turn-log.md`, then `sed -n` from the last match; never the whole file.
 
-**NPC records.** For each `@npc NAME` speaker (or `--npc NAME`) whose name starts with a capital, `send.py` adds to their entry in `npcs.md` (or `npcs-full.md` if the entry lives there; a first name alone finds the one entry it starts):
-- `- **Met:** <place>, session N (<in-world date>)`, the first time only.
+**NPC records.** For each `@npc NAME` speaker (or `--npc NAME`) who has an entry in `npcs.md` (or `npcs-full.md`; a first name alone finds the one entry it starts), `send.py` adds to it. A speaker without an entry gets one only for a full name such as `Mira Kett`; a role label such as `Warden rider`, `Bridge Keeper` or `Auditor` gets none, so give anyone who matters a name with `oracle.py npc`.
+- `- **Met:** <place>, session N (<in-world date>)`, the first time only, and not for someone met before: an entry with a `Party note`, an earlier session number, or your own description of someone the logs already name.
 - `- **Voice:** <id>`, the voice the display uses (`cast.json`), else the marker's.
 - `- **As seen:** <phrases>`: when the entry has no look line (`As seen`, `Look`, `Appearance`, `Description`), the helper model chosen in the portal (`lore_sync.py`: Luna by default, off with `DND_LORE_SYNC=0`) copies up to three phrases about that person from the narration, in the background. Phrases not found word for word in the narration are dropped, and nothing is written when the narration said nothing. Phrases must match whole words, so "scarred" never comes from "unscarred". It is added on the next send (kept for a later send if that write fails), at most three tries per person; failures go to `runtime/npc_describe.log`.
 

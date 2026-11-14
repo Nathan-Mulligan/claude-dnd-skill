@@ -17,9 +17,9 @@ turn-log.md (in the campaign folder; this module is its only writer)
 npcs.md (shared with the DM and oracle.py, through npc_entries.edit and its lock)
   For each `@npc NAME` speaker: `- **Met:** <place>, session N (<in-world date>)` and
   `- **Voice:** <id>`, each added only when the entry has no such line. A speaker with no entry
-  gets one only for a full name ("Mira Kett", not "Warden rider" or "Auditor"). Met is skipped
+  gets one only for a full name ("Mira Kett", not "Warden rider", "Bridge Keeper" or "Auditor"). Met is skipped
   for someone met before: their entry has a note line, an earlier session, or the DM's own
-  description while the logs already name them. `- **As seen:**`
+  description while the logs already name them (full or first name). `- **As seen:**`
   carries phrases the helper model copied from the narration (npc_describe.py). This module
   only ever adds lines; it never changes or removes one, so the DM's own notes always stand.
 """
@@ -55,6 +55,11 @@ _SESSION_COUNT = re.compile(r"\*\*Session count:\*\*\s*(\d+)")
 _FIELD = re.compile(r"^[-*]\s+\*\*[^*]+:\*\*")
 _ANNOTATION = re.compile(r" \(| —| –| - |,|:")
 _SESSION_MENTION = re.compile(r"\bsession\s+(\d+)", re.IGNORECASE)
+# A speaker label ending in one of these is a role ("Bridge Keeper", "Warden Rider"), not a name.
+_ROLE_WORDS = {"rider", "auditor", "keeper", "clerk", "guard", "guards", "warden", "traveller", "traveler", "carter",
+               "drover", "bandit", "man", "woman", "stranger", "merchant", "courier", "driver", "soldier", "farmer",
+               "innkeeper", "smith", "trader", "pedlar", "peddler", "tinker", "boy", "girl", "child", "watchman",
+               "bowman", "messenger", "sailor", "priest", "monk", "official", "officer", "voice", "crowd", "patron"}
 _NAME_PARTICLES = {"of", "the", "de", "del", "della", "di", "da", "du", "van", "von", "der", "den", "le", "la", "al",
                    "bin", "ibn", "ap"}
 _LOCATION = re.compile(r"^[ \t]*[-*][ \t]*\*\*Location:\*\*[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
@@ -194,7 +199,7 @@ def _npc_file(folder: Path, name: str) -> Path:
 def is_full_name(name: str) -> bool:
     """"Mira Kett" or "Anselm of Brackenford", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
     words = name.split()
-    if len(words) < 2 or words[0].casefold() in ("the", "a", "an"):
+    if len(words) < 2 or words[0].casefold() in ("the", "a", "an") or words[-1].casefold() in _ROLE_WORDS:
         return False
     return all(word[:1].isupper() or (i and word.casefold() in _NAME_PARTICLES) for i, word in enumerate(words))
 
@@ -215,9 +220,9 @@ def _met_before(folder: Path, path: Path, name: str, session: int) -> bool:
     if not described:
         return False
     heading = _ANNOTATION.split(lines[span[0]].lstrip("#").strip().strip("*"))[0]
-    full = " ".join(heading.split()).casefold()
-    logs = (_read(folder / f) for f in ("session-log.md", "session-log-archive.md", "state.md"))
-    return bool(full) and any(full in " ".join(text.split()).casefold() for text in logs)
+    names = {" ".join(heading.split()), heading.split()[0] if heading.split() else ""} - {""}
+    logs = " ".join(_read(folder / f) for f in ("session-log.md", "session-log-archive.md", "state.md"))
+    return any(re.search(rf"(?<![\w']){re.escape(n)}(?![\w'])", logs, re.IGNORECASE) for n in names)
 
 
 def _has_look(path: Path, name: str) -> bool:

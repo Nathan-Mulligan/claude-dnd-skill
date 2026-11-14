@@ -166,6 +166,14 @@ def test_someone_known_from_before_gets_no_new_met(camp, history):
     assert "- **Voice:** bf_alice" in text and history in text
 
 
+def test_a_written_up_npc_the_logs_know_by_first_name_gets_no_new_met(camp):
+    (camp / "npcs.md").write_text("# NPCs\n\n## Hessa Varn\nToll clerk; hides a timber advance.\n", encoding="utf-8")
+    with open(camp / "session-log.md", "a", encoding="utf-8") as log:
+        log.write("Hessa let them stable the mule.\n")
+    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
+    assert "- **Met:**" not in (camp / "npcs.md").read_text(encoding="utf-8")
+
+
 def test_a_written_up_npc_the_logs_never_mention_still_gets_met(camp):
     (camp / "npcs.md").write_text("# NPCs\n\n## Hessa Varn\nToll clerk; hides a timber advance.\n", encoding="utf-8")
     records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
@@ -180,7 +188,7 @@ def test_a_new_npc_with_only_a_profile_still_gets_met(camp):
 
 
 @pytest.mark.parametrize("label", ["Warden rider", "Auditor", "Warden auditor", "Traveller", "Man at the barrier",
-                                   "Grey-cloaked rider", "The Ferryman"])
+                                   "Grey-cloaked rider", "The Ferryman", "Warden Rider", "Bridge Keeper", "Toll Clerk"])
 def test_an_unnamed_speaker_gets_no_entry(camp, label):
     records.record_send(blocks(f'@npc {label}\n"Move along."\n'), place="Road", now=NOW)
     assert not (camp / "npcs.md").exists()
