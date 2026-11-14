@@ -106,10 +106,7 @@ def _load_state() -> dict:
 
 
 def _save_state(state: dict) -> None:
-    path = Path(_state_path())
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, path)
+    npc_entries.write_atomic(Path(_state_path()), json.dumps(state, ensure_ascii=False), mode=0o600)
 
 
 def next_session(log_text: str, archive_text: str, state_text: str) -> int:

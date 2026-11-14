@@ -4,8 +4,9 @@
 How it runs
   records.py (inside send.py) calls `request()` when an NPC who speaks has no look line in
   npcs.md. It queues the narration the table heard in runtime/npc-describe-queue.jsonl and
-  starts this file detached; the DM never waits. One worker at a time, under a lock the OS
-  drops when the worker exits. Results wait in runtime/npc-describe.json until the next send,
+  leaves a request for the display (helper_jobs.py), which runs `run_and_log()` outside the
+  DM's sandbox, where the Codex CLI can start; the DM never waits. One worker at a time.
+  Results wait in runtime/npc-describe.json until the next send,
   when records.py adds them to npcs.md as `- **As seen:**`. So the DM's own call is the only
   thing that writes npcs.md, and a portal save never sees it change under its feet.
 
@@ -13,7 +14,8 @@ Rules
   * Extraction only. The model returns phrases copied from the narration; a phrase that is
     not in the narration word for word is dropped, so nothing invented reaches npcs.md.
     When the narration says nothing about the person, nothing is written.
-  * At most MAX_TRIES requests per person; after that the DM's own notes are all there is.
+  * At most MAX_TRIES answers per person; after that the DM's own notes are all there is.
+    A call that fails before the model answers does not count.
   * The model is the sidebar-notes helper's choice (lore_sync.py: off, Luna by default, set
     in the portal), on a subscription or local model only. DND_LORE_SYNC=0 switches it off.
   * Any failure is silent apart from runtime/npc_describe.log.
@@ -23,15 +25,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-from runtime_paths import rt  # noqa: E402
+from runtime_paths import log_line, rt  # noqa: E402
 
 import npc_entries  # noqa: E402
 
@@ -71,11 +71,7 @@ def results_path() -> str:
 
 
 def log(msg: str) -> None:
-    try:
-        with open(rt("npc_describe.log"), "a", encoding="utf-8") as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
-    except OSError:
-        pass
+    log_line(rt("npc_describe.log"), msg)
 
 
 def _choice():
@@ -92,10 +88,7 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    path = Path(results_path())
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
+    npc_entries.write_atomic(Path(results_path()), json.dumps(data, ensure_ascii=False, indent=1), mode=0o600)
 
 
 def _campaign(data: dict, folder: str) -> dict:
@@ -156,10 +149,10 @@ def acknowledge(folder: Path, names: list) -> None:
 
 
 def kick() -> None:
+    """Ask the display to run the worker (helper_jobs.py). Never raises, never blocks."""
     try:
-        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--run"],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        import helper_jobs
+        helper_jobs.request("npc_describe")
     except Exception as error:  # noqa: BLE001
         log(f"kick failed: {error}")
 
@@ -195,10 +188,9 @@ def copied_phrases(reply: object, narration: str, name: str) -> list:
     return kept
 
 
-def describe(name: str, narration: str, choice=None) -> str:
+def _ask(name: str, narration: str, choice=None) -> object:
     import lore_sync
-    reply = lore_sync.ask(PROMPT.format(limit=MAX_PHRASES, name=name, text=narration[-TEXT_MAX:]), SCHEMA, choice)
-    return "; ".join(copied_phrases(reply, narration, name))
+    return lore_sync.ask(PROMPT.format(limit=MAX_PHRASES, name=name, text=narration[-TEXT_MAX:]), SCHEMA, choice)
 
 
 def _read_queue() -> list:
@@ -237,17 +229,25 @@ def process(rows: list, choice=None) -> int:
     found = 0
     for (folder, who), job in jobs.items():
         with npc_entries.locked("npc-describe"):
-            data = _load()
-            entry = _campaign(data, folder)
+            entry = _campaign(_load(), folder)
             if entry["done"].get(who) or int(entry["tries"].get(who, 0)) >= MAX_TRIES:
                 continue
-            entry["tries"][who] = int(entry["tries"].get(who, 0)) + 1
-            _save(data)
+        narration = "\n\n".join(job["text"])[-TEXT_MAX:]
         try:
-            text = describe(job["name"], "\n\n".join(job["text"])[-TEXT_MAX:], choice)
+            reply = _ask(job["name"], narration, choice)
         except Exception as error:  # noqa: BLE001
             import lore_sync
             log(f"{job['name']}: model failed: {lore_sync.failure_reason(error)}")
+            continue
+        with npc_entries.locked("npc-describe"):
+            data = _load()
+            entry = _campaign(data, folder)
+            entry["tries"][who] = int(entry["tries"].get(who, 0)) + 1
+            _save(data)
+        try:
+            text = "; ".join(copied_phrases(reply, narration, job["name"]))
+        except ValueError as error:
+            log(f"{job['name']}: {error}")
             continue
         if not text:
             continue
@@ -261,7 +261,7 @@ def process(rows: list, choice=None) -> int:
 
 def run() -> str:
     os.makedirs(os.path.dirname(rt("npc-describe.lock")), exist_ok=True)
-    fd = os.open(rt("npc-describe.lock"), os.O_CREAT | os.O_RDWR, 0o600)
+    fd = npc_entries.open_lock(rt("npc-describe.lock"))
     try:
         if fcntl is not None:
             try:
@@ -281,11 +281,16 @@ def run() -> str:
     return f"found {found}"
 
 
+def run_and_log() -> None:
+    """One run, its outcome or failure written to the log. What the display runs."""
+    try:
+        log("run: " + run())
+    except Exception as error:  # noqa: BLE001
+        log(f"run failed: {type(error).__name__}: {str(error)[:300]}")
+
+
 if __name__ == "__main__":
     if "--run" in sys.argv:
-        try:
-            log("run: " + run())
-        except Exception as error:  # noqa: BLE001
-            log(f"run failed: {type(error).__name__}: {str(error)[:300]}")
+        run_and_log()
     else:
         print(__doc__)

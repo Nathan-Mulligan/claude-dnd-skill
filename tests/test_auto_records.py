@@ -19,6 +19,7 @@ sys.path.insert(0, str(DISPLAY))
 import npc_describe  # noqa: E402
 import records  # noqa: E402
 
+REAL_KICK = npc_describe.kick
 NOW = 1_800_000_000.0
 
 TURN = """@player Everybody
@@ -497,3 +498,59 @@ def test_the_claude_helper_sends_utf8_whatever_the_locale(monkeypatch):
     monkeypatch.setattr(lore_sync.subprocess, "run", run)
     lore_sync._ask_claude("Hessa wears 羊毛 — and a scarf.", "haiku", npc_describe.SCHEMA)
     assert seen.get("encoding") == "utf-8"
+
+
+# ── the display runs the look-up, outside the DM's sandbox (#134) ────────────
+
+def test_a_look_up_request_leaves_a_file_for_the_display_and_starts_nothing(camp, monkeypatch):
+    runtime = Path(os.environ["DND_RUNTIME_DIR"])
+    import subprocess
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: pytest.fail("the DM side must never start a helper"))
+    REAL_KICK()
+    assert (runtime / "helper-jobs" / "npc_describe").exists()
+
+
+def test_the_display_runs_the_look_up_it_loaded_at_start():
+    import helper_jobs
+    assert "npc_describe" in helper_jobs.KINDS
+    run = helper_jobs._helpers()["npc_describe"]
+    assert run.__name__ == "run_and_log" and Path(run.__code__.co_filename).name == "npc_describe.py"
+    assert "npc_entries" in sys.modules
+
+
+def test_a_failed_model_call_does_not_use_up_a_try(camp, monkeypatch):
+    monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
+    import lore_sync
+
+    def boom(*a, **k):
+        raise RuntimeError("codex exited 1")
+
+    monkeypatch.setattr(lore_sync, "ask", boom)
+    for i in range(npc_describe.MAX_TRIES + 1):
+        records.record_send(blocks(TURN.replace("Twenty", f"Twenty{i}")), now=NOW + i)
+        npc_describe.process(npc_describe._take_queue())
+    monkeypatch.setattr(lore_sync, "ask", _answer(["broad-shouldered and grey at the temples"]))
+    records.record_send(blocks(), now=NOW + 60)
+    assert npc_describe.process(npc_describe._take_queue()) == 1
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="no O_NOFOLLOW on this platform")
+def test_the_display_and_portal_never_write_through_a_link_the_dm_placed(camp, monkeypatch, tmp_path):
+    runtime = Path(os.environ["DND_RUNTIME_DIR"])
+    target = tmp_path / "code.py"
+    target.write_text("keep\n", encoding="utf-8")
+    for name in ("npc-describe.json.tmp", "records-state.json.tmp", "npc_describe.log"):
+        (runtime / name).symlink_to(target)
+    (runtime / "npc-describe.lock").symlink_to(tmp_path / "made-by-the-lock")
+    monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
+    import lore_sync
+
+    def boom(*a, **k):
+        raise RuntimeError("codex exited 1")
+
+    monkeypatch.setattr(lore_sync, "ask", boom)
+    records.record_send(blocks(), now=NOW)
+    npc_describe.run_and_log()
+    npc_describe.log("a line")
+    assert target.read_text(encoding="utf-8") == "keep\n"
+    assert not (tmp_path / "made-by-the-lock").exists()

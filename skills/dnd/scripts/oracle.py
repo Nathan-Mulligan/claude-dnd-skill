@@ -38,7 +38,6 @@ import os
 import random
 import re
 import sys
-import tempfile
 
 import npc_entries
 from xp import CR_XP, MONSTER_MULTIPLIERS, XP_THRESHOLDS
@@ -562,17 +561,7 @@ def _read_road_log(folder) -> list:
 
 
 def _write_atomic(path, text: str) -> None:
-    # The portal writes here from outside the DM's sandbox, so a fresh temporary name: never a link the DM placed.
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(text)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
+    npc_entries.write_atomic(path, text)
 
 
 def calendar_day(cal) -> "list | None":
@@ -590,18 +579,6 @@ def _today(folder) -> "list | None":
         return None
 
 
-def _open_lock(path: str) -> int:
-    """The lock file, never through a link: the portal takes this lock from outside the DM's sandbox."""
-    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        return os.open(path, flags, 0o600)
-    except OSError:
-        if not os.path.islink(path):
-            raise
-        os.unlink(path)
-        return os.open(path, flags | os.O_EXCL, 0o600)
-
-
 @contextlib.contextmanager
 def road_lock(folder):
     """Held while a road day is prepared or used, and by calendar.py from reading the date to the last road roll."""
@@ -610,7 +587,7 @@ def road_lock(folder):
     if fcntl is None or key in _HELD or not os.path.isdir(key):
         yield
         return
-    fd = _open_lock(os.path.join(key, ROAD_LOCK))
+    fd = npc_entries.open_lock(os.path.join(key, ROAD_LOCK))
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         _HELD.add(key)
