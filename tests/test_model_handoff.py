@@ -722,8 +722,8 @@ def test_save_and_close_leaves_the_summary_to_the_helper(setup, monkeypatch):
         assert needle in prompt
     assert "Write this session's entry" not in prompt
     assert "\n" not in prompt
-    assert events == [("prepare", mark, ("codex", "gpt-6-luna")), ("kill",),
-                      ("write", {"session-log.md": ("old", "new")})]
+    assert events == [("prepare", mark, ("codex", "gpt-6-luna")), ("write", {"session-log.md": ("old", "new")}),
+                      ("kill",)]
 
 
 def test_a_failed_helper_summary_falls_back_to_the_dm(setup, monkeypatch):
@@ -804,3 +804,47 @@ def test_a_model_switch_never_uses_the_helper(setup, monkeypatch):
     monkeypatch.setattr(portal, "start_session", lambda *args, **kwargs: alive.update(value=True) or (True, "Started"))
     portal.perform_handoff("codex", "resume", "old", "", previous, "$7", token)
     assert portal.handoff_state()["status"] == "complete"
+
+
+def test_a_summary_that_cannot_be_written_falls_back_before_the_dm_stops(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "6" * 32
+    events = helper_on(monkeypatch, lambda: {"session-log.md": ("old", "new")})
+
+    def full_disk(folder, plan):
+        events.append(("write",))
+        raise OSError("disk full")
+
+    monkeypatch.setattr(portal.session_summary, "write", full_disk)
+    prompts = []
+
+    def checkpoint(prompt):
+        prompts.append(prompt)
+        names = ("state.md", "session-tail.md") if len(prompts) == 1 else ("session-log.md",)
+        save_fields_and_acknowledge(old, token, names=names)
+
+    monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "complete" and "DM wrote the summary" in state["message"], state
+    assert len(prompts) == 2 and "could not write" in prompts[1]
+    assert not alive["value"]
+    assert "disk full" in Path(portal.session_summary.rt("session_summary.log")).read_text(encoding="utf-8")
+
+
+def test_the_helper_summary_is_written_before_the_dm_stops(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "7" * 32
+    events = helper_on(monkeypatch, lambda: {"session-log.md": ("old", "new")})
+
+    def write(folder, plan):
+        assert alive["value"], "the DM must still be running so a failure can fall back to it"
+        (old / "session-log.md").write_text("Summary by the helper\n", encoding="utf-8")
+        events.append(("write",))
+
+    monkeypatch.setattr(portal.session_summary, "write", write)
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_fields_and_acknowledge(old, token))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    assert portal.handoff_state()["status"] == "complete", portal.handoff_state()
+    assert ("write",) in events and not alive["value"]
+    assert (old / "session-log.md").read_text(encoding="utf-8") == "Summary by the helper\n"

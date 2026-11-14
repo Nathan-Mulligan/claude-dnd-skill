@@ -90,6 +90,11 @@ GOOD = {
 }
 
 
+@pytest.fixture(autouse=True)
+def own_runtime(tmp_path, monkeypatch):
+    monkeypatch.setenv("DND_RUNTIME_DIR", str(tmp_path / "runtime-default"))
+
+
 def campaign(tmp_path, state=STATE, log=LOG, lines=None, marked=True):
     folder = tmp_path / "test"
     folder.mkdir()
@@ -315,3 +320,46 @@ def test_ask_uses_the_shared_helper_with_the_summary_schema(monkeypatch):
     assert seen["model"] == "gpt-6-luna"
     assert seen["schema"] is summary.SCHEMA
     assert seen["timeout"] == summary.SUMMARY_TIMEOUT_S
+
+
+# ── from Sol's review ───────────────────────────────────────────────────────
+
+def test_dm_only_lines_in_moving_text_stay_out_of_the_prompt_but_are_kept(tmp_path, monkeypatch):
+    sessions = "".join(f"### Session {n} — Place {n}\n- Fact {n}.\n\n" for n in range(2, 6))
+    secret_fold = ("### Session 1 — Place 1\n- Fact 1.\n- DM note: SECRET-FOLD-A.\n- Off-screen, SECRET-FOLD-B.\n"
+                   "- The Wardens' faction move: SECRET-FOLD-C.\n\n")
+    state = STATE.replace(STATE[STATE.index("### Session 1"):STATE.index("## Recent Events")], secret_fold + sessions)
+    log = LOG_TWO.replace("The party reached Brackenford and met Marta.",
+                          "The party reached Brackenford and met Marta.\nHidden from the party: SECRET-ROTATE.")
+    folder = campaign(tmp_path, state=state, log=log)
+    [prompt], _ = run(folder, monkeypatch, dict(GOOD, archived=[ARCHIVED], story_so_far="Fact 1 came first."))
+    assert "SECRET" not in prompt and "- Fact 1." in prompt
+    archive = read(folder, "session-log-archive.md")
+    for kept in ("SECRET-FOLD-A", "SECRET-FOLD-B", "SECRET-FOLD-C", "SECRET-ROTATE", "SECRET-CALIBRATION"):
+        assert kept in archive
+
+
+def test_the_whole_session_comes_from_the_display_text_log(tmp_path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("DND_RUNTIME_DIR", str(runtime))
+    early = {"text": "Hobb gave the party the sealed letter.", "_camp": "test"}
+    filler = [{"text": f"The party waited by the mill, turn {i}.", "_camp": "test"} for i in range(40)]
+    other = {"text": "OTHER-CAMPAIGN line.", "_camp": "elsewhere"}
+    stamped_old = dict(OLD_LINE)
+    (runtime / "text_log.json").write_text(json.dumps([stamped_old, early, other] + filler), encoding="utf-8")
+    folder = campaign(tmp_path, lines=filler[-29:])
+    (folder / "session_tail.json").write_text(json.dumps(filler[-30:]), encoding="utf-8")  # the old mark has scrolled out
+    reply = dict(GOOD, recap="Hobb gave the party the sealed letter, and they waited by the mill.",
+                 key_events=["Hobb gave the party the sealed letter."])
+    [prompt], _ = run(folder, monkeypatch, reply)
+    assert "Hobb gave the party the sealed letter." in prompt
+    assert "turn 0." in prompt and "turn 39." in prompt
+    assert "OTHER-CAMPAIGN" not in prompt and "They crossed the fen.\n" not in prompt
+
+
+def test_a_number_the_material_never_gives_is_refused(tmp_path, monkeypatch):
+    folder = campaign(tmp_path)
+    stub_helper(monkeypatch, dict(GOOD, key_events=["Corwin Ash charges 300 gp a wagon."]))
+    with pytest.raises(ValueError, match="300"):
+        summary.prepare(folder, summary.display_mark(folder), ("codex", "m"))
