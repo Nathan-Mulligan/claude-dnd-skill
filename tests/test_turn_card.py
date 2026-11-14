@@ -162,7 +162,8 @@ def test_steering_nudge_takes_the_beat_line(fenmoor):
 def test_every_card_asks_for_narration_first_and_a_one_word_close(fenmoor):
     text = card(fenmoor)
     rule = next(part for part in text.split(" | ") if part.startswith("Rule: Turn shape"))
-    assert "one send.py call with every block" in rule
+    assert "--opener first" in rule
+    assert "one send.py call with every other block" in rule
     assert "bookkeeping in the next call" in rule
     assert "reply done" in rule
 
