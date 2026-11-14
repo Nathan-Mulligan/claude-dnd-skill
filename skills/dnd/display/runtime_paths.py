@@ -49,15 +49,21 @@ def rt(name: str) -> str:
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
+def _open_no_link(path: str, flags: int) -> int:
+    if not _NOFOLLOW and os.path.islink(path):  # Windows has no O_NOFOLLOW
+        raise OSError(f"{path} is a link")
+    return os.open(path, flags | os.O_CREAT | _NOFOLLOW, 0o600)
+
+
 def touch(path: str) -> None:
     """Create an empty file if it is missing. Raises OSError, also when `path` is a link."""
-    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | _NOFOLLOW, 0o600))
+    os.close(_open_no_link(path, os.O_WRONLY))
 
 
 def log_line(path: str, msg: str) -> None:
     """Append one timestamped line. Never raises; writes nothing through a link."""
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _NOFOLLOW, 0o600)
+        fd = _open_no_link(path, os.O_WRONLY | os.O_APPEND)
     except OSError:
         return
     with os.fdopen(fd, "a", encoding="utf-8") as f:
