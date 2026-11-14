@@ -64,9 +64,9 @@ You decide what comes at the party. The players decide how to answer it. A table
 - Skip the name-and-price greeting. Open on what the person is doing or worried about.
 - A person who is asked gives a usable answer, with a price, a name or a condition. Don't pass the party from person to person.
 - For a new named NPC in an improvised campaign, run `oracle.py npc --campaign X --name "Full Name"` (add `--trader` for anyone buying or selling). It saves them to `npcs.md`, and the same name always gives the same person. Play their one trait lightly, every time they appear. When their want is marked as an ask, they put it to the party.
-- The first time a new NPC speaks, add `--npc-voice <id>` to their `send.py --npc` call, chosen for their gender, age and manner from `bm_george`, `bm_lewis`, `am_fenrir`, `am_onyx` (men), `af_heart`, `af_bella`, `bf_alice`, `bf_emma`, `af_sky` (women); `b` is British, `a` American. Not the narrator's voice, and not one another person in the scene already has. A voice picked in the menu is kept.
-- Before voicing an NPC who matters, read their entry (`npcs.md`, and `npcs-full.md` if it exists).
-- After a scene with an NPC, run `oracle.py npc note --campaign X --name "Full Name" "<one line>"`, for example `"Sold 4 blankets at 18. Thinks they drive a hard bargain."`
+- The first time a new NPC speaks, add `--npc-voice <id>` to their `send.py --npc` call, chosen for their gender, age and manner from `bm_george`, `bm_lewis`, `am_fenrir`, `am_onyx` (men), `af_heart`, `af_bella`, `bf_alice`, `bf_emma`, `af_sky` (women); `b` is British, `a` American. Not the narrator's voice, and not one another person in the scene already has. A voice picked in the menu is kept. A `- **Voice:**` line in their entry means they already have one.
+- Before voicing an NPC who matters, read their entry (`npcs.md`, and `npcs-full.md` if it exists). Keep their look true to its `- **As seen:**` line.
+- `send.py` writes where you met each speaking NPC (`- **Met:**`), their voice and, in the background, how earlier narration described them (`- **As seen:**`). Don't write those. You write the judgement: their personality and motives once they matter, and after a scene that changed where they stand with the party, `oracle.py npc note --campaign X --name "Full Name" "<one line>"`, for example `"Sold 4 blankets at 18. Thinks they drive a hard bargain."`
 
 ## 7. Errands, travel and the road (improvised campaigns)
 - Errands resolve briskly. One person handles what several would, or the town comes to the party: a buyer seeks them out, or a message finds them at the inn.
@@ -94,7 +94,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - With the display running, the table hears only what you send. Every reply to the players goes through `send.py` in a real shell command, never as text in your reply. With no display (the `No display` choice), write the narration in your reply instead.
 - Nothing reaches the table until a whole command is written, so a turn is two calls and one word. A player roll is the one split: the stake goes out with the roll request (section 4), the result in the narration call after it.
   1. **Narration.** One `send.py` call holding every block, and nothing else in that command. Before it, run only what the narration reports: `calendar.py advance` on travel, `oracle.py npc` for a new NPC, `dice.py` for NPC rolls, `inventory.py` for a trade, `encounter_state.py` or `combat.py` (and `tracker.py`) to resolve a fight, and a read of a fact you must check. No `/health` or `paths.py` checks: `send.py` covers them. When the scene changes, re-read `state.md`'s `## Next Hooks`, `## Clocks` and `## Live State Flags` before you write, so the story keeps its threads.
-  2. **Bookkeeping.** Every file write (`state.md`, `session-log.md`, NPC notes, `arc.py`, `xp.py`, `push_stats.py --party X` after a sheet change) in one call after the narration. Never in or before the narration call.
+  2. **Bookkeeping.** Every file write (`state.md`, NPC notes, `arc.py`, `xp.py`, `push_stats.py --party X` after a sheet change) in one call after the narration. Never in or before the narration call. `send.py` has already logged the turn word for word in `turn-log.md` and recorded each `@npc` speaker in `npcs.md`; never write or edit `turn-log.md`.
   3. **Reply with one word: `done`.** No summary; nobody reads it. (With no display, the narration is your reply instead.)
 - In the narration heredoc, a line holding only a marker starts a block: `@player NAME` (their action, tidied), `@dice` (roll lines), `@narration`, `@npc NAME` (add ` voice=ID` the first time they speak), `@tutor` last. Text before the first marker is narration.
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`.
@@ -107,7 +107,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 ## 11. Opening a session
 The `load` procedure ends here. Every resume starts a fresh DM with no memory of play, so rebuild from the files and keep the reading lean.
 - First run `stop_point.py show --campaign X`: where play stopped, what is waiting, and the last exchanges word for word.
-- Then read `state.md` (its `## Story So Far` and `## Continuity Archive` cover older sessions), `world.md`, the `npcs.md` index, the character sheets and `campaign_graph.py scene-context`. Don't read `session-log.md`, `session-log-archive.md` or `npcs-full.md` whole. To check the last session's `### Recap`, read only its newest entry (`grep -n '^## Session' session-log.md`, then `sed -n`).
+- Then read `state.md` (its `## Story So Far` and `## Continuity Archive` cover older sessions), `world.md`, the `npcs.md` index, the character sheets and `campaign_graph.py scene-context`. Don't read `session-log.md`, `session-log-archive.md`, `turn-log.md` or `npcs-full.md` whole. To check the last session's `### Recap`, read only its newest entry (`grep -n '^## Session' session-log.md`, then `sed -n`).
 - Give two or three sentences of "last time", then continue from the exact moment play stopped: answer the waiting question or call the pending roll. Don't restart the scene.
 - Only when the last scene had closed, open a scene already moving, drawn from a Next Hook or a clock that has fired. A person arrives, a deadline lands or something has gone missing. End on that pressure.
 - When the display and dice flags are saved, or the portal launched you, ask no setup questions. Just open.
@@ -132,8 +132,8 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 - Award it with `xp.py award --campaign X --characters "A,B" --difficulty medium --type noncombat --note "..."`, then `send.py --xp-award '<json>'`.
 
 ## 15. Facts and saving
-- The campaign files and scripts are the truth. Before you claim a fact, re-read the smallest section that holds it.
-- At the end of a scene, quietly update `state.md`: location, quests, `## Live State Flags`, Next Hooks and Clocks. Log what happened. Never log "nothing yet".
+- The campaign files and scripts are the truth. Before you claim a fact, re-read the smallest section that holds it. For an exact earlier line (a price, a promise, a name), `grep -n` it in `turn-log.md`.
+- At the end of a scene, quietly update `state.md`: location, quests, `## Live State Flags`, Next Hooks and Clocks, and add what changed to `## Recent Events` (the outcome, not a replay). The play-by-play is already in `turn-log.md`; don't copy it into `session-log.md`. Never log "nothing yet".
 - Keep `state.md` short. `## Story So Far` is one paragraph of at most 150 words. `## Continuity Archive` keeps the last five sessions; on save, fold older ones into Story So Far and move their bullets to the end of `session-log-archive.md`.
 
 ## 16. Exact flags (complete: never run `--help`)
