@@ -191,6 +191,113 @@ def sheet_payload(campaign: Path, sheet: Path) -> tuple[str, dict]:
     return name, payload
 
 
+_ABILITIES = ("str", "dex", "con", "int", "wis", "cha")
+
+
+def _section(text: str, title: str) -> str:
+    m = re.search(rf"(?m)^##[ \t]+{title}[^\n]*\n(.*?)(?=^##[ \t]|\Z)", text, re.S)
+    return m.group(1) if m else ""
+
+
+def _bold(text: str, label: str) -> str:
+    m = re.search(rf"\*\*{label}:\*\*\s*([^|\n]*)", text, re.I)
+    return m.group(1).strip() if m else ""
+
+
+def _int(value: str) -> "int | None":
+    m = re.search(r"-?\d+", value or "")
+    return int(m.group()) if m else None
+
+
+def _table(section: str) -> list[list[str]]:
+    rows = [[c.strip() for c in line.strip().strip("|").split("|")]
+            for line in section.splitlines() if line.strip().startswith("|")]
+    return [r for r in rows[1:] if not all(set(c) <= set("-: ") for c in r)]
+
+
+def _spells(section: str) -> dict:
+    flat = " ".join(section.split())
+    spells: dict = {}
+    for key, label in (("prepared", r"Prepared|Known spells|Spells known"), ("cantrips", r"Cantrips")):
+        m = re.search(rf"(?:\*\*)?(?:{label}):?(?:\*\*)?:?\s*([^.]*)", flat, re.I)
+        if m:
+            spells[key] = [s.strip() for s in m.group(1).split(",") if s.strip()]
+    if re.search(r"\bno cantrips\b", flat, re.I):
+        spells["cantrips"] = []
+    dc = re.search(r"save DC\s*(\d+)", flat, re.I)
+    attack = re.search(r"spell attack\s*([+-]\d+)", flat, re.I)
+    if dc:
+        spells["save_dc"] = int(dc.group(1))
+    if attack:
+        spells["attack_bonus"] = attack.group(1)
+    return spells
+
+
+def player_payload(campaign: Path, sheet: Path) -> dict:
+    """One display player built from the sheet file; fields the sheet leaves blank are left out."""
+    text = sheet.read_text(encoding="utf-8")
+    name, view = sheet_payload(campaign, sheet)
+    player: dict = {"name": name}
+    who = _identity(text)
+    for key, value in (("race", who["species"]), ("class", who["class"])):
+        if value:
+            player[key] = value
+    level = _int(_bold(text, "Level"))
+    if level:
+        player["level"] = level
+    xp = re.search(r"\*\*XP:\*\*\s*(\d+)\s*/\s*(\d+)", text)
+    if xp:
+        player["xp"] = {"current": int(xp.group(1)), "next": int(xp.group(2))}
+    combat = _section(text, "Combat Stats")
+    hp = re.search(r"\*\*HP:\*\*\s*(\d+)\s*/\s*(\d+)", combat)
+    if hp:
+        player["hp"] = {"current": int(hp.group(1)), "max": int(hp.group(2)), "temp": _int(_bold(combat, "Temp HP")) or 0}
+    ac, speed = _int(_bold(combat, "AC")), _int(_bold(combat, "Speed"))
+    if ac is not None:
+        player["ac"] = ac
+    initiative = re.match(r"[+-]?\d+", _bold(combat, "Initiative"))
+    if initiative:
+        player["initiative"] = initiative.group() if initiative.group()[0] in "+-" else "+" + initiative.group()
+    if speed is not None:
+        player["speed"] = speed
+    dice = re.search(r"\*\*Hit Dice:\*\*\s*(\d+)(d\d+)(?:\s*\(remaining:\s*(\d+)\))?", combat)
+    if dice:
+        player["hit_dice"] = {"max": int(dice.group(1)), "remaining": int(dice.group(3) or dice.group(1)),
+                              "die": dice.group(2)}
+    inspiration = _int(_bold(combat, "Heroic Inspiration") or _bold(combat, "Inspiration"))
+    if inspiration is not None:
+        player["inspiration"] = inspiration > 0
+    rows = _table(_section(text, "Ability Scores"))
+    scores = [re.match(r"\s*(\d+)", c) for c in rows[0]] if rows else []
+    if len(scores) == 6 and all(scores):
+        player["ability_scores"] = {}
+        for key, m in zip(_ABILITIES, scores):
+            mod = (int(m.group(1)) - 10) // 2
+            player["ability_scores"][key] = {"score": int(m.group(1)), "mod": f"+{mod}" if mod >= 0 else str(mod)}
+    slots = {}
+    for row in _table(_section(text, "Spell Slots")):
+        level_n, total = _int(row[0]), _int(row[1]) if len(row) > 1 else None
+        if level_n and total:
+            slots[str(level_n)] = {"used": _int(row[2]) or 0 if len(row) > 2 else 0, "max": total}
+    if slots:
+        player["spell_slots"] = slots
+    sheet_view = dict(view)
+    attacks = [dict(zip(("name", "bonus", "damage", "type", "notes"), row)) for row in _table(_section(text, "Attacks"))
+               if row and row[0]]
+    if attacks:
+        sheet_view["attacks"] = attacks
+    spells = _spells(_section(text, "Known Spells"))
+    if spells:
+        sheet_view["spells"] = spells
+    player["sheet"] = sheet_view
+    return player
+
+
+def party_payloads(campaign_name: str) -> list[dict]:
+    campaign = inventory.campaign_path(campaign_name)
+    return [player_payload(campaign, sheet) for sheet in inventory.character_sheets(campaign)]
+
+
 def campaign_payloads(campaign_name: str) -> list[tuple[str, dict]]:
     campaign = inventory.campaign_path(campaign_name)
     return [sheet_payload(campaign, sheet) for sheet in inventory.character_sheets(campaign)]

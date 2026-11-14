@@ -44,7 +44,11 @@ Usage:
     python3 push_stats.py --player Flerb --slot-use 1      # expend one 1st-level slot
     python3 push_stats.py --player Flerb --slot-restore 2  # restore one 2nd-level slot
 
-    # Features and inventory from the campaign's sheet files and ledgers (use at load):
+    # The whole party from its sheet files: identity, HP, AC, XP, abilities, slots, attacks,
+    # spells, features and inventory. Use at load and after any sheet change:
+    python3 push_stats.py --party Enderal [--replace-players]
+
+    # Features and inventory only, merged into a --json payload:
     python3 push_stats.py --from-sheets Enderal
     # Item and coin changes: scripts/inventory.py, which pushes for you.
 
@@ -188,6 +192,9 @@ def main() -> None:
     parser.add_argument("--from-sheets", metavar="CAMPAIGN",
                         help="Fill each character's sheet features, inventory and ledger from the "
                              "campaign's sheet files (merged into --json players by name)")
+    parser.add_argument("--party", metavar="CAMPAIGN",
+                        help="Select the campaign and push every character read from its sheet files "
+                             "(merged by name; add --replace-players at load)")
     parser.add_argument("--factions", metavar="JSON",
                         help='Party faction standings: [{"name":"Pale Court","standing":"Suspicious"},...]; [] clears')
     parser.add_argument("--quests", metavar="JSON",
@@ -325,6 +332,17 @@ def main() -> None:
         except Exception as e:
             print(f"--from-sheets: {e}", file=sys.stderr)
             sys.exit(1)
+
+    if args.party:
+        sys.path.insert(0, os.path.join(_DISPLAY_DIR, os.pardir, "scripts"))
+        try:
+            import sheet_extract
+            players = sheet_extract.party_payloads(args.party)
+        except Exception as e:
+            print(f"--party: {e}", file=sys.stderr)
+            sys.exit(1)
+        payload["campaign"] = args.party
+        payload.setdefault("players", []).extend(players)
 
     # ── Factions ───────────────────────────────────────────────────────────────
     if args.factions is not None:

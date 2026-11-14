@@ -43,7 +43,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - A failed roll never quietly gets the success.
 - When haggling, the price moves 10% per band. Success is 10% their way and beating the DC by 5 is 20%. Failure holds the price.
 - **`roll_mode: players`** (the default) means players roll their own PCs. In the same turn:
-  1. One call: `send.py --dice-request --character "Nella" --modifier 3 --dc 13 --label "Persuasion: fail and the price holds" --wait`, with the narration that names the DC and the stake as its heredoc. It sends that first, then blocks until the roll and prints the roll line.
+  1. One call: `send.py --dice-request --character "Nella" --modifier 3 --dc 13 --label "Persuasion: fail and the price holds" --wait`, with the narration that names the DC and the stake as its heredoc. It sends that first, then blocks until the roll and prints the roll line. Run it with a long wait (in Codex, `yield_time_ms: 120000`) and never poll it.
   2. Resolve it and narrate the result in the next call, this same turn.
   3. On a timeout (exit 2), ask for the number out loud and stop. With no display running, ask for the roll out loud and wait.
   4. Never roll a PC's die yourself in this mode.
@@ -93,7 +93,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 - With the display running, the table hears only what you send. Every reply to the players goes through `send.py` in a real shell command, never as text in your reply. With no display (the `No display` choice), write the narration in your reply instead.
 - Nothing reaches the table until a whole command is written, so a turn is two calls and one word. A player roll is the one split: the stake goes out with the roll request (section 4), the result in the narration call after it.
   1. **Narration.** One `send.py` call holding every block, and nothing else in that command. Before it, run only what the narration reports: `calendar.py advance` on travel, `oracle.py npc` for a new NPC, `dice.py` for NPC rolls, `inventory.py` for a trade, `encounter_state.py` or `combat.py` (and `tracker.py`) to resolve a fight, and a read of a fact you must check. No `/health` or `paths.py` checks: `send.py` covers them. When the scene changes, re-read `state.md`'s `## Next Hooks`, `## Clocks` and `## Live State Flags` before you write, so the story keeps its threads.
-  2. **Bookkeeping.** Every file write (`state.md`, `session-log.md`, NPC notes, `arc.py`, `xp.py`, `push_stats.py`) in one call after the narration. Never in or before the narration call.
+  2. **Bookkeeping.** Every file write you need (`state.md` facts, NPC notes, `arc.py`, `xp.py`, `push_stats.py --party X` after a sheet change) in one call after the narration. Never in or before the narration call. Skip it when nothing changed. The scribe writes the turn log (`turn-log.md`) and `## Recent Events` from what you sent; don't write either.
   3. **Reply with one word: `done`.** No summary; nobody reads it. (With no display, the narration is your reply instead.)
 - In the narration heredoc, a line holding only a marker starts a block: `@player NAME` (their action, tidied), `@dice` (roll lines), `@narration`, `@npc NAME` (add ` voice=ID` the first time they speak), `@tutor` last. Text before the first marker is narration.
 - Feed text through a quoted heredoc: `send.py <<'DNDEND'`, the text, then `DNDEND`.
@@ -114,7 +114,7 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 ## 12. Ending a session
 - Close on a hook: a consequence landing, or a decision still open.
 - Run the `end` procedure in SKILL-commands.md. It saves, writes the recap, records faction moves, checks the arc and refreshes Next Hooks and Clocks. When the portal asks for it, run it with no questions.
-- The portal's Save & close button asks for that wrap-up, then closes you. Write this session's entry in `session-log.md` with its `### Recap`, refresh `## Story So Far`, update `state.md` (in-world date, Active Quests, Clocks, Next Hooks), and save every character sheet and the party roster.
+- The portal's Save & close button asks for that wrap-up, then closes you. Write this session's entry in `session-log.md` with its `### Recap`, built from this session's lines in `turn-log.md`, refresh `## Story So Far`, update `state.md` (in-world date, Active Quests, Clocks, Next Hooks), and save every character sheet and the party roster.
 - Whenever the portal asks you to save, record where play stopped. Pipe your last six to eight exchanges, oldest first and word for word, into `stop_point.py write --campaign X --where "<one line>" --waiting "<open question or pending roll>"` as JSON: `[{"who": "Players", "text": "..."}, {"who": "DM", "text": "..."}]`. Include the players' last inputs and your final narration.
 
 ## 13. Tone and table settings
@@ -132,7 +132,7 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 
 ## 15. Facts and saving
 - The campaign files and scripts are the truth. Before you claim a fact, re-read the smallest section that holds it.
-- At the end of a scene, quietly update `state.md`: location, quests, `## Live State Flags`, Next Hooks and Clocks. Log what happened. Never log "nothing yet".
+- At the end of a scene, quietly update `state.md`: location, quests, `## Live State Flags`, Next Hooks and Clocks. The scribe logs what happened.
 - Keep `state.md` short. `## Story So Far` is one paragraph of at most 150 words. `## Continuity Archive` keeps the last five sessions; on save, fold older ones into Story So Far and move their bullets to the end of `session-log-archive.md`.
 
 ## 16. Exact flags (complete: never run `--help`)
@@ -143,6 +143,6 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 - `inventory.py buy|sell --campaign X --character NAME --price "2 gp" [--qty N] ITEM`; `spend|earn --campaign X --character NAME "2 gp 5 sp"`; `add|remove --campaign X --character NAME [--qty N] ITEM`; `cargo add|remove|show --campaign X [ITEM]`.
 - `oracle.py npc --campaign X --name "Full Name" [--trader]`; `oracle.py npc note --campaign X --name "Full Name" "<line>"`.
 - `xp.py award --campaign X --characters "A,B" --difficulty easy|medium|hard|deadly --type combat|noncombat [--note "..."]`.
-- `push_stats.py --player NAME --hp CUR MAX | --xp CUR NEXT | --conditions-add COND | --conditions-remove COND`.
+- `push_stats.py --party X` (the whole party from its sheets); `push_stats.py --player NAME --hp CUR MAX | --conditions-add COND | --conditions-remove COND`.
 
 Check phrase: the lantern is lit at the crossroads.

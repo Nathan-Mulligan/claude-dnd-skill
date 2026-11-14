@@ -38,7 +38,7 @@ def test_dm_core_fits_in_one_read_and_ends_with_a_check_phrase():
     "--dice-request", "--dc", "--wait", "oracle.py npc", "calendar.py",
     "arc.py advance", "arc.py revise", "--scene", "## Next Hooks", "## Clocks",
     "Turn card", "Trade policy", "spotlight", "dictated", "source/",
-    "npc note", "--no-road", "--name", "inventory.py",
+    "npc note", "--no-road", "--name", "inventory.py", "yield_time_ms",
 ])
 def test_dm_core_carries_the_play_rules(needle):
     assert needle in _read(CORE)
@@ -194,7 +194,9 @@ def test_dice_request_wait_prints_the_roll_so_the_dm_resolves_in_the_same_turn(t
          mock.patch.object(sender.urllib.request, "urlopen", side_effect=lambda *a, **k: next(replies)), \
          mock.patch.dict(os.environ, {"DND_ACTIVE_CAMPAIGN": ""}):
         sender.main()
-    assert "Nella rolls 1d20+3: [14] +3 = 17" in capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert "Nella rolls 1d20+3: [14] +3 = 17" in captured.out
+    assert "yield_time_ms 120000" in captured.err, "a Codex DM must wait once, not poll"
 
 
 def test_display_reports_the_rolled_result_for_a_finished_request(tmp_path):
