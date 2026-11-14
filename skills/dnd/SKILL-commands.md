@@ -82,7 +82,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 
 ## `/dm:dnd load <campaign-name>`
 
-**Launched by the campaign portal:** the display is already running (`_display_running = true`) and the portal handles campaign selection and the display tail. Skip step 0 and the two questions in step 1. Keep the saved `roll_mode` (write `roll_mode: players` if none is saved) and don't ask about autorun. Run the rest of the procedure, including the prep pass (step 8) and the opening (step 9).
+**Launched by the campaign portal:** the display is already running (`_display_running = true`) and the portal handles campaign selection and the display tail. First run `python3 ${CLAUDE_SKILL_DIR}/scripts/stop_point.py show --campaign <campaign-name>` to see where play stopped. Skip step 0 and the two questions in step 1. Keep the saved `roll_mode` (write `roll_mode: players` if none is saved) and don't ask about autorun. Run the rest of the procedure, including the prep pass (step 8) and the opening (step 9).
 
 0. **Pick the campaign if none was named.** If `<campaign-name>` was supplied (or the player clearly named one), use it. Otherwise `ls` the campaigns dir (`~/.claude/dnd/campaigns/` or `$DND_CAMPAIGN_ROOT/campaigns/`) and **call `AskUserQuestion`**: *"Which campaign?"* with the existing campaign names as options (most-recently-played first — sort by `state.md` mtime). The player can pick "Other" to type a name. If there are no campaigns, tell them and offer `/dm:dnd new`.
 1. **Session setup — call `AskUserQuestion`** with **two questions** (not typed y/n prompts):
@@ -144,7 +144,7 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
    - **arc.md (imported campaigns only):** Do **NOT** load at session start. `state.md → ## Campaign Arc` already carries the current + next chapter window. Read `arc.md` only when advancing chapters or when a player asks about the broader arc. If absent, the arc lives inline in `state.md` (dynamic/sandbox) — read it there as before. **Sanity-check the pointer at load:** if `## Campaign Arc`'s `current_chapter` shows its `outstanding_beats` already cleared, or the last session plainly ended in the *next* chapter's location or situation, the pointer never advanced — surface it (*"the current chapter looks finished; pick up in `<next_chapter>`?"*) instead of opening another scene in a chapter that's already done. A pointer that never moves is exactly how a structured campaign quietly drifts off its own arc and starts improvising.
    - **source/<chapter-id>.md (imported campaigns only):** the full module text, one file per chapter. Never loaded at session start. Before running a scene in a chapter, read that chapter's `source/<id>.md` (the `source_ref` in the arc) — and only that chapter. This is the predefined-story equivalent of reading a single NPC's full entry on demand.
    - **npcs.md:** Index row only at load. **Before writing substantive dialogue or decisions for any named NPC, read their full entry in `npcs-full.md`.** Do not wait for an explicit `/dm:dnd npc [name]` call — do it proactively when a scene centers on that character. Index rows carry surface traits only; personality axes, relationships, and hidden goals are in the full entry.
-   - **Do NOT read session-log.md at load** — recent events are already in `state.md → ## Recent Events`. Only read session-log.md if the player explicitly requests a recap, or if DM Calibration from the last 1-2 sessions is needed and not already internalized.
+   - **Do NOT read session-log.md or session-log-archive.md at load** — recent events are already in `state.md → ## Recent Events`, older sessions in `## Story So Far` and `## Continuity Archive`, and the stop point in `stop_point.py show`. Only read session-log.md if the player explicitly requests a recap, or if DM Calibration from the last 1-2 sessions is needed and not already internalized, and then only the entry you need.
 6. Push full party stats to display sidebar. **CRITICAL:** use `--json` with a complete player object — **never** the `--player` shorthand here. `--player` only updates existing fields; it cannot populate the card or sheet tabs. The display shows "Full sheet not loaded" when `sheet` is absent.
 
    ```bash
@@ -250,15 +250,16 @@ Full step-by-step procedures for all `/dm:dnd` slash commands. Read only the pro
 
    6. Re-run scene-context (now populated). Then proceed to step 8 (prep pass).
 
-8. **Prep pass.** Check whether the last session ended properly: its newest entry in session-log.md has a filled `### Recap`. If it doesn't (the session just stopped, or `/dm:dnd end` never ran), do the end-of-session prep now, quietly, before narrating:
+8. **Prep pass.** Check whether the last session ended properly: its newest entry in session-log.md has a filled `### Recap`. Read only that entry: `grep -n '^## Session' session-log.md`, then `sed -n` from the last match. If it doesn't (the session just stopped, or `/dm:dnd end` never ran), do the end-of-session prep now, quietly, before narrating:
    - **Faction moves.** For each active faction, write one line under `## Faction Moves`: what they did while the party was busy.
    - **Beat check.** `python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py status --campaign <name>`. If the current beat's change has already happened in play, run `arc.py advance`. If its pressure no longer fits where the party is, run `arc.py revise --beat <id> --pressure "..."` with a pressure that names a person or faction near the party.
    - **Next Hooks.** Rewrite `## Next Hooks` for where the party is now and where they are heading: two or three bullets, each with who is there, what they need and how it ties to the current beat.
 
    In every improvised campaign, whether or not the last session ended properly: if `## Next Hooks` or `## Clocks` is missing or empty, write it now. If a `## DM Style Notes` line or the arc's `steering_notes` says "wait for the players", "let the players set the pace" or "do not force", keep leading anyway (only the `spotlight` dial sets who leads) and mention the line to the table owner after the opening.
 9. **Open the session.** Ask no setup questions when the display and dice flags are saved or the portal launched you.
-   - Three sentences of "last time": where the party is, what they just did, and what is unresolved.
-   - Then a scene already moving, drawn from a Next Hook or a clock that has fired (check `calendar.py -c <name> now` against `## Clocks`). Someone arrives, a deadline lands or something has changed. End on that pressure, not on "what would you like to do?".
+   - Two or three sentences of "last time": where the party is, what they just did, and what is unresolved.
+   - Then continue from the exact moment in `stop_point.py show`: answer the waiting question or call the pending roll. Don't restart the scene.
+   - Only when the last scene had closed, open a scene already moving, drawn from a Next Hook or a clock that has fired (check `calendar.py -c <name> now` against `## Clocks`). Someone arrives, a deadline lands or something has changed. End on that pressure, not on "what would you like to do?".
    - Send it through `send.py` (opener first; add `--scene "<place>: <what is happening>"` if the place is new).
 10. Enter active DM mode — no `/dm:dnd` prefix needed from this point.
 
@@ -407,10 +408,10 @@ Then update `## Faction Moves` in state.md: for each active faction, answer *"wh
    bash ${CLAUDE_SKILL_DIR}/display/verify_tail.sh <campaign-name>
    ```
    The script returns 0 if the tail is healthy (non-empty + valid JSON list), 1 if missing/empty/corrupt. If it returns 1, the tail is unsafe to rely on for next session's replay — **write a canonical replacement directly to the campaign path** with this session's 5–8 most important narrative beats as a JSON list of `{"text": "...", "_camp": "<name>"}` entries (no display call needed; the display may already be dead). Use the `${CLAUDE_SKILL_DIR}/display/write_canonical_tail.py` helper.
-2. Also write `~/.claude/dnd/campaigns/<name>/session-tail.md` (human-readable snapshot — companion to the JSON, used as fallback during /dm:dnd load if JSON read fails).
+2. Record where play stopped in `~/.claude/dnd/campaigns/<name>/session-tail.md` with `stop_point.py write` (DM-CORE section 12): a one-line `--where`, the open question or pending roll as `--waiting`, and the last six to eight exchanges verbatim as JSON on stdin. It keeps the last eight. The portal will not stop a DM until this file is fresh.
 
 **Session log archival (run on every save after session count > 3):**
-session-log.md keeps only the **2 most recent full session entries**. Older entries move to `session-log-archive.md` (append, never delete). Before archiving each entry, extract a 3–5 bullet continuity summary and write it to `## Continuity Archive` in state.md. Format:
+session-log.md keeps only the **2 most recent full session entries**. Older entries move to `session-log-archive.md` (append, never delete). Before archiving each entry, extract a 3–5 bullet continuity summary and write it to `## Continuity Archive` in state.md. The archive keeps the **5 most recent sessions**: fold anything older into `## Story So Far` (one paragraph, at most 150 words, above `## Recent Events`) and append those bullets to the end of `session-log-archive.md`. Format:
 
 ```markdown
 ### Session N — [date] — [one-line location/event label]
@@ -480,6 +481,7 @@ If `graph.json` doesn't exist yet for this campaign, skip the sweep entirely (no
         - **Pressure not yet delivered** → leave beat alone; expected to deliver next session.
       iv. Update `steering_notes` for the next outstanding beat with the *consequence shape* expected, not the specific event.
    e2. **Next session prep** (improvised campaigns): refresh `## Next Hooks` (two or three, for where the party is heading) and `## Clocks` (drop fired ones, add one so two to four stay live).
+   e2b. **Story so far:** refresh `state.md → ## Story So Far`, one paragraph of at most 150 words covering everything before `## Continuity Archive`.
    e3. **Closing line.** Send one or two sentences of narration through `send.py` that land on a hook for next time: a consequence arriving, or a decision still open.
    f. **Tail verification (added 2026-05-01):** before killing the display, verify the campaign-side `session_tail.json` is healthy:
       ```bash

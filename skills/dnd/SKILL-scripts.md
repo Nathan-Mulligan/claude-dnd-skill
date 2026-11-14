@@ -440,6 +440,20 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/session_recap.py diff-files before.json afte
 
 ---
 
+## Where Play Stopped — `scripts/stop_point.py`
+
+Writes and shows `<campaign>/session-tail.md`: one line on where play stopped, the open question or pending roll, and the last eight exchanges word for word. Every portal save requires a fresh one, and a resumed DM reads it first. Without one, `show` prints the last eight entries of the display's `session_tail.json`.
+
+```bash
+echo '[{"who":"Players","text":"We ask Rosa about the ledger."},{"who":"DM","text":"Rosa slides it across. Wren, roll Insight."}]' |
+  python3 ${CLAUDE_SKILL_DIR}/scripts/stop_point.py write --campaign $CAMP \
+    --where "Rosa's bakery, Brinewick, morning of 16 Leaffall; Rosa has just shown the ledger." \
+    --waiting "Wren's Insight roll on Rosa (DC 13)"
+python3 ${CLAUDE_SKILL_DIR}/scripts/stop_point.py show --campaign $CAMP
+```
+
+---
+
 ## Oracle — `scripts/oracle.py`
 
 Dice-driven solo/improv oracles (Mythic chaos factor, Ironsworn yes/no, Random Event Focus, scene-meaning word pairs). Keeps pacing transparent and rollable instead of invented. Rolls are stdlib-random and seedable (`--seed N`). The chaos factor persists in `state.md → ## Session Flags` as `chaos_factor: N`. Zero LLM calls.

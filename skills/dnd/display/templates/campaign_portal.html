@@ -109,7 +109,7 @@
             </div>
           </details>
         </fieldset>
-        <div class="actions"><button id="continue" class="secondary" type="button" hidden>Continue current campaign</button><button id="start" type="submit" disabled>Start campaign</button></div>
+        <div class="actions"><button id="continue" class="secondary" type="button" hidden>Continue current campaign</button><button id="save-close" class="secondary" type="button" hidden>Save &amp; close session</button><button id="start" type="submit" disabled>Start campaign</button></div>
       </form>
       <p id="status" role="status" aria-live="polite"></p>
       <details><summary>DM console</summary><pre id="terminal">No model session is running.</pre></details>
@@ -146,7 +146,7 @@
     const selectedName = () => $('mode').value === 'new' ? $('name').value.trim() : $('saved').value;
     const codexDm = () => $('dm-launcher').value === 'codex';
     const sameEffort = () => !codexDm() || $('effort').value === (state.meta.effort || 'medium');
-    const continuing = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider && sameEffort();
+    const reloading = () => state && state.active && $('mode').value === 'resume' && selectedName() === state.meta.campaign && $('provider').value === state.meta.provider && sameEffort();
     let nextCharacterId = 0;
     function updateCharacterButtons() {
       const cards = $('characters').querySelectorAll('.character-card');
@@ -199,12 +199,14 @@
       $('onboarding').disabled = busy || resume;
       $('description-label').textContent = resume ? 'Anything to tell your DM? · optional' : 'What kind of adventure?';
       $('description').placeholder = resume ? 'A note for the next part of your adventure…' : 'Mountains, friendly dragons, and a missing golden diamond…';
-      $('continue').hidden = !(state && state.active) || continuing();
+      $('continue').hidden = !(state && state.active);
       $('continue').disabled = busy;
+      $('save-close').hidden = !(state && state.active);
+      $('save-close').disabled = busy;
       $('close-campaign').disabled = busy;
       for (const id of ['mode', 'dm-launcher', 'provider', 'effort', 'name', 'saved', 'description']) $(id).disabled = busy;
       $('start').disabled = busy || !state || (resume && !selectedName());
-      $('start').textContent = continuing() ? 'Continue campaign' : state && state.active ? (resume ? 'Save & switch' : 'Save & start new campaign') : resume ? 'Load campaign' : 'Create campaign & begin';
+      $('start').textContent = reloading() ? 'Save & reload campaign' : state && state.active ? (resume ? 'Save & switch' : 'Save & start new campaign') : resume ? 'Load campaign' : 'Create campaign & begin';
       window.DndSelect?.refresh();
     }
     function closeDialog() {
@@ -262,7 +264,8 @@
           switching=false;
           busy=false;
           message(handoff.message || 'Your campaign is ready.');
-          if (keepDisplayDuringSwitch) closeDialog();
+          if (handoff.action === 'close') updateControls();
+          else if (keepDisplayDuringSwitch) closeDialog();
           else enterCampaign();
         } else if (handoff.status === 'idle' || !handoff.status) {
           switching=false;
@@ -282,7 +285,6 @@
     $('campaign-form').addEventListener('submit', async event => {
       event.preventDefault();
       if (busy || !state) return;
-      if (continuing()) { closeDialog(); return; }
       busy=true;
       updateControls();
       message(state.active ? 'Saving your campaign before switching…' : 'Creating your adventure from these answers…');
@@ -293,13 +295,8 @@
         if (state.active) {
           keepDisplayDuringSwitch = payload.mode === 'resume' && payload.name === state.meta.campaign;
           const data = await api('/api/switch', 'POST', payload);
-          if (data.continuing) {
-            busy=false;
-            closeDialog();
-          } else {
-            switching=true;
-            message(data.message || 'Saving your campaign before switching…');
-          }
+          switching=true;
+          message(data.message || 'Saving your campaign before switching…');
         } else {
           const data = await api('/api/start', 'POST', payload);
           busy=false;
@@ -310,6 +307,18 @@
       } catch (error) { busy=false; switching=false; message(error.message, true); updateControls(); }
     });
     $('continue').addEventListener('click', closeDialog);
+    $('save-close').addEventListener('click', async () => {
+      if (busy || !state || !state.active) return;
+      busy=true;
+      updateControls();
+      message('Wrapping up the session, then closing the DM…');
+      try {
+        const data = await api('/api/close', 'POST', {});
+        switching=true;
+        message(data.message || 'Wrapping up the session, then closing the DM…');
+        await refresh();
+      } catch (error) { busy=false; message(error.message, true); updateControls(); }
+    });
     const display = $('display');
     const displayOrigin = new URL(display.src).origin;
     display.addEventListener('load', () => {

@@ -35,6 +35,9 @@
 *Updated at the end of each session — what each active faction did while the party was occupied.*
 *(none yet)*
 
+## Story So Far
+*(One paragraph, at most 150 words, for everything older than the Continuity Archive.)*
+
 ## Recent Events
 *(Session 1 pending)*
 

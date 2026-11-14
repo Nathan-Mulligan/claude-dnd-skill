@@ -215,3 +215,10 @@ def test_display_reports_the_rolled_result_for_a_finished_request(tmp_path):
 
     assert status["complete"] is True
     assert status["results"] == [roll["text"]]
+
+
+def test_dm_core_keeps_the_resume_load_lean_and_documents_the_wrap_up():
+    core = _read(CORE)
+    for needle in ("stop_point.py show", "stop_point.py write", "## Story So Far",
+                   "session-log-archive.md", "Save & close", "exact moment"):
+        assert needle in core

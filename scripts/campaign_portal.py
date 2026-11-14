@@ -62,6 +62,10 @@ ALLOWED_PROVIDERS = set(DM_CHOICES)
 CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
 SESSION_LOCK = threading.RLock()
 HANDOFF_TIMEOUT = 180
+CLOSE_TIMEOUT = 600
+SAVING_MESSAGE = "Saving the campaign, then starting a fresh DM that reloads it from the saved files…"
+CLOSING_MESSAGE = "Wrapping up the session, then closing the DM…"
+STOP_POINT = REPO / "skills/dnd/scripts/stop_point.py"
 _handoff_lock = threading.Lock()
 _handoff = {"status": "idle", "message": ""}
 SCENE_PROTOCOL = (
@@ -266,18 +270,6 @@ def read_effort(data: dict) -> str:
     return effort
 
 
-def session_effort(meta: dict) -> str:
-    """Effort of a running session; sessions saved before the choice existed ran at medium."""
-    effort = meta.get("effort", DEFAULT_EFFORT)
-    return effort if effort in CODEX_EFFORTS else DEFAULT_EFFORT
-
-
-def same_dm(meta: dict, provider: str, effort: str) -> bool:
-    if meta.get("provider") != provider:
-        return False
-    return DM_CHOICES[provider].launcher != "codex" or session_effort(meta) == effort
-
-
 def read_onboarding(data: dict, mode: str) -> dict | None:
     if mode != "new" or "onboarding" not in data:
         return None
@@ -365,12 +357,15 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
         )
     return (
         SCENE_PROTOCOL + boot +
-        f"Then follow the /dm:dnd load procedure for campaign {name}. "
-        "Reconstruct state from the saved campaign files before narrating. The local browser display "
+        f"Then follow the /dm:dnd load procedure for campaign {name}. You start with no memory of earlier play, "
+        f"so rebuild it from the files: first run python3 {STOP_POINT} show --campaign {name} to see where play "
+        "stopped, then read only what DM-CORE section 11 lists; do not read session-log.md or "
+        "session-log-archive.md in full. The local browser display "
         "is already running at http://127.0.0.1:5001; reuse it without restarting or opening a tab. "
         "Skip the display and dice questions: the display is running and the saved roll_mode stands. "
-        "Open as the load procedure says: three sentences of last time, then a scene already moving, "
-        "drawn from Next Hooks or a clock that has fired. "
+        "Open as DM-CORE section 11 says: two or three sentences of last time, then continue from the exact "
+        "moment play stopped, answering the waiting question or calling the pending roll. Open a new scene from "
+        "Next Hooks or a fired clock only when the last scene had closed. "
         "If the display already contains narration for this campaign, keep it and its current scene without clearing or replaying it. "
         "If the display is empty, restore the saved scene. "
         "Send any setup question to the display with send.py --setup-question before waiting; Party Input Everybody "
@@ -550,9 +545,17 @@ def tmux_identity() -> str:
     return identity
 
 
+def active_identity(meta: dict) -> str:
+    campaign = meta.get("campaign")
+    if not isinstance(campaign, str) or meta.get("provider") not in ALLOWED_PROVIDERS:
+        raise ValueError("Unknown active campaign")
+    campaign_path(campaign)
+    return tmux_identity()
+
+
 def checkpoint_files(name: str, requested_at_ns: int) -> dict:
     folder = campaign_path(name)
-    required = {"state.md", "session-log.md"}
+    required = {"state.md", "session-log.md", "session-tail.md"}
     paths = list(folder.glob("*.md")) + list((folder / "characters").glob("*.md"))
     if (folder / "graph.json").exists():
         paths.append(folder / "graph.json")
@@ -563,7 +566,8 @@ def checkpoint_files(name: str, requested_at_ns: int) -> dict:
             raise ValueError("Checkpoint files must stay inside their campaign")
         before = path.stat()
         if relative in required and (before.st_size == 0 or before.st_mtime_ns < requested_at_ns):
-            raise ValueError("The DM has not saved a fresh state and session log yet")
+            raise ValueError(f"The DM has not saved a fresh {relative} yet (state.md, session-log.md "
+                             "and stop_point.py write all need saving)")
         hasher = hashlib.sha256()
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -573,7 +577,8 @@ def checkpoint_files(name: str, requested_at_ns: int) -> dict:
             raise ValueError("Campaign files are still changing; wait for the save to finish")
         files[relative] = hasher.hexdigest()
     if not required.issubset(files):
-        raise ValueError("The campaign needs a saved state and session log before changing models")
+        missing = ", ".join(sorted(required - set(files)))
+        raise ValueError(f"The campaign needs {missing} saved before its DM can stop")
     return files
 
 
@@ -632,9 +637,34 @@ def queued_party_input() -> bool:
     return False
 
 
+def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool) -> str:
+    stop_point = f"python3 {STOP_POINT} write --campaign {campaign}"
+    record_stop = (f"Record where play stopped with {stop_point} --where \"<one line>\" --waiting \"<open question or "
+                   "pending roll, if any>\", piping in your last several exchanges verbatim as DM-CORE section 12 says. ")
+    if close:
+        return (
+            f"Finish your response, then wrap up this session of campaign {campaign} in {folder} without asking "
+            "anything: run the end procedure in no-questions mode, as DM-CORE section 12 says. Write this session's "
+            "entry in session-log.md with its Recap, refresh ## Story So Far, update state.md (in-world date, "
+            "Active Quests, Clocks, Next Hooks) and save every character sheet and the party roster. " + record_stop +
+            "Rewrite state.md and session-log.md even if unchanged. Send no narration except the closing line. "
+            f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
+            "Then stop generating; the portal will close this session."
+        )
+    return (
+        f"Finish your response, then quietly save campaign {campaign} in {folder}. "
+        "Checkpoint state.md, session-log.md, all character sheets and graph using the D&D save procedure. " +
+        record_stop + "Rewrite state.md and session-log.md even if unchanged. Do not narrate or ask a question. "
+        f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
+        "Then stop generating and wait for the portal to start a fresh DM."
+    )
+
+
 def perform_handoff(provider: str, mode: str, name: str, description: str,
                     previous: dict, identity: str, token: str, onboarding: dict | None = None,
-                    effort: str = DEFAULT_EFFORT) -> None:
+                    effort: str = DEFAULT_EFFORT, close: bool = False) -> None:
+    """Have the running DM save, verify the files, then stop it and start the next DM (or none, on close)."""
+    action = "close" if close else "switch"
     stopped = False
     leased = False
     request_path = ack_path = None
@@ -648,25 +678,24 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
         write_private_json(request_path, pending)
         command = shlex.join(["env", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", sys.executable,
                               str(REPO / "scripts/campaign_portal.py"), "--acknowledge-handoff", token])
-        prompt = (
-            f"Finish your response, then quietly save campaign {old_campaign} in {old_path}. "
-            "Checkpoint state.md, session-log.md, all character sheets and graph using the D&D save procedure. "
-            "Rewrite state.md and session-log.md even if unchanged. Do not narrate or ask a question. "
-            f"After every save finishes, run {command}. If saving fails, do not acknowledge. "
-            "Then stop generating and wait for the portal to change models."
-        )
+        prompt = handoff_prompt(old_campaign, old_path, command, close)
         with SESSION_LOCK:
             if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
                 raise ValueError("The active DM changed before saving began")
-            error = selection_error(provider, mode, name, description) or provider_error(provider)
+            error = None if close else selection_error(provider, mode, name, description) or provider_error(provider)
             if error:
                 raise ValueError(error)
             if not notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True}):
                 raise ValueError("The display has pending replies or could not pause input safely")
             leased = True
             send_checkpoint_request(prompt)
-        deadline = time.monotonic() + HANDOFF_TIMEOUT
+        deadline = time.monotonic() + (CLOSE_TIMEOUT if close else HANDOFF_TIMEOUT)
+        renewed = time.monotonic()
         while time.monotonic() < deadline:
+            if time.monotonic() - renewed > 60:
+                # The display pauses party input for five minutes per lease; a wrap-up can run longer.
+                notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True})
+                renewed = time.monotonic()
             if session_identity(read_meta()) != session_identity(previous) or not running() or tmux_identity() != identity:
                 raise ValueError("The active DM session changed before its save was confirmed")
             if ack_path.exists():
@@ -683,29 +712,36 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
                 raise ValueError("The active DM changed before the model switch")
             if queued_party_input():
-                raise ValueError("A party reply arrived while saving. Let the current DM answer it before changing models")
-            error = selection_error(provider, mode, name, description) or provider_error(provider)
+                raise ValueError("A party reply arrived while saving. Let the current DM answer it, then try again")
+            error = None if close else selection_error(provider, mode, name, description) or provider_error(provider)
             if error:
                 raise ValueError(error)
             if not notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True}):
-                raise ValueError("Could not keep player input paused safely for the model change")
+                raise ValueError("Could not keep player input paused safely while the DM stops")
             if ack.get("files") != checkpoint_files(old_campaign, requested_at_ns):
-                raise ValueError("Campaign files changed before the model switch. Save again before changing DMs")
-            set_handoff("starting", "Campaign saved. Starting the selected DM…", campaign=name, provider=provider)
+                raise ValueError("Campaign files changed after the save was confirmed. Save again")
+            if not close:
+                set_handoff("starting", "Campaign saved. Starting a fresh DM…", campaign=name, provider=provider,
+                            action=action)
             result = run("tmux", "kill-session", "-t", identity)
             if result.returncode:
                 raise ValueError("Could not close the saved DM session")
             stopped = True
+            if close:
+                set_handoff("complete", "Session saved and the DM closed. Resume the campaign to start a fresh DM.",
+                            campaign=name, provider=provider, action=action)
+                return
             if running():
                 raise ValueError("Another DM session is active; the replacement was not started")
             ok, message = start_session(provider, mode, name, description, onboarding, effort)
             if not ok:
                 raise ValueError(message)
-        set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider)
+        set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider,
+                    action=action)
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         suffix = (" Your campaign is saved. Reopen it to try the new DM again." if stopped else
-                  " The original DM was not stopped.")
-        set_handoff("failed", str(error) + suffix, campaign=name, provider=provider)
+                  " The DM was left running." if close else " The original DM was not stopped.")
+        set_handoff("failed", str(error) + suffix, campaign=name, provider=provider, action=action)
     finally:
         if leased:
             notify_display("/campaign-handoff", {"campaign": previous["campaign"], "token": token, "active": False})
@@ -829,15 +865,8 @@ def create_app() -> Flask:
             previous = read_meta()
             if mode == "new" and previous.get("campaign") == name:
                 return jsonify(ok=False, message="This campaign is already in use. Choose Resume to change its DM, or choose a new name."), 409
-            if mode == "resume" and previous.get("campaign") == name and same_dm(previous, provider, effort):
-                return jsonify(ok=True, message="The selected DM is already running this campaign.", campaign=name,
-                               continuing=True), 200
             try:
-                old_campaign = previous.get("campaign")
-                if not isinstance(old_campaign, str) or previous.get("provider") not in ALLOWED_PROVIDERS:
-                    raise ValueError("Unknown active campaign")
-                campaign_path(old_campaign)
-                identity = tmux_identity()
+                identity = active_identity(previous)
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 return jsonify(ok=False, message="Could not identify the current campaign safely. Its DM was left running."), 409
             if queued_party_input():
@@ -849,12 +878,33 @@ def create_app() -> Flask:
             if error:
                 return jsonify(ok=False, message=error), 409
             token = secrets.token_hex(16)
-            set_handoff("saving", "Saving the current campaign before changing DMs…", campaign=name, provider=provider)
+            set_handoff("saving", SAVING_MESSAGE, campaign=name, provider=provider, action="switch")
             worker = threading.Thread(target=perform_handoff,
                                       args=(provider, mode, name, description, previous, identity, token, onboarding, effort),
                                       daemon=True, name="dnd-model-handoff")
             worker.start()
-        return jsonify(ok=True, message="Saving the current campaign before changing DMs…", campaign=name), 202
+        return jsonify(ok=True, message=SAVING_MESSAGE, campaign=name), 202
+
+    @app.post("/api/close")
+    def close():
+        with lock:
+            if handoff_busy():
+                return jsonify(ok=False, message="The campaign is already being saved. Wait for that to finish."), 409
+            if not running():
+                return jsonify(ok=False, message="No DM is running, so there is nothing to close."), 409
+            previous = read_meta()
+            try:
+                identity = active_identity(previous)
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                return jsonify(ok=False, message="Could not identify the current campaign safely. Its DM was left running."), 409
+            if queued_party_input():
+                return jsonify(ok=False, message="A party reply is still queued. Let the DM answer it, then save and close."), 409
+            name, provider = previous["campaign"], previous["provider"]
+            set_handoff("saving", CLOSING_MESSAGE, campaign=name, provider=provider, action="close")
+            threading.Thread(target=perform_handoff,
+                             args=(provider, "resume", name, "", previous, identity, secrets.token_hex(16)),
+                             kwargs={"close": True}, daemon=True, name="dnd-session-close").start()
+        return jsonify(ok=True, message=CLOSING_MESSAGE, campaign=name), 202
 
     @app.post("/api/send")
     def send():

@@ -523,15 +523,8 @@ def test_invalid_effort_is_rejected_before_model_operations(client, monkeypatch,
     assert response.status_code == 400
 
 
-def test_same_dm_compares_effort_only_for_codex():
-    assert portal.same_dm({"provider": "codex-sol", "effort": "low"}, "codex-sol", "low")
-    assert not portal.same_dm({"provider": "codex-sol", "effort": "low"}, "codex-sol", "medium")
-    assert portal.same_dm({"provider": "codex-sol"}, "codex-sol", "medium")  # older sessions ran at medium
-    assert portal.same_dm({"provider": "claude", "effort": "medium"}, "claude", "low")
-    assert not portal.same_dm({"provider": "claude"}, "qwen", "medium")
-
-
-def test_switch_to_new_effort_on_same_campaign_starts_a_handoff(client, monkeypatch):
+@pytest.mark.parametrize("effort", ["medium", "low"])
+def test_resuming_the_running_campaign_always_starts_a_handoff(client, monkeypatch, effort):
     portal.RUNTIME.mkdir(parents=True, exist_ok=True)
     (portal.DATA_ROOT / "campaigns" / "Fenmoor").mkdir(parents=True)
     (portal.DATA_ROOT / "campaigns" / "Fenmoor" / "state.md").write_text("# s", encoding="utf-8")
@@ -539,16 +532,15 @@ def test_switch_to_new_effort_on_same_campaign_starts_a_handoff(client, monkeypa
                                             "started_at": 1, "effort": "medium"}), encoding="utf-8")
     monkeypatch.setattr(portal, "CODEX_ENABLED", True)
     monkeypatch.setattr(portal, "running", lambda: True)
-    body = {"provider": "codex-sol", "mode": "resume", "name": "Fenmoor", "effort": "medium"}
-    assert api(client, "/api/switch", method="post", data=body).json["continuing"] is True
     started = []
     monkeypatch.setattr(portal, "tmux_identity", lambda: "$1")
     monkeypatch.setattr(portal, "provider_error", lambda provider: None)
     monkeypatch.setattr(portal.threading, "Thread", lambda target, args, **kw: type(
         "T", (), {"start": lambda self: started.append(args)})())
-    response = api(client, "/api/switch", method="post", data=dict(body, effort="low"))
+    body = {"provider": "codex-sol", "mode": "resume", "name": "Fenmoor", "effort": effort}
+    response = api(client, "/api/switch", method="post", data=body)
     assert response.status_code == 202
-    assert started and started[0][-1] == "low"
+    assert started and started[0][-1] == effort
     portal.set_handoff("idle", "")
 
 
@@ -601,3 +593,19 @@ def test_no_tmux_means_no_dm_running(monkeypatch):
         raise FileNotFoundError("tmux")
     monkeypatch.setattr(portal.subprocess, "run", missing)
     assert portal.running() is False
+
+
+def test_resumed_dm_reads_the_stop_point_first_and_skips_the_full_logs():
+    prompt = portal.initial_prompt("resume", "Fenmoor", "")
+    assert "stop_point.py show --campaign Fenmoor" in prompt
+    assert "session-log.md" in prompt and "exact moment" in prompt
+    assert prompt.index("stop_point.py show") < prompt.index("Open as")
+
+
+def test_portal_page_offers_save_and_close_and_always_reloads_on_resume(client):
+    test_client, _ = client
+    page = test_client.get("/", base_url="http://127.0.0.1:5002").data.decode("utf-8")
+    assert 'id="save-close"' in page and "Save &amp; close session" in page
+    assert "api('/api/close', 'POST'" in page
+    assert "data.continuing" not in page and "Save & reload campaign" in page
+    assert "handoff.action === 'close'" in page and "closingSession" not in page

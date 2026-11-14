@@ -27,7 +27,7 @@ def setup(tmp_path, monkeypatch):
     portal.RUNTIME.mkdir()
     old = tmp_path / "campaigns/old"
     (old / "characters").mkdir(parents=True)
-    for name in ("state.md", "session-log.md", "characters/Hero.md"):
+    for name in ("state.md", "session-log.md", "session-tail.md", "characters/Hero.md"):
         (old / name).write_text("Saved campaign\n", encoding="utf-8")
     previous = {"campaign": "old", "provider": "qwen", "mode": "resume", "started_at": 100}
     portal.META_FILE.write_text(json.dumps(previous), encoding="utf-8")
@@ -62,7 +62,7 @@ def setup(tmp_path, monkeypatch):
 def save_and_acknowledge(old, token):
     request, _ = portal.handoff_paths(token)
     pending = json.loads(request.read_text(encoding="utf-8"))
-    for name in ("state.md", "session-log.md"):
+    for name in ("state.md", "session-log.md", "session-tail.md"):
         (old / name).write_text("Fresh campaign checkpoint\n", encoding="utf-8")
         os.utime(old / name, ns=(pending["requested_at_ns"] + 1_000_000, pending["requested_at_ns"] + 1_000_000))
     portal.acknowledge_handoff(token)
@@ -93,13 +93,71 @@ def test_switch_starts_background_save_and_blocks_other_input(setup, monkeypatch
     assert state.json["handoff"]["status"] == "saving"
 
 
-def test_continue_same_campaign_and_model_does_not_restart(setup):
+def test_resuming_with_the_running_dm_saves_then_starts_a_fresh_one(setup, monkeypatch):
+    _, previous, _, calls, api = setup
+    workers = []
+
+    class Worker:
+        def __init__(self, target, args, **kwargs):
+            workers.append((target, args))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(portal.threading, "Thread", Worker)
+    response = api("/api/switch", {"provider": "qwen", "mode": "resume", "name": "old"})
+    assert response.status_code == 202
+    assert response.json["campaign"] == "old"
+    assert "continuing" not in response.json
+    assert portal.handoff_state()["status"] == "saving"
+    assert [(target, args[:5]) for target, args in workers] == [
+        (portal.perform_handoff, ("qwen", "resume", "old", "", previous))]
+    assert not any(args[:2] == ("tmux", "kill-session") for args in calls)
+
+
+def test_fresh_dm_for_the_same_campaign_restarts_only_after_a_verified_save(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "b" * 32
+    actions = []
+
+    def checkpoint(prompt):
+        actions.append("save")
+        save_and_acknowledge(old, token)
+
+    def start(provider, mode, name, description, onboarding=None, effort="medium"):
+        assert not alive["value"]
+        actions.append(("start", provider, mode, name))
+        alive["value"] = True
+        return True, "Started"
+
+    monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    monkeypatch.setattr(portal, "start_session", start)
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token)
+    assert portal.handoff_state()["status"] == "complete"
+    assert actions == ["save", ("start", "qwen", "resume", "old")]
+    assert ("tmux", "kill-session", "-t", "$7") in calls
+
+
+def test_resuming_with_the_running_dm_keeps_it_while_a_reply_is_queued(setup, monkeypatch):
     _, _, _, calls, api = setup
+    (portal.RUNTIME / ".input_queue").write_text("We open the door\n", encoding="utf-8")
+    monkeypatch.setattr(portal.threading, "Thread", lambda **kwargs: pytest.fail("Must not start a handoff"))
+    response = api("/api/switch", {"provider": "qwen", "mode": "resume", "name": "old"})
+    assert response.status_code == 409
+    assert not any(args[:2] == ("tmux", "kill-session") for args in calls)
+    assert portal.handoff_state()["status"] == "idle"
+
+
+def test_resuming_with_no_dm_running_starts_one_directly(setup, monkeypatch):
+    _, _, alive, calls, api = setup
+    alive["value"] = False
+    started = []
+    monkeypatch.setattr(portal.threading, "Thread", lambda **kwargs: pytest.fail("Nothing to save"))
+    monkeypatch.setattr(portal, "start_session", lambda *args: started.append(args[:3]) or (True, "Started"))
     response = api("/api/switch", {"provider": "qwen", "mode": "resume", "name": "old"})
     assert response.status_code == 200
-    assert response.json["campaign"] == "old"
-    assert calls == []
-    assert portal.handoff_state()["status"] == "idle"
+    assert started == [("qwen", "resume", "old")]
+    assert not any(args[:2] == ("tmux", "kill-session") for args in calls)
 
 
 def test_invalid_target_does_not_request_a_save(setup):
@@ -156,7 +214,7 @@ def test_stale_campaign_files_cannot_be_acknowledged(setup):
     request, ack = portal.handoff_paths(token)
     portal.write_private_json(request, {"token": token, "campaign": "old", "session": list(portal.session_identity(previous)),
                                         "requested_at_ns": time.time_ns() + 1_000_000})
-    with pytest.raises(ValueError, match="fresh state"):
+    with pytest.raises(ValueError, match="has not saved a fresh"):
         portal.acknowledge_handoff(token)
     assert not ack.exists()
 
@@ -272,7 +330,7 @@ def test_acknowledgement_cli_checks_files_without_starting_portal(setup):
     assert result.returncode == 0, result.stderr
     data = json.loads(ack.read_text(encoding="utf-8"))
     assert data["complete"] is True
-    assert set(data["files"]) == {"state.md", "session-log.md", "characters/Hero.md"}
+    assert set(data["files"]) == {"state.md", "session-log.md", "session-tail.md", "characters/Hero.md"}
     assert not list(ack.parent.glob("*.writing"))
 
 
@@ -439,3 +497,100 @@ def test_new_campaign_questionnaire_survives_saved_handoff(setup, monkeypatch):
     assert portal.handoff_state()["status"] == "complete"
     assert actions == ["save", "start"]
     assert ("tmux", "kill-session", "-t", "$7") in calls
+
+
+def test_a_save_without_a_fresh_stop_point_cannot_be_acknowledged(setup):
+    old, previous, _, _, _ = setup
+    token = "7" * 32
+    request, ack = portal.handoff_paths(token)
+    requested = time.time_ns()
+    portal.write_private_json(request, {"token": token, "campaign": "old", "session": list(portal.session_identity(previous)),
+                                        "requested_at_ns": requested})
+    for name in ("state.md", "session-log.md"):
+        os.utime(old / name, ns=(requested + 1_000_000, requested + 1_000_000))
+    os.utime(old / "session-tail.md", ns=(requested - 1_000_000, requested - 1_000_000))
+    with pytest.raises(ValueError, match="session-tail.md"):
+        portal.acknowledge_handoff(token)
+    assert not ack.exists()
+
+
+def test_save_and_close_starts_a_background_wrap_up(setup, monkeypatch):
+    _, previous, _, calls, api = setup
+    workers = []
+
+    class Worker:
+        def __init__(self, target, args, kwargs=None, **rest):
+            workers.append((target, args, kwargs or {}))
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(portal.threading, "Thread", Worker)
+    response = api("/api/close")
+    assert response.status_code == 202
+    assert portal.handoff_state()["status"] == "saving"
+    assert api("/api/state", method="get").json["handoff"]["action"] == "close"
+    [(target, args, kwargs)] = workers
+    assert target is portal.perform_handoff
+    assert args[:5] == ("qwen", "resume", "old", "", previous) and args[5] == "$7"
+    assert kwargs == {"close": True}
+    assert not any(args[:2] == ("tmux", "kill-session") for args in calls)
+    assert api("/api/close").status_code == 409
+
+
+def test_save_and_close_wraps_up_then_closes_without_a_new_dm(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    token = "8" * 32
+    prompts = []
+
+    def checkpoint(prompt):
+        prompts.append(prompt)
+        save_and_acknowledge(old, token)
+
+    monkeypatch.setattr(portal, "send_checkpoint_request", checkpoint)
+    monkeypatch.setattr(portal, "start_session", lambda *args, **kwargs: pytest.fail("Must not start another DM"))
+    monkeypatch.setattr(portal, "provider_error", lambda provider: pytest.fail("Closing needs no provider check"))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "complete" and "closed" in state["message"]
+    assert state["action"] == "close"
+    assert ("tmux", "kill-session", "-t", "$7") in calls
+    assert not alive["value"]
+    [prompt] = prompts
+    for needle in ("wrap up", "session-log.md", "## Story So Far", "Next Hooks", "Clocks", "stop_point.py write"):
+        assert needle in prompt
+    assert "\n" not in prompt
+
+
+def test_save_and_close_keeps_the_dm_when_the_save_is_not_confirmed(setup, monkeypatch):
+    _, previous, alive, calls, _ = setup
+    monkeypatch.setattr(portal, "CLOSE_TIMEOUT", 0)
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: None)
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", "9" * 32, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "failed" and state["action"] == "close"
+    assert "left running" in state["message"]
+    assert alive["value"]
+    assert not any(args[:2] == ("tmux", "kill-session") for args in calls)
+
+
+def test_save_and_close_waits_for_a_queued_party_reply(setup, monkeypatch):
+    _, _, alive, calls, api = setup
+    (portal.RUNTIME / ".input_queue").write_text("[Everybody]: One more thing", encoding="utf-8")
+    monkeypatch.setattr(portal.threading, "Thread", lambda **kwargs: pytest.fail("Must not start a wrap-up"))
+    response = api("/api/close")
+    assert response.status_code == 409
+    assert "queued" in response.json["message"]
+    assert alive["value"]
+    assert all(args[:2] == ("tmux", "display-message") for args in calls)
+    assert portal.handoff_state()["status"] == "idle"
+
+
+def test_save_and_close_with_nothing_running_does_nothing(setup, monkeypatch):
+    _, _, alive, calls, api = setup
+    alive["value"] = False
+    monkeypatch.setattr(portal.threading, "Thread", lambda **kwargs: pytest.fail("Nothing to close"))
+    response = api("/api/close")
+    assert response.status_code == 409
+    assert calls == []
+    assert portal.handoff_state()["status"] == "idle"
