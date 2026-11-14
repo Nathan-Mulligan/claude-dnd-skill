@@ -96,12 +96,17 @@ case "${1:-}" in
     elif [[ "$provider" == qwen && "$mode" == --check ]]; then echo 'Ollama: ready'; fi
     if [[ "$mode" == --start ]]; then
       command -v "$provider" >/dev/null || { echo "$provider CLI is not installed." >&2; exit 1; }
-      for attempt in {1..20}; do
+      # A stopped Kokoro took up to 13 s to answer on a busy M5.
+      for attempt in {1..30}; do
         display_status && ready http://127.0.0.1:8880/v1/audio/voices && break
         sleep 1
       done
       display_status || { echo 'Display did not become ready with this campaign data root.' >&2; exit 1; }
       ready http://127.0.0.1:8880/v1/audio/voices || { echo 'Kokoro did not become ready.' >&2; exit 1; }
+      # One throwaway line while the DM boots, so the first narration does not pay the cold-model cost.
+      nohup curl --silent --max-time 30 --output /dev/null -H 'Content-Type: application/json' \
+        -d '{"model":"kokoro","voice":"bm_fable","input":"Ready.","response_format":"pcm"}' \
+        http://127.0.0.1:8880/v1/audio/speech >/dev/null 2>&1 </dev/null &
       if [[ "$provider" == qwen ]]; then
         for attempt in {1..20}; do
           ready http://127.0.0.1:11434/api/version && break
@@ -119,5 +124,10 @@ case "${1:-}" in
       [[ "$provider" != qwen ]] || printf 'Ollama/Qwen: ready\n'
     fi
     ;;
-  *) echo 'Usage: launch-campaign-m5.sh {--list|--exists|--claude-auth|--check|--start}' >&2; exit 2 ;;
+  --stop-voice)
+    docker stop kokoro-tts >/dev/null 2>&1 || ! ready http://127.0.0.1:8880/v1/audio/voices ||
+      { echo 'Kokoro is still running and could not be stopped.' >&2; exit 1; }
+    echo 'Kokoro: stopped'
+    ;;
+  *) echo 'Usage: launch-campaign-m5.sh {--list|--exists|--claude-auth|--check|--start|--stop-voice}' >&2; exit 2 ;;
 esac

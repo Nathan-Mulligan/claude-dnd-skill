@@ -53,7 +53,7 @@ docker run -d --name kokoro-tts --restart unless-stopped \
   -p 127.0.0.1:8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
 
-That's the whole setup — `auto` finds it on `http://127.0.0.1:8880` with no further config. Verify:
+That's the whole setup — `auto` finds it on `http://127.0.0.1:8880` with no further config. When the campaign portal runs the game, it starts `kokoro-tts` as a DM starts (`scripts/launch-campaign-m5.sh --start`) and stops it after **Save & close session** (`--stop-voice`). Changing models or reloading leaves it running. Verify:
 
 ```bash
 python3 skills/dnd/display/tts.py --test --speak
