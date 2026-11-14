@@ -90,8 +90,9 @@ DM_LINE = re.compile(r"\b(?:DM|GM)\b|\bsecretly\b|\bsecret\s*[:)\]]|\(\s*secret|
                      r"|unknown to the party|calibration|faction move|party (?:does not|doesn't|did not|didn't) know",
                      re.I)
 NAME = re.compile(r"\b[A-Z][A-Za-z'’-]*[A-Za-z]")
-# Capitalised only because they open a sentence; never treated as names. Closed-class words and the common
-# adverbs a recap opens with (#128). Words that double as names (Will, May, Rose, Dawn) stay out.
+# Capitalised only because they open a sentence; not treated as names there (mid-sentence they still are).
+# Closed-class words and the common adverbs a recap opens with (#128). Words that double as names
+# (Will, May, Rose, Dawn) stay out.
 OPENERS = set("""a about above according across after afterwards again against ahead all almost alone along
 already also although always amid among an and another any anybody anyone anything around as at away back
 because before behind being below beneath beside besides between beyond both briefly but by can could days
@@ -398,16 +399,24 @@ def one_line(text: object) -> str:
     return " ".join(text.split())
 
 
+def _opens_sentence(text: str, start: int) -> bool:
+    before = text[:start].rstrip()
+    if before.endswith(("“", "‘", '"', "(", "[")):
+        return True
+    before = before.rstrip("”’\")]")
+    return not before or before.endswith((".", "!", "?", ":", ";", "…"))
+
+
 def invented(texts: list[str], source: str) -> list[str]:
     words = {w.lower() for w in re.findall(r"[A-Za-z'’-]+", source)}
-    known = words | OPENERS
     # "Tull’s" in the material names Tull exactly; the plural leeway applies only to words as written.
     owners = {re.sub(r"['’]s$", "", w) for w in words}
     unknown = []
     for text in texts:
-        for word in NAME.findall(text):
-            word = re.sub(r"['’][sS]$", "", word)
+        for match in NAME.finditer(text):
+            word = re.sub(r"['’][sS]$", "", match.group())
             low = word.lower()
+            known = words | OPENERS if _opens_sentence(text, match.start()) else words
             if low not in owners and not {low, low.rstrip("s"), low + "s"} & known and word not in unknown:
                 unknown.append(word)
     return unknown

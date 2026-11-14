@@ -617,3 +617,9 @@ def test_common_words_that_open_a_sentence_are_not_names(opener):
 ])
 def test_an_invented_name_opening_a_sentence_is_still_refused(reply):
     assert summary.invented([reply], MATERIAL) == ["Ysolde"]
+
+
+@pytest.mark.parametrize("reply", ["Dovran Pell repaid Weeks.", "The barge left with Both aboard.",
+                                   "Dovran Pell, Nobody and the miller left."])
+def test_an_opener_word_used_as_a_name_mid_sentence_is_still_refused(reply):
+    assert summary.invented([reply], MATERIAL) != []
