@@ -461,7 +461,7 @@ Nothing to run: `send.py` keeps both after each send reaches the display. A bloc
 
     **Hessa Varn:** "Twenty silver, or the wagon stays."
 
-- A `## Session N · <date>` section starts after three hours without a send. N is one more than the newest `## Session N` in `session-log.md`.
+- A `## Session N · <date>` section starts after the portal's Save & close, or after three hours without a send. N is one more than the newest `## Session N` in `session-log.md`, `session-log-archive.md` or `state.md`. At Save & close the portal's notes helper (`display/session_summary.py`) writes `## Session N` in `session-log.md` from every section numbered N, so the next session's number follows on.
 - One `###` entry per send: the real time, the place (the last `--scene` place, else `state.md`'s Location) and the in-world date.
 - One paragraph per block, word for word: `DM` (narration), `DM hint` (tutor), `Dice`, `XP`, `Inspiration`, `Milestone`, or the player, action or NPC name. A line starting with `#` inside a block is written as `\#`.
 - A replay is skipped: a send whose blocks were all logged in the last 40 and are each 40 characters or longer. Awards and short lines are always logged. A long block cut short by a failed post is logged as far as it was shown.

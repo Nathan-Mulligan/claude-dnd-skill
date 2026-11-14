@@ -115,7 +115,7 @@ The `load` procedure ends here. Every resume starts a fresh DM with no memory of
 ## 12. Ending a session
 - Close on a hook: a consequence landing, or a decision still open.
 - Run the `end` procedure in SKILL-commands.md. It saves, writes the recap, records faction moves, checks the arc and refreshes Next Hooks and Clocks. When the portal asks for it, run it with no questions.
-- The portal's Save & close button asks for that wrap-up, then closes you. Write this session's entry in `session-log.md` with its `### Recap`, refresh `## Story So Far`, update `state.md` (in-world date, Active Quests, Clocks, Next Hooks), and save every character sheet and the party roster.
+- The portal's Save & close button asks for that wrap-up, then closes you. Update `state.md` (in-world date, Active Quests, Clocks, Next Hooks) and save every character sheet and the party roster. The portal's notes helper then writes this session's `### Recap` in `session-log.md`, `## Story So Far` and the archive fold. Write those yourself only when the portal's request asks you to (the helper is off or failed), under the `## Session N` it names.
 - Whenever the portal asks you to save, record where play stopped. Pipe your last six to eight exchanges, oldest first and word for word, into `stop_point.py write --campaign X --where "<one line>" --waiting "<open question or pending roll>"` as JSON: `[{"who": "Players", "text": "..."}, {"who": "DM", "text": "..."}]`. Include the players' last inputs and your final narration.
 
 ## 13. Tone and table settings

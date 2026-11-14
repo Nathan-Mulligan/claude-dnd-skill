@@ -27,6 +27,8 @@ import arc_pulse  # noqa: E402
 import turn_card  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/dnd/display"))
 import lore_sync  # noqa: E402  (helper choices only; the portal never runs it)
+import records  # noqa: E402
+import session_summary  # noqa: E402
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -72,6 +74,13 @@ HANDOFF_TIMEOUT = 180
 CLOSE_TIMEOUT = 600
 SAVING_MESSAGE = "Saving the campaign, then starting a fresh DM that reloads it from the saved files…"
 CLOSING_MESSAGE = "Wrapping up the session, then closing the DM…"
+SUMMARY_MESSAGE = "The DM has saved. The notes helper is writing the session summary…"
+FALLBACK_MESSAGE = "The notes helper could not write the summary, so the DM is writing it…"
+# Files the DM must save fresh before it is stopped. On Save & close with the notes helper on,
+# the helper writes session-log.md; if the helper fails, the DM's second save is the summary alone.
+REQUIRED_FILES = frozenset({"state.md", "session-log.md", "session-tail.md"})
+HELPER_REQUIRED = frozenset({"state.md", "session-tail.md"})
+FALLBACK_REQUIRED = frozenset({"session-log.md"})
 STOP_POINT = REPO / "skills/dnd/scripts/stop_point.py"
 _handoff_lock = threading.Lock()
 _handoff = {"status": "idle", "message": ""}
@@ -590,9 +599,8 @@ def active_identity(meta: dict) -> str:
     return tmux_identity()
 
 
-def checkpoint_files(name: str, requested_at_ns: int) -> dict:
+def checkpoint_files(name: str, requested_at_ns: int, required: frozenset = REQUIRED_FILES) -> dict:
     folder = campaign_path(name)
-    required = {"state.md", "session-log.md", "session-tail.md"}
     paths = list(folder.glob("*.md")) + list((folder / "characters").glob("*.md"))
     if (folder / "graph.json").exists():
         paths.append(folder / "graph.json")
@@ -603,8 +611,8 @@ def checkpoint_files(name: str, requested_at_ns: int) -> dict:
             raise ValueError("Checkpoint files must stay inside their campaign")
         before = path.stat()
         if relative in required and (before.st_size == 0 or before.st_mtime_ns < requested_at_ns):
-            raise ValueError(f"The DM has not saved a fresh {relative} yet (state.md, session-log.md "
-                             "and stop_point.py write all need saving)")
+            raise ValueError(f"The DM has not saved a fresh {relative} yet ("
+                             + ", ".join(sorted(required)) + " all need saving)")
         hasher = hashlib.sha256()
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -635,7 +643,8 @@ def acknowledge_handoff(token: str) -> None:
     if pending.get("token") != token or session_identity(read_meta()) != tuple(pending.get("session", [])):
         raise ValueError("The active campaign changed before this checkpoint")
     name = pending.get("campaign", "")
-    files = checkpoint_files(name, pending["requested_at_ns"])
+    required = frozenset(pending.get("required") or REQUIRED_FILES) & REQUIRED_FILES
+    files = checkpoint_files(name, pending["requested_at_ns"], required)
     temporary = ack_path.with_suffix(".writing")
     written = False
     try:
@@ -672,27 +681,120 @@ def queued_party_input() -> bool:
     return False
 
 
-def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool) -> str:
+def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool, helper_summary: bool = False) -> str:
     stop_point = f"python3 {STOP_POINT} write --campaign {campaign}"
     record_stop = (f"Record where play stopped with {stop_point} --where \"<one line>\" --waiting \"<open question or "
                    "pending roll, if any>\", piping in your last several exchanges verbatim as DM-CORE section 12 says. ")
+    heading = f"## Session {session_summary.session_number(folder)}"
+    if close and helper_summary:
+        return (
+            f"Finish your response, then wrap up this session of campaign {campaign} in {folder} without asking "
+            "anything: run the end procedure in no-questions mode, as DM-CORE section 12 says, but leave the summary "
+            "to the portal's notes helper, which writes it after you acknowledge: do not write this session's entry "
+            "or Recap in session-log.md, ## Story So Far or the Continuity Archive. Update state.md (in-world date, "
+            "Active Quests, Clocks, Next Hooks) and save every character sheet and the party roster. " + record_stop +
+            "Rewrite state.md even if unchanged. Send no narration except the closing line. "
+            f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
+            "Then stop generating; the portal will close this session."
+        )
     if close:
         return (
             f"Finish your response, then wrap up this session of campaign {campaign} in {folder} without asking "
             "anything: run the end procedure in no-questions mode, as DM-CORE section 12 says. Write this session's "
-            "entry in session-log.md with its Recap, refresh ## Story So Far, update state.md (in-world date, "
-            "Active Quests, Clocks, Next Hooks) and save every character sheet and the party roster. " + record_stop +
+            f"entry in session-log.md with its Recap under {heading}, refresh ## Story So Far, update state.md "
+            "(in-world date, Active Quests, Clocks, Next Hooks) and save every character sheet and the party roster. " + record_stop +
             "Rewrite state.md and session-log.md even if unchanged. Send no narration except the closing line. "
             f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
             "Then stop generating; the portal will close this session."
         )
     return (
         f"Finish your response, then quietly save campaign {campaign} in {folder}. "
-        "Checkpoint state.md, session-log.md, all character sheets and graph using the D&D save procedure. " +
+        f"Checkpoint state.md, session-log.md (this session is {heading}), all character sheets and graph using "
+        "the D&D save procedure. " +
         record_stop + "Rewrite state.md and session-log.md even if unchanged. Do not narrate or ask a question. "
         f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
         "Then stop generating and wait for the portal to start a fresh DM."
     )
+
+
+def summary_fallback_prompt(campaign: str, folder: Path, acknowledge: str) -> str:
+    return (
+        "The notes helper could not write the session summary, so write it yourself now, without asking anything, "
+        f"for campaign {campaign} in {folder}: this session's entry in session-log.md "
+        f"(## Session {session_summary.session_number(folder)}) with its ### Recap, a refreshed "
+        "## Story So Far, and the session-log archival and Continuity Archive fold from the save procedure (DM-CORE "
+        "section 15). Change nothing else and send no narration. Rewrite session-log.md even if unchanged. "
+        f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
+        "Then stop generating; the portal will close this session."
+    )
+
+
+def request_checkpoint(token: str, previous: dict, campaign: str, required: frozenset) -> int:
+    """Write a fresh save request (replacing an earlier round's) and return its time."""
+    for path in handoff_paths(token):
+        if path.exists():
+            path.unlink()
+    requested_at_ns = time.time_ns()
+    write_private_json(handoff_paths(token)[0], {
+        "token": token, "campaign": campaign, "session": list(session_identity(previous)),
+        "requested_at_ns": requested_at_ns, "required": sorted(required)})
+    return requested_at_ns
+
+
+def await_checkpoint(token: str, previous: dict, identity: str, campaign: str, requested_at_ns: int,
+                     required: frozenset, timeout: float) -> dict:
+    """Wait for the DM's acknowledgement and check it against the saved files."""
+    _, ack_path = handoff_paths(token)
+    deadline = time.monotonic() + timeout
+    renewed = time.monotonic()
+    while time.monotonic() < deadline:
+        if time.monotonic() - renewed > 60:
+            # The display pauses party input for five minutes per lease; a wrap-up can run longer.
+            notify_display("/campaign-handoff", {"campaign": campaign, "token": token, "active": True})
+            renewed = time.monotonic()
+        if session_identity(read_meta()) != session_identity(previous) or not running() or tmux_identity() != identity:
+            raise ValueError("The active DM session changed before its save was confirmed")
+        if ack_path.exists():
+            ack = read_handoff_json(ack_path)
+            if ack.get("token") != token or ack.get("campaign") != campaign or ack.get("complete") is not True:
+                raise ValueError("The save acknowledgement did not match this campaign")
+            if ack.get("files") != checkpoint_files(campaign, requested_at_ns, required):
+                raise ValueError("Campaign files changed after the checkpoint acknowledgement")
+            return ack
+        time.sleep(0.25)
+    raise ValueError("The DM did not confirm a complete save in time")
+
+
+def helper_summary(token: str, previous: dict, identity: str, folder: Path, mark: str | None, helper: tuple,
+                   command: str, details: dict, ack: dict, requested_at_ns: int, required: frozenset) -> tuple:
+    """Have the notes helper write the summary while the DM waits idle; on any failure the DM writes it.
+    Returns the acknowledgement, request time and required files the final stop check must use, and a
+    note for the close message."""
+    campaign = previous["campaign"]
+    set_handoff("saving", SUMMARY_MESSAGE, **details)
+    notify_display("/campaign-handoff", {"campaign": campaign, "token": token, "active": True})
+    try:
+        plan = session_summary.prepare(folder, mark, helper)
+        with SESSION_LOCK:
+            if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
+                raise ValueError("The active DM changed before the summary was written")
+            if ack.get("files") != checkpoint_files(campaign, requested_at_ns, required):
+                raise ValueError("Campaign files changed after the DM's save")
+            session_summary.write(folder, plan)
+            # The helper's writes are now the saved state the DM must not change before it stops.
+            return {"files": checkpoint_files(campaign, requested_at_ns, required)}, requested_at_ns, required, ""
+    except Exception as error:  # noqa: BLE001 — any helper failure hands the summary back to the DM
+        reason = lore_sync.failure_reason(error)
+    session_summary.log(f"{campaign}: helper summary failed, the DM writes it instead: {reason}")
+    print(f"Session summary: the notes helper failed ({reason}); the DM is writing it.", flush=True)
+    set_handoff("saving", FALLBACK_MESSAGE, **details)
+    with SESSION_LOCK:
+        if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
+            raise ValueError("The active DM changed before it could write the summary")
+        requested_at_ns = request_checkpoint(token, previous, campaign, FALLBACK_REQUIRED)
+        send_checkpoint_request(summary_fallback_prompt(campaign, folder, command))
+    ack = await_checkpoint(token, previous, identity, campaign, requested_at_ns, FALLBACK_REQUIRED, CLOSE_TIMEOUT)
+    return ack, requested_at_ns, FALLBACK_REQUIRED, " The notes helper failed, so the DM wrote the summary."
 
 
 def stop_voice() -> None:
@@ -710,8 +812,11 @@ def stop_voice() -> None:
 def perform_handoff(provider: str, mode: str, name: str, description: str,
                     previous: dict, identity: str, token: str, onboarding: dict | None = None,
                     effort: str = DEFAULT_EFFORT, close: bool = False) -> None:
-    """Have the running DM save, verify the files, then stop it and start the next DM (or none, on close)."""
+    """Have the running DM save, verify the files, then stop it and start the next DM (or none, on close).
+    On Save & close with the notes helper on, the DM saves its own fields first and the helper writes the
+    summary while the DM waits idle, so any helper failure can still hand the summary back to the DM."""
     action = "close" if close else "switch"
+    details = {"campaign": name, "provider": provider, "action": action}
     stopped = False
     leased = False
     request_path = ack_path = None
@@ -719,13 +824,12 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
         old_campaign = previous["campaign"]
         old_path = campaign_path(old_campaign)
         request_path, ack_path = handoff_paths(token)
-        requested_at_ns = time.time_ns()
-        pending = {"token": token, "campaign": old_campaign, "session": list(session_identity(previous)),
-                   "requested_at_ns": requested_at_ns}
-        write_private_json(request_path, pending)
+        helper = session_summary.helper() if close else None
+        required = HELPER_REQUIRED if helper else REQUIRED_FILES
+        mark = session_summary.display_mark(old_path) if helper else None  # before the DM rewrites the stop point
         command = shlex.join(["env", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", sys.executable,
                               str(REPO / "scripts/campaign_portal.py"), "--acknowledge-handoff", token])
-        prompt = handoff_prompt(old_campaign, old_path, command, close)
+        prompt = handoff_prompt(old_campaign, old_path, command, close, helper_summary=bool(helper))
         with SESSION_LOCK:
             if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
                 raise ValueError("The active DM changed before saving began")
@@ -735,26 +839,14 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             if not notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True}):
                 raise ValueError("The display has pending replies or could not pause input safely")
             leased = True
+            requested_at_ns = request_checkpoint(token, previous, old_campaign, required)
             send_checkpoint_request(prompt)
-        deadline = time.monotonic() + (CLOSE_TIMEOUT if close else HANDOFF_TIMEOUT)
-        renewed = time.monotonic()
-        while time.monotonic() < deadline:
-            if time.monotonic() - renewed > 60:
-                # The display pauses party input for five minutes per lease; a wrap-up can run longer.
-                notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True})
-                renewed = time.monotonic()
-            if session_identity(read_meta()) != session_identity(previous) or not running() or tmux_identity() != identity:
-                raise ValueError("The active DM session changed before its save was confirmed")
-            if ack_path.exists():
-                ack = read_handoff_json(ack_path)
-                if ack.get("token") != token or ack.get("campaign") != old_campaign or ack.get("complete") is not True:
-                    raise ValueError("The save acknowledgement did not match this campaign")
-                if ack.get("files") != checkpoint_files(old_campaign, requested_at_ns):
-                    raise ValueError("Campaign files changed after the checkpoint acknowledgement")
-                break
-            time.sleep(0.25)
-        else:
-            raise ValueError("The DM did not confirm a complete save in time")
+        ack = await_checkpoint(token, previous, identity, old_campaign, requested_at_ns, required,
+                               CLOSE_TIMEOUT if close else HANDOFF_TIMEOUT)
+        note = ""
+        if helper:
+            ack, requested_at_ns, required, note = helper_summary(
+                token, previous, identity, old_path, mark, helper, command, details, ack, requested_at_ns, required)
         with SESSION_LOCK:
             if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
                 raise ValueError("The active DM changed before the model switch")
@@ -765,31 +857,33 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
                 raise ValueError(error)
             if not notify_display("/campaign-handoff", {"campaign": old_campaign, "token": token, "active": True}):
                 raise ValueError("Could not keep player input paused safely while the DM stops")
-            if ack.get("files") != checkpoint_files(old_campaign, requested_at_ns):
+            if ack.get("files") != checkpoint_files(old_campaign, requested_at_ns, required):
                 raise ValueError("Campaign files changed after the save was confirmed. Save again")
             if not close:
-                set_handoff("starting", "Campaign saved. Starting a fresh DM…", campaign=name, provider=provider,
-                            action=action)
+                set_handoff("starting", "Campaign saved. Starting a fresh DM…", **details)
             result = run("tmux", "kill-session", "-t", identity)
             if result.returncode:
                 raise ValueError("Could not close the saved DM session")
             stopped = True
             if close:
                 stop_voice()
-                set_handoff("complete", "Session saved and the DM closed. Resume the campaign to start a fresh DM.",
-                            campaign=name, provider=provider, action=action)
+                try:
+                    records.end_session(old_path)
+                except Exception as error:  # noqa: BLE001 — the turn log falls back to its three-hour gap
+                    print(f"Turn log: could not mark the end of the session ({error}).", flush=True)
+                set_handoff("complete", "Session saved and the DM closed. Resume the campaign to start a fresh DM."
+                            + note, **details)
                 return
             if running():
                 raise ValueError("Another DM session is active; the replacement was not started")
             ok, message = start_session(provider, mode, name, description, onboarding, effort)
             if not ok:
                 raise ValueError(message)
-        set_handoff("complete", "Campaign saved and the selected DM is ready.", campaign=name, provider=provider,
-                    action=action)
+        set_handoff("complete", "Campaign saved and the selected DM is ready.", **details)
     except (OSError, ValueError, subprocess.TimeoutExpired) as error:
         suffix = (" Your campaign is saved. Reopen it to try the new DM again." if stopped else
                   " The DM was left running." if close else " The original DM was not stopped.")
-        set_handoff("failed", str(error) + suffix, campaign=name, provider=provider, action=action)
+        set_handoff("failed", str(error) + suffix, **details)
     finally:
         if leased:
             notify_display("/campaign-handoff", {"campaign": previous["campaign"], "token": token, "active": False})
