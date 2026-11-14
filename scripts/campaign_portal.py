@@ -12,6 +12,7 @@ import secrets
 import shlex
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -107,6 +108,41 @@ def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PATH"] = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{env.get('PATH', '')}"
     return subprocess.run(args, cwd=REPO, env=env, capture_output=True, text=True, timeout=timeout)
+
+
+def paste_into_dm(text: str) -> bool:
+    """Paste text into the DM composer as one bracketed paste.
+
+    `send-keys -l` types key by key, and Claude Code kept only the last ~105 characters of a long input (#108).
+    """
+    target = f"{SESSION}:0.0"
+    buffer = f"dnd-input-{secrets.token_hex(8)}"
+    handle, path = tempfile.mkstemp(prefix="dnd-input-", suffix=".txt")
+    loaded = pasted = False
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            file.write(text)
+        loaded = run("tmux", "load-buffer", "-b", buffer, path).returncode == 0
+        pasted = loaded and run("tmux", "paste-buffer", "-p", "-d", "-b", buffer, "-t", target).returncode == 0
+        return pasted
+    finally:
+        if loaded and not pasted:
+            try:
+                run("tmux", "delete-buffer", "-b", buffer)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        Path(path).unlink(missing_ok=True)
+
+
+def press_enter() -> bool:
+    return run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter").returncode == 0
+
+
+def submit_to_dm(text: str) -> bool:
+    if not paste_into_dm(text):
+        return False
+    time.sleep(0.25)
+    return press_enter()
 
 
 def running() -> bool:
@@ -209,12 +245,7 @@ def _deliver_party_input() -> bool:
         (SETUP_NOTE if in_setup(meta, campaign_dir) else "Treat it as the party's action. ") +
         "Input: " + json.dumps(content, ensure_ascii=True)
     )
-    literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", prompt)
-    if literal.returncode:
-        return False
-    time.sleep(0.25)
-    enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter")
-    if enter.returncode:
+    if not submit_to_dm(prompt):
         return False
     claim.unlink(missing_ok=True)
     if pulse:
@@ -619,8 +650,7 @@ def acknowledge_handoff(token: str) -> None:
 
 
 def send_checkpoint_request(prompt: str) -> None:
-    literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", prompt)
-    if literal.returncode:
+    if not paste_into_dm(prompt):
         raise ValueError("Could not ask the current DM to save")
     time.sleep(0.25)
     probe = run("tmux", "capture-pane", "-pt", f"{SESSION}:0.0", "-S", "-80")
@@ -628,8 +658,7 @@ def send_checkpoint_request(prompt: str) -> None:
     tail = re.sub(r"\s+", "", prompt[-160:])
     if probe.returncode or (tail not in visible and not re.search(r"pasted (?:text|content)", probe.stdout, re.I)):
         raise ValueError("The save request was not visible in the DM composer; it was not submitted")
-    enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter")
-    if enter.returncode:
+    if not press_enter():
         raise ValueError("The save request could not be submitted")
 
 
@@ -936,11 +965,8 @@ def create_app() -> Flask:
                 return jsonify(ok=False, message="The campaign is being saved. Your reply was not sent; wait for the model change."), 409
             if not running():
                 return jsonify(ok=False, message="No model session is running."), 409
-            literal = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "-l", "--", text)
-            if literal.returncode == 0:
-                time.sleep(0.25)
-            enter = run("tmux", "send-keys", "-t", f"{SESSION}:0.0", "Enter") if literal.returncode == 0 else literal
-        if enter.returncode:
+            sent = submit_to_dm(text)
+        if not sent:
             return jsonify(ok=False, message="Could not send the reply to the model."), 500
         notify_party_consumed(text)
         return jsonify(ok=True)
