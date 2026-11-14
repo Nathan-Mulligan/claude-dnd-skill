@@ -2,6 +2,8 @@
 
 This repository runs one persistent campaign format across Codex, Claude Code and Qwen Code. The campaign files and Python scripts are authoritative; the current model supplies narration, NPC portrayal and decisions that are not mechanical facts.
 
+The order for every change and every turn: storytelling first, immersion second, speed third. Speed matters only because waiting breaks immersion. Never trade story quality for speed.
+
 ## Running a game
 
 When the campaign portal launches you, you are the DM. Skip the Houston pre-prompt and any other global start-up reading; none of it applies to running a game.
