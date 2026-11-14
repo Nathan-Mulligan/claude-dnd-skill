@@ -65,6 +65,10 @@ def calendar(folder, *args):
     ("We head north along the river road", "journey"),
     ("We ask Rosa how her daughter is keeping", None),
     ("[[Pass the salt, please]]", None),
+    ("We will not set out until the messenger returns", None),
+    ("We head out of the shop and cross the street to the inn", None),
+    ("We refuse to attack the bandits", None),
+    ("If they attack us we run. We set out at dawn", "journey"),
 ])
 def test_only_a_clear_signal_starts_a_prep(said, kind):
     assert turn_prep.signal(said) == kind
@@ -161,3 +165,65 @@ def test_the_prep_is_one_short_line(fenmoor, said):
 def test_no_signal_leaves_the_card_as_it_was(fenmoor):
     assert prepared(card(fenmoor, "We ask Rosa how her daughter is keeping")) == []
     assert not (fenmoor / oracle.ROAD_NEXT).exists()
+
+
+def keep(folder, day, when=None):
+    when = when if when is not None else oracle._today(folder)
+    (folder / oracle.ROAD_NEXT).write_text(json.dumps({"for": when, "day": day}), encoding="utf-8")
+
+
+KEPT = {"kind": "quiet", "text": "A kept quiet day.", "guidance": "One line.", "prep": "abc"}
+
+
+def test_a_failed_log_write_keeps_the_prepared_day(fenmoor, monkeypatch):
+    keep(fenmoor, KEPT)
+    real = oracle._write_atomic
+
+    def broken(path, text):
+        if path.name == oracle.ROAD_LOG:
+            raise OSError("disk full")
+        real(path, text)
+
+    monkeypatch.setattr(oracle, "_write_atomic", broken)
+    with pytest.raises(OSError):
+        oracle.campaign_road(fenmoor, 1)
+    monkeypatch.setattr(oracle, "_write_atomic", real)
+    assert oracle.campaign_road(fenmoor, 1)[0]["text"] == KEPT["text"]
+
+
+def test_a_prepared_day_already_in_the_log_is_not_used_again(fenmoor):
+    keep(fenmoor, KEPT)
+    (fenmoor / oracle.ROAD_LOG).write_text(json.dumps([{"kind": "quiet", "text": KEPT["text"], "prep": "abc"}]),
+                                          encoding="utf-8")
+    assert oracle.campaign_road(fenmoor, 1)[0].get("prep") != "abc"
+    assert not (fenmoor / oracle.ROAD_NEXT).exists()
+
+
+def test_a_day_built_on_a_hook_that_has_gone_is_rolled_again(fenmoor):
+    stale = {**KEPT, "kind": "story", "source": "hook:Rescue the trapped courier", "prep": "old"}
+    keep(fenmoor, stale)
+    assert oracle.prepare_road(fenmoor).get("prep") != "old"
+    keep(fenmoor, stale)
+    assert oracle.campaign_road(fenmoor, 1)[0].get("prep") != "old"
+
+
+def test_a_day_kept_for_a_later_date_survives_an_earlier_journey(fenmoor):
+    later = [9999, 1, 1]
+    keep(fenmoor, KEPT, later)
+    oracle.campaign_road(fenmoor, 1)
+    assert json.loads((fenmoor / oracle.ROAD_NEXT).read_text(encoding="utf-8"))["for"] == later
+
+
+@pytest.mark.skipif(oracle.fcntl is None, reason="no file locks on this platform")
+def test_preparing_waits_while_the_calendar_holds_the_road(fenmoor):
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time; sys.path.insert(0, sys.argv[1]); import oracle, pathlib\n"
+         "with oracle.road_lock(pathlib.Path(sys.argv[2])):\n    print('held', flush=True); time.sleep(1.5)",
+         str(SCRIPTS), str(fenmoor)], stdout=subprocess.PIPE, text=True, encoding="utf-8")
+    assert holder.stdout.readline().strip() == "held"
+    import time
+    began = time.monotonic()
+    oracle.prepare_road(fenmoor)
+    assert time.monotonic() - began > 1.0
+    holder.wait(timeout=10)

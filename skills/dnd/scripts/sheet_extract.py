@@ -239,6 +239,15 @@ def _spells(section: str) -> dict:
     return spells
 
 
+def _inspiration(value: str) -> "bool | None":
+    if re.match(r"\s*(?:yes|true|held|[✓✔])", value, re.I):
+        return True
+    if re.match(r"\s*(?:no|none|false|[—–-]\s*$)", value, re.I):
+        return False
+    number = _int(value)
+    return None if number is None else number > 0
+
+
 def player_payload(campaign: Path, sheet: Path) -> dict:
     """One display player built from the sheet file; fields the sheet leaves blank are left out."""
     text = sheet.read_text(encoding="utf-8")
@@ -270,9 +279,9 @@ def player_payload(campaign: Path, sheet: Path) -> dict:
     if dice:
         player["hit_dice"] = {"max": int(dice.group(1)), "remaining": int(dice.group(3) or dice.group(1)),
                               "die": dice.group(2)}
-    inspiration = _int(_bold(combat, "Heroic Inspiration") or _bold(combat, "Inspiration"))
+    inspiration = _inspiration(_bold(combat, "Heroic Inspiration") or _bold(combat, "Inspiration"))
     if inspiration is not None:
-        player["inspiration"] = inspiration > 0
+        player["inspiration"] = inspiration
     rows = _table(_section(text, "Ability Scores"))
     scores = [re.match(r"\s*(\d+)", c) for c in rows[0]] if rows else []
     if len(scores) == 6 and all(scores):

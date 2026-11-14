@@ -22,9 +22,13 @@ _TRADE = re.compile(
     r"price[sd]?|how much|costs?|wares)\b", re.I)
 _ONWARD = r"(?:north|south|east|west|onward|onwards)"
 _JOURNEY = re.compile(
-    rf"\b(set(?:ting)? (?:out|off)|head(?:ing)? (?:out|off|{_ONWARD})|"
+    rf"\b(set(?:ting)? (?:out|off)(?! (?:the|a|an|our|my|his|her|their|some|it|them)\b)|"
+    rf"head(?:ing)? (?:(?:out|off) )?{_ONWARD}|"
     rf"(?:travel|journey|ride|march)(?:l?ing)? (?:to|toward|towards|{_ONWARD})|"
     r"depart(?:s|ed|ing)?|hit the road|on the road to)\b", re.I)
+# A verb after one of these in its own clause is not happening: "we won't attack", "if they attack us".
+_NOT_NOW = re.compile(r"(?:\b(?:not|never|no|cannot|refuse\w*|avoid\w*|instead of|rather than|without|if|unless|"
+                      r"in case)\b|n't\b)", re.I)
 MAX_FOES = 2
 MAX_ITEMS = 4
 MAX_LEN = 500
@@ -41,10 +45,12 @@ _RULESET = re.compile(r"\*\*Ruleset:\*\*\s*(\d{4})", re.I)
 
 def signal(party_input: str) -> str | None:
     """'fight', 'trade' or 'journey' when the party says so plainly, else None. Notes in [[...]] don't count."""
-    said = re.sub(r"\[\[.*?\]\]", " ", party_input or "", flags=re.S)
+    said = re.sub(r"\[\[.*?\]\]", " ", party_input or "", flags=re.S).replace("\u2019", "'")
     for kind, pattern in (("fight", _FIGHT), ("trade", _TRADE), ("journey", _JOURNEY)):
-        if pattern.search(said):
-            return kind
+        for match in pattern.finditer(said):
+            clause = re.split(r"[.;!?]", said[:match.start()])[-1]
+            if not _NOT_NOW.search(clause):
+                return kind
     return None
 
 

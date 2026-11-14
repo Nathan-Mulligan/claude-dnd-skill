@@ -496,7 +496,7 @@ Likelihoods: `sure-thing`, `likely`, `50/50`, `unlikely`, `no-way`. Verdict suff
 - Story days use `## Next Hooks` bullets and `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) when present; about half of traveller days bring a clock's news or a hook.
 - `road_log.json` in the campaign folder keeps the last 10 days, so an example, hook or clock is not reused while it is in the log (a hook used on a story day is not repeated by a traveller either), and the same eventful kind never comes twice in a row.
 - Danger days add an encounter budget for the party (size and average level from `party_stats.json`, else `characters/*.md`), at the tier set by the `difficulty` dial (`standard` = medium).
-- `road_next.json` holds a day the turn card's journey prep has already rolled (see Turn prep below), kept under the in-world date it was rolled on. The next road roll on that date, from `calendar.py advance` or `oracle.py road`, uses it as day 1 and deletes it; once the date has moved on it is dropped and the day is rolled fresh. It is never logged until it is used, so it is never rolled twice.
+- `road_next.json` holds a day the turn card's journey prep has already rolled (see Turn prep below), kept under the in-world date it was rolled on. The next road roll on that date, from `calendar.py advance` or `oracle.py road`, uses it as day 1 and deletes it once the log holds it. It is dropped and rolled fresh once the date has moved on, or when the hook or clock it was built on has left `state.md`. Preparing and using it share a lock (`road_next.lock`) with `calendar.py advance`, so the two never cross.
 
 ---
 

@@ -114,3 +114,12 @@ def test_spell_lists_on_separate_lines_stay_separate():
     assert spells["cantrips"] == ["Fire Bolt", "Light"]
     assert spells["prepared"] == ["Shield", "Magic Missile"]
     assert (spells["save_dc"], spells["attack_bonus"]) == (13, "+5")
+
+
+@pytest.mark.parametrize("written, held", [("yes", True), ("✓", True), ("1", True), ("no", False), ("0", False)])
+def test_inspiration_written_as_a_word_or_a_tick_is_kept(campaign, written, held):
+    path = campaign / "characters" / "nella-reed.md"
+    text = path.read_text(encoding="utf-8")
+    assert "**Heroic Inspiration:** 1" in text
+    path.write_text(text.replace("**Heroic Inspiration:** 1", f"**Heroic Inspiration:** {written}"), encoding="utf-8")
+    assert _player(campaign, "nella-reed")["inspiration"] is held
