@@ -22,7 +22,8 @@ from arc_pulse import bullets, clean, field, section  # noqa: E402
 RULES = (
     "End on something in motion, never a bare \"what do you do?\"",
     "Before any roll, name the DC and the stake, and resolve the roll this turn",
-    "Never decide for the player characters",
+    "Never decide for the player characters: never spend their coin, hand over their things, or say yes to a deal, "
+    "toll, fee or bribe they have not agreed to; name the price and stop",
     "Turn shape: one send.py call with every block of narration first (a player roll splits it: stake with "
     "the roll request, result after), bookkeeping in the next call, then reply done",
 )
@@ -39,6 +40,11 @@ TITLES = frozenset("""
 """.split())
 PREP_SCRIPT = Path(__file__).resolve().parents[1] / "skills/dnd/scripts/turn_prep.py"
 PREP_TIMEOUT = 5
+# A sentence in the state that leaves money or a deal open, waiting on the party's answer.
+WAITING = re.compile(r"\b(?:owed|unpaid|(?:still|remains) due|offered|no acceptance|not (?:yet )?(?:accepted|agreed))\b",
+                     re.IGNORECASE)
+SETTLED = re.compile(r"\b(?:paid in full|(?:was|were|been|is|are) paid|(?<!not )(?<!yet )accepted|declined|refused|"
+                     r"turned (?:it )?down|settled)\b", re.IGNORECASE)
 
 
 def _clip(text: str, limit: int) -> str:
@@ -152,7 +158,19 @@ def _clocks(state: str, campaign_dir: Path) -> str:
 
 def _trade(state: str) -> str:
     match = re.search(r"^\s*[-*]\s+\**trade policy:?\**:?\s*(.+)$", section(state, "Pinned Facts"), re.MULTILINE | re.IGNORECASE)
-    return f"Trade policy (apply it without asking): {_clip(match.group(1), 220)}" if match else ""
+    return (f"Trade policy (how they trade once they choose to; it never agrees a price, fee or deal for them): "
+            f"{_clip(match.group(1), 220)}") if match else ""
+
+
+def _waiting(state: str) -> str:
+    found = []
+    for entry in bullets(state, "Live State Flags") + bullets(state, "Current Situation"):
+        found += [s for s in re.split(r"(?<=[.!?])\s+", entry) if WAITING.search(s) and not SETTLED.search(s)]
+    if not found:
+        return ""
+    return ("Waiting on the party (theirs to answer: put it to them unless this input answers it, then resolve that; "
+            "never pay, accept or hand over for them unasked): "
+            + " / ".join(_clip(s, 160).rstrip(".") for s in found[:2]))
 
 
 def _npc_entries(npcs: str) -> dict[str, dict]:
@@ -275,6 +293,7 @@ def _lines(campaign_dir: Path, party_input: str, runtime_dir: Path | None, pulse
         lambda: _hooks(state),
         lambda: _clocks(state, campaign_dir),
         lambda: _trade(state),
+        lambda: _waiting(state),
         lambda: _npcs(state, campaign_dir, party_input),
         lambda: _prepared(campaign_dir, party_input),
         lambda: _table(state, runtime_dir),

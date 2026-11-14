@@ -251,3 +251,28 @@ def test_skill_files_keep_the_sidebar_lists_in_state_md_not_in_pushes():
     assert "- **Short name** (active|threat|resolved|failed)" in load
     assert "- **Faction**: Standing" in load
     assert "--factions" not in load.split("push_stats.py --party", 1)[1].split("```", 1)[0]
+
+
+def _section(text: str, heading: str) -> str:
+    start = text.index(heading)
+    end = text.find("\n## ", start + len(heading))
+    return text[start:end if end != -1 else None]
+
+
+def test_the_dm_never_spends_or_agrees_for_the_players():
+    rule = _section(_read(CORE), "## 2. Never play the player characters")
+    for words in ("spend their coin", "give away", "accept a deal", "toll", "fare", "bribe", "Pinned Facts", "stop"):
+        assert words in rule, words
+
+
+def test_trade_puts_every_deal_and_bribe_back_to_the_players():
+    trade = _section(_read(CORE), "## 5. Trade")
+    for words in ("say yes to every deal", "only asked the price", "bribe", "a player agreed", "standing orders"):
+        assert words in trade, words
+    assert "spend only what a player agreed to pay" in _section(_read(CORE), "## 16. Exact flags")
+
+
+@pytest.mark.parametrize("path", [CORE, SKILL / "SKILL.md", SKILL / "SKILL-scripts.md", SKILL / "templates" / "state.md"])
+def test_no_file_tells_the_dm_to_apply_the_trade_policy_without_asking(path):
+    for line in _read(path).splitlines():
+        assert not ("rade policy" in line and "without asking" in line), line
