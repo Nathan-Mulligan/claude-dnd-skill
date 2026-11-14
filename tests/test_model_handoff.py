@@ -24,6 +24,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime/portal-session.json")
     monkeypatch.setattr(portal, "_handoff", {"status": "idle", "message": ""})
     monkeypatch.setattr(portal, "CODEX_ENABLED", True)
+    monkeypatch.setattr(portal, "_replied", set())
     portal.RUNTIME.mkdir()
     old = tmp_path / "campaigns/old"
     (old / "characters").mkdir(parents=True)
@@ -832,6 +833,24 @@ def test_a_close_after_a_party_reply_still_gets_its_summary(setup, monkeypatch):
     portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
     assert portal.handoff_state()["status"] == "complete"
     assert events[0][0] == "prepare"
+
+
+def test_a_reply_whose_record_failed_still_gets_its_summary(setup, monkeypatch):
+    # Sol review: a failed write of the played record must not cost the session its summary.
+    old, previous, _, _, _ = setup
+    token = "d" * 32
+    portal.records.end_session(old)
+
+    def full_disk(folder):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(portal.records, "mark_played", full_disk)
+    portal.mark_played("old")
+    events = helper_on(monkeypatch, lambda: {"session-log.md": ("old", "new")})
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_fields_and_acknowledge(old, token))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    assert portal.handoff_state()["status"] == "complete"
+    assert events[0][0] == "prepare" and "old" not in portal._replied
 
 
 def test_a_model_switch_never_uses_the_helper(setup, monkeypatch):

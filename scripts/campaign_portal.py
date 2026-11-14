@@ -201,8 +201,12 @@ def notify_party_consumed(reply: str | None = None) -> None:
     notify_display("/queue/consumed", {"reply": reply} if reply else {})
 
 
+_replied: "set[str]" = set()  # campaigns with a reply since this portal closed them, in case the record fails
+
+
 def mark_played(campaign: str) -> None:
     """A party reply reached the DM, so Save & close summarises this session."""
+    _replied.add(campaign)
     try:
         records.mark_played(campaign_path(campaign))
     except Exception as error:  # noqa: BLE001 — never blocks the reply; unknown counts as played
@@ -845,16 +849,17 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
         old_campaign = previous["campaign"]
         old_path = campaign_path(old_campaign)
         request_path, ack_path = handoff_paths(token)
-        played = not close or records.played(old_path)
-        helper = session_summary.helper() if close and played else None
-        required = NO_PLAY_REQUIRED if not played else HELPER_REQUIRED if helper else REQUIRED_FILES
-        mark = session_summary.display_mark(old_path) if helper else None  # before the DM rewrites the stop point
         command = shlex.join(["env", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", sys.executable,
                               str(REPO / "scripts/campaign_portal.py"), "--acknowledge-handoff", token])
-        prompt = handoff_prompt(old_campaign, old_path, command, close, helper_summary=bool(helper), played=played)
         with SESSION_LOCK:
             if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
                 raise ValueError("The active DM changed before saving began")
+            # Read under the lock replies are delivered under, so none can slip in unrecorded.
+            played = not close or old_campaign in _replied or records.played(old_path)
+            helper = session_summary.helper() if close and played else None
+            required = NO_PLAY_REQUIRED if not played else HELPER_REQUIRED if helper else REQUIRED_FILES
+            mark = session_summary.display_mark(old_path) if helper else None  # before the DM rewrites the stop point
+            prompt = handoff_prompt(old_campaign, old_path, command, close, helper_summary=bool(helper), played=played)
             error = None if close else selection_error(provider, mode, name, description) or provider_error(provider)
             if error:
                 raise ValueError(error)
@@ -889,6 +894,7 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             stopped = True
             if close:
                 stop_voice()
+                _replied.discard(old_campaign)
                 try:
                     records.end_session(old_path)
                 except Exception as error:  # noqa: BLE001 — the turn log falls back to its three-hour gap
@@ -1082,9 +1088,10 @@ def create_app() -> Flask:
             if not running():
                 return jsonify(ok=False, message="No model session is running."), 409
             sent = submit_to_dm(text)
+            if sent:  # under the lock, so a Save & close can't read the session as unplayed meanwhile
+                mark_played(str(read_meta().get("campaign", "")))
         if not sent:
             return jsonify(ok=False, message="Could not send the reply to the model."), 500
-        mark_played(str(read_meta().get("campaign", "")))
         notify_party_consumed(text)
         return jsonify(ok=True)
 
