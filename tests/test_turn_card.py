@@ -235,7 +235,7 @@ def test_a_debt_or_offer_left_open_in_the_state_is_put_back_to_the_party(fenmoor
                "- Garrick offered 2 sp to haul his flour back, not yet accepted. Rosa sold them bread.\n"
                "- Ilsa is at the Ashbridge west gate")
     line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party"))
-    assert "never pay, accept or hand over for them" in line
+    assert "never pay, accept or hand over for them unasked" in line
     assert "The 3 sp wagon and mule rental is still owed to its owner at the next market" in line
     assert "Garrick offered 2 sp to haul his flour back, not yet accepted" in line
     assert "salt debt is paid in full" not in line and "Rosa sold them bread" not in line
@@ -245,3 +245,21 @@ def test_nothing_waiting_means_no_waiting_line(fenmoor):
     edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
     edit_state(fenmoor, "; the wagon rental remains due", "")
     assert "Waiting on the party" not in card(fenmoor)
+
+
+@pytest.mark.parametrize("settled", [
+    "Garrick offered 2 sp to haul his flour back, and the party accepted.",
+    "The 2 sp Garrick was owed was paid in full.",
+    "Garrick offered 2 sp to haul his flour back; they declined.",
+])
+def test_a_settled_debt_or_offer_is_not_put_back_to_the_party(fenmoor, settled):
+    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
+    edit_state(fenmoor, "; the wagon rental remains due", "")
+    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate", f"- {settled}\n- Ilsa is at the Ashbridge west gate")
+    assert "Waiting on the party" not in card(fenmoor)
+
+
+def test_the_waiting_line_lets_this_turn_s_answer_settle_it(fenmoor):
+    line = next(p for p in card(fenmoor, "We pay the 3 sp wagon rental now.").split(" | ")
+                if p.startswith("Waiting on the party"))
+    assert "unless this input answers it" in line

@@ -41,6 +41,8 @@ MAX_NPCS = 3
 # A sentence in the state that leaves money or a deal open, waiting on the party's answer.
 WAITING = re.compile(r"\b(?:owed|unpaid|(?:still|remains) due|offered|no acceptance|not (?:yet )?(?:accepted|agreed))\b",
                      re.IGNORECASE)
+SETTLED = re.compile(r"\b(?:paid in full|(?:was|were|been|is|are) paid|(?<!not )(?<!yet )accepted|declined|refused|"
+                     r"turned (?:it )?down|settled)\b", re.IGNORECASE)
 
 
 def _clip(text: str, limit: int) -> str:
@@ -161,10 +163,11 @@ def _trade(state: str) -> str:
 def _waiting(state: str) -> str:
     found = []
     for entry in bullets(state, "Live State Flags") + bullets(state, "Current Situation"):
-        found += [s for s in re.split(r"(?<=[.!?])\s+", entry) if WAITING.search(s)]
+        found += [s for s in re.split(r"(?<=[.!?])\s+", entry) if WAITING.search(s) and not SETTLED.search(s)]
     if not found:
         return ""
-    return ("Waiting on the party (put it to them; never pay, accept or hand over for them): "
+    return ("Waiting on the party (theirs to answer: put it to them unless this input answers it, then resolve that; "
+            "never pay, accept or hand over for them unasked): "
             + " / ".join(_clip(s, 160).rstrip(".") for s in found[:2]))
 
 
