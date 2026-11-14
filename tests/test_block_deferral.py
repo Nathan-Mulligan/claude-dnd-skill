@@ -144,6 +144,33 @@ class BlockDeferralTests(unittest.TestCase):
         """)
         self.assertEqual(r["landed"], 1, "a stalled reveal swallowed the block")
 
+    def test_a_slow_but_moving_reveal_is_not_dumped(self):
+        """Text paced by a long spoken line takes longer than the valve.
+
+        The valve is for a reveal that has stopped. One that is still putting
+        characters on the page must be allowed to finish, or a dice block
+        arriving under a long narrated paragraph snaps the text ahead of the
+        voice reading it.
+        """
+        r = _harness("""
+        isTyping = true;
+        let landed = [];
+        let stillTypingWhenLanded = null;
+        _deferBlock(() => { landed.push('dice'); stillTypingWhenLanded = isTyping; }, false);
+        const tick = setInterval(() => { _typedAt = Date.now(); }, 400);
+        setTimeout(() => { clearInterval(tick); isTyping = false; }, PENDING_BLOCK_MAX + 1500);
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            landed: landed.length, flushes: instantFlushCalls,
+            landedWhileTyping: stillTypingWhenLanded === true,
+          }));
+          process.exit(0);
+        }, PENDING_BLOCK_MAX + 2500);
+        """)
+        self.assertEqual(r["landed"], 1)
+        self.assertEqual(r["flushes"], 0, "the moving reveal was dumped by the valve")
+        self.assertFalse(r["landedWhileTyping"])
+
     def test_order_is_preserved_across_held_blocks(self):
         r = _harness("""
         isTyping = true;

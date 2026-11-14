@@ -4779,6 +4779,7 @@ let currentCursor   = null;
 let _currentInlineEl = null;  // tracks open <em>/<strong> during typewriter
 let lastChunkTime   = Date.now();
 let idleTimer       = null;
+let _typeTimer      = null;
 
 // ── Markdown segment parser ───────────────────────────────────────────────────
 // Converts a text string into typed queue items for the typewriter.
@@ -4935,53 +4936,141 @@ function getOrCreateBlock() {
     textContent.appendChild(currentEl);
     scrollToBottom();
   }
-  return currentEl.querySelector('p:last-child');
+  return currentEl.querySelector(':scope > p:last-of-type');
+}
+
+// ── Voice sync ────────────────────────────────────────────────────────
+// With Auto Narrate on, a line's text follows its own audio: each TTS chunk's
+// words start when that chunk starts playing and finish as it ends, read off
+// the AudioContext clock. A {sync} marker in charQueue opens each chunk's span
+// of items. A line drops back to the plain typewriter for good once its audio
+// fails, is stopped, cannot play, or is too late.
+const SYNC_WAIT_MAX = 4000;   // ms to wait for a chunk's audio before typing without it
+let _syncSeg = null;
+
+// Characters that _ttsSpeakable keeps, so text and audio are measured alike.
+function _syncWeight(item) {
+  if (typeof item === 'string') return /[\s*_#`>|]/.test(item) ? 0 : 1;
+  if (item && item.table) {
+    return [item.table.headers || [], ...item.table.rows].flat().join('').replace(/[\s*_#`>|]/g, '').length;
+  }
+  return 0;
+}
+
+function _syncMark(items, sync) {
+  if (!sync || !sync.chunks.length) return [{ sync: null }].concat(items);
+  const chunks = sync.chunks;
+  const total = items.reduce((n, it) => n + _syncWeight(it), 0);
+  const weights = chunks.map(c => c.text.replace(/\s/g, '').length);
+  const all = weights.reduce((a, b) => a + b, 0) || 1;
+  let cum = 0;
+  const ends = weights.map(w => Math.round(total * (cum += w) / all));
+  const out = [];
+  let ci = 0, seen = 0, seg = null;
+  const open = () => { seg = { line: sync, chunk: chunks[ci], n: 0, shown: 0, since: 0 }; out.push({ sync: seg }); };
+  open();
+  for (const it of items) {
+    const w = _syncWeight(it);
+    if (w && ci < chunks.length - 1 && seen >= ends[ci]) {
+      while (ci < chunks.length - 1 && seen >= ends[ci]) ci++;
+      open();
+    }
+    seg.n += w;
+    seen += w;
+    out.push(it);
+  }
+  return out;
+}
+
+// ms until `item` may appear (<= 0: now), or null for the plain typewriter.
+function _syncWait(item) {
+  const s = _syncSeg;
+  if (!s) return null;
+  const line = s.line;
+  if (!line.off) {
+    const ctx = _ttsCtx, c = s.chunk;
+    if (line.gen !== _ttsGen || !ctx || ctx.state === 'closed') line.off = true;
+    else if (c.at === null) {
+      if (!s.since) s.since = Date.now();
+      const waited = Date.now() - s.since;
+      // A fresh context reports 'suspended' for a moment even when allowed to play.
+      if (waited < SYNC_WAIT_MAX && !(ctx.state === 'suspended' && waited > 500)) return 40;
+      line.off = true;
+    } else if (ctx.state !== 'running') line.off = true;
+    else return s.n ? (c.at + c.dur * s.shown / s.n - ctx.currentTime) * 1000 : 0;
+  }
+  return line.npc ? 0 : null;
 }
 
 function typeNextChar() {
-  if (charQueue.length === 0) {
-    isTyping = false;
-    return;
+  _typeTimer = null;
+  for (;;) {
+    if (charQueue.length === 0) {
+      isTyping = false;
+      _syncSeg = null;
+      return;
+    }
+    const item = charQueue[0];
+    if (item && typeof item === 'object' && 'sync' in item) { _typeItem(charQueue.shift()); continue; }
+    const wait = _syncWait(item);
+    if (wait === null) break;
+    // Re-check often: Stop or a failure can end the wait early.
+    if (wait > 4) { _typeTimer = setTimeout(typeNextChar, Math.min(wait, 250)); return; }
+    _typeItem(charQueue.shift());
   }
+  _typeItem(charQueue.shift());
+  _typeTimer = setTimeout(typeNextChar, charDelay);
+}
 
-  const item = charQueue.shift();
-  const p    = getOrCreateBlock();
+// Reveal one queue item. `quiet` skips the cursor and scroll for bulk flushes.
+function _typeItem(item, quiet) {
+  if (item && typeof item === 'object') {
+    if ('sync' in item) { _syncSeg = item.sync; return; }
+    if (item.brk) { flushNewBlock(); return; }
+    if (item.done) { _endTypedBlock(item.done); return; }
+  }
+  const p = getOrCreateBlock();
 
-  if (currentCursor) currentCursor.classList.remove('typing-cursor');
+  if (!quiet && currentCursor) currentCursor.classList.remove('typing-cursor');
 
   if (item === '\n') {
-    // New paragraph — reset inline state
     _currentInlineEl = null;
-    const next = document.createElement('p');
-    currentEl.appendChild(next);
+    currentEl.appendChild(document.createElement('p'));
   } else if (item && typeof item === 'object' && item.table) {
     _currentInlineEl = null;
     currentEl.appendChild(_buildTableNode(item.table));
   } else if (item && typeof item === 'object' && item.open) {
-    // Open a styled inline element inside current paragraph
     const el = document.createElement(item.open);
     p.appendChild(el);
     _currentInlineEl = el;
   } else if (item && typeof item === 'object' && item.close) {
-    // Close inline element
     _currentInlineEl = null;
   } else {
-    // Plain character — append to inline element if open, else to paragraph
-    const target = _currentInlineEl || p;
-    target.appendChild(document.createTextNode(item));
+    (_currentInlineEl || p).appendChild(document.createTextNode(item));
   }
+  if (_syncSeg) _syncSeg.shown += _syncWeight(item);
+  _typedAt = Date.now();
+  if (quiet) return;
 
-  currentCursor = currentEl.querySelector('p:last-child');
+  currentCursor = currentEl.querySelector(':scope > p:last-of-type');
   if (currentCursor) currentCursor.classList.add('typing-cursor');
-
   scrollToBottom();
-  setTimeout(typeNextChar, charDelay);
+}
+
+// An NPC line typed through the queue: close its block once its text is out.
+function _endTypedBlock(block) {
+  if (currentCursor) currentCursor.classList.remove('typing-cursor');
+  currentCursor = null;
+  _currentInlineEl = null;
+  _addTtsBar(block);
+  if (currentEl === block) currentEl = null;
 }
 
 function startTyping() {
   if (isTyping) return;
   if (charDelay === 0) { instantFlush(); return; }
   isTyping = true;
+  clearTimeout(_typeTimer);
   typeNextChar();
 }
 
@@ -5142,35 +5231,14 @@ function flushNewBlock() {
 function instantFlush() {
   if (charQueue.length === 0) return;
   clearTimeout(idleTimer);
+  clearTimeout(_typeTimer);
   const pending = charQueue.splice(0);  // atomically drain
-  let flushInline = null;  // local inline tracker for this flush pass
-  for (const item of pending) {
-    if (item === '\n') {
-      flushInline = null;
-      if (!currentEl) getOrCreateBlock();
-      const next = document.createElement('p');
-      currentEl.appendChild(next);
-    } else if (item && typeof item === 'object' && item.table) {
-      flushInline = null;
-      if (!currentEl) getOrCreateBlock();
-      currentEl.appendChild(_buildTableNode(item.table));
-    } else if (item && typeof item === 'object' && item.open) {
-      const p = getOrCreateBlock();
-      const el = document.createElement(item.open);
-      p.appendChild(el);
-      flushInline = el;
-    } else if (item && typeof item === 'object' && item.close) {
-      flushInline = null;
-    } else {
-      const p = getOrCreateBlock();
-      const target = flushInline || p;
-      target.appendChild(document.createTextNode(item));
-    }
-  }
+  for (const item of pending) _typeItem(item, true);
   isTyping = false;
+  _syncSeg = null;
   _currentInlineEl = null;
   if (currentCursor) currentCursor.classList.remove('typing-cursor');
-  currentCursor = currentEl ? currentEl.querySelector('p:last-child') : null;
+  currentCursor = currentEl ? currentEl.querySelector(':scope > p:last-of-type') : null;
 }
 
 // ── Shared: flush cursor and currentEl before inserting a non-DM block ──
@@ -5205,7 +5273,8 @@ function _flushForBlock() {
 // has to keep asking whether the typewriter is idle and release only when it
 // really is.
 const PENDING_BLOCK_GAP = 320;    // ms of DRAINED typewriter before releasing
-const PENDING_BLOCK_MAX = 8000;   // ms before releasing regardless
+const PENDING_BLOCK_MAX = 8000;   // ms without a revealed character before releasing regardless
+let _typedAt = 0;                 // when the typewriter last revealed something
 
 let _pendingBlocks = [];
 let _pendingTimer  = null;
@@ -5237,7 +5306,9 @@ function _schedulePendingFlush() {
     // A stalled reveal must not swallow the queue. Without this valve a
     // typewriter that never drains means a dice result the table is waiting
     // on never appears at all, which is worse than the snap it replaced.
-    const waited = _pendingSince ? (Date.now() - _pendingSince) : 0;
+    // A reveal paced by a long spoken line is slow but not stalled, so the
+    // clock restarts whenever a character appears.
+    const waited = _pendingSince ? (Date.now() - Math.max(_pendingSince, _typedAt)) : 0;
     if (_typewriterActive() && waited < PENDING_BLOCK_MAX) {
       _pendingTimer = setTimeout(tick, PENDING_BLOCK_GAP);   // re-arm
       return;
@@ -5338,11 +5409,11 @@ function _renderActionBlockNow(name, text, isReplay) {
 }
 
 // ── NPC dialogue block ───────────────────────────────────────────────
-function renderNPCBlock(name, text, isReplay) {
-  _deferBlock(() => _renderNPCBlockNow(name, text, isReplay), isReplay);
+function renderNPCBlock(name, text, isReplay, sync) {
+  _deferBlock(() => _renderNPCBlockNow(name, text, isReplay, sync), isReplay);
 }
 
-function _renderNPCBlockNow(name, text, isReplay) {
+function _renderNPCBlockNow(name, text, isReplay, sync) {
   _flushForBlock();
 
   const block = document.createElement('div');
@@ -5359,12 +5430,24 @@ function _renderNPCBlockNow(name, text, isReplay) {
     .replace(/\r/g, '')
     .replace(/\t/g, '  ')
     .trim();
+  const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
 
-  cleaned.split('\n').forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
+  if (sync && !isReplay) {
+    // Spoken in its own voice: typed through the queue so it follows that audio.
+    block.appendChild(document.createElement('p'));
+    textContent.appendChild(block);
+    currentEl = block;
+    sync.npc = true;
+    const items = [];
+    lines.forEach((line, i) => { if (i) items.push('\n'); items.push(...line); });
+    charQueue.push(..._syncMark(items, sync), { done: block });
+    startTyping();
+    return;
+  }
+
+  lines.forEach(line => {
     const p = document.createElement('p');
-    p.textContent = trimmed;
+    p.textContent = line;
     block.appendChild(p);
   });
 
@@ -5693,15 +5776,19 @@ function _hideProcessingIndicator() {
 let _openerHoldUntil = 0;
 const OPENER_HOLD = 30000;
 
-function handleIncomingText(text, opener) {
+function handleIncomingText(text, opener, sync) {
   _hideProcessingIndicator();
   // Debounce block separation: if there was a gap > IDLE_GAP, new block
   const now = Date.now();
   const held = now < _openerHoldUntil;
   _openerHoldUntil = opener ? now + OPENER_HOLD : 0;
-  if (!held && now - lastChunkTime > IDLE_GAP && charQueue.length === 0 && !isTyping) {
-    flushNewBlock();
-  } else if (held && currentEl) {
+  if (!held && now - lastChunkTime > IDLE_GAP) {
+    // A reveal paced by speech can still be running when the next line comes;
+    // that line still starts its own block, after this one finishes.
+    if (charQueue.length === 0 && !isTyping) flushNewBlock();
+    else charQueue.push({ brk: true });
+  } else if (held) {
+    // The opener may still be queued behind its audio, with no block on the page yet.
     charQueue.push(' ');
   }
   lastChunkTime = now;
@@ -5721,7 +5808,7 @@ function handleIncomingText(text, opener) {
     .replace(/\[[\d;?]*[a-zA-Z]/g, '')           // strip leftover CSI remnants
     .replace(/\r/g, '')
     .replace(/\t/g, '  ');
-  for (const item of _mdParse(cleaned)) {
+  for (const item of _syncMark(_mdParse(cleaned), sync)) {
     charQueue.push(item);
   }
 
@@ -7628,7 +7715,7 @@ function _ttsSchedule(ctx, pcm, btn, first, last, gen) {
   src.buffer = buf;
   src.connect(_ttsGain);
   const now = ctx.currentTime;
-  let at = Math.max(now + 0.03, _ttsNextAt + (first && _ttsNextAt > now ? _TTS_LINE_PAUSE : 0));
+  const at = Math.max(now + 0.03, _ttsNextAt + (first && _ttsNextAt > now ? _TTS_LINE_PAUSE : 0));
   _ttsNextAt = at + buf.duration;
   _ttsSources.add(src);
   if (first && btn) setTimeout(() => { if (gen === _ttsGen) _ttsSetBtn(btn, 'playing'); }, Math.max(0, (at - now) * 1000));
@@ -7637,6 +7724,7 @@ function _ttsSchedule(ctx, pcm, btn, first, last, gen) {
     if (last && btn && gen === _ttsGen) _ttsSetBtn(btn, 'idle');
   };
   src.start(at);
+  return { at, dur: buf.duration };
 }
 
 function _ttsWaitForQueue(ctx) {
@@ -7644,22 +7732,28 @@ function _ttsWaitForQueue(ctx) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// Returns the line's sync handle: each chunk's audio start and length on the
+// context clock, filled in as it is scheduled, for the typewriter to follow.
 function _narrate(text, voice, btn) {
   text = _ttsSpeakable(text);
-  if (!text) return;
+  if (!text) return null;
   const gen = _ttsGen;
   const ctx = _getTtsCtx();
   _ttsEnsureRunning(ctx);
   if (btn) _ttsSetBtn(btn, 'loading');
   const chunks = _ttsRampChunks(text);
+  const sync = { gen, off: false, chunks: chunks.map(t => ({ text: t, at: null, dur: 0 })) };
   chunks.forEach((chunk, i) => {
     const pcmP = _ttsFetchChain.then(() => gen === _ttsGen ? _ttsFetchPcm(chunk, voice) : null);
     _ttsFetchChain = pcmP.catch(() => null);
+    // Known as soon as the fetch fails, not when this line's turn to play comes.
+    _ttsFetchChain.then(pcm => { if (!pcm) sync.off = true; });
     const step = _ttsPlayChain.then(async () => {
       let pcm = null;
       try { pcm = await pcmP; } catch (_) {}
       if (gen !== _ttsGen) return;
-      if (pcm) { _ttsSchedule(ctx, pcm, btn, i === 0, i === chunks.length - 1, gen); return; }
+      if (pcm) { Object.assign(sync.chunks[i], _ttsSchedule(ctx, pcm, btn, i === 0, i === chunks.length - 1, gen)); return; }
+      sync.off = true;
       // No server audio for this chunk: wait for what's queued, then let the
       // browser say it, so the fallback can't talk over Kokoro either.
       await _ttsWaitForQueue(ctx);
@@ -7668,8 +7762,9 @@ function _narrate(text, voice, btn) {
       await _ttsBrowserSay(chunk);
       if (i === chunks.length - 1 && btn && gen === _ttsGen) _ttsSetBtn(btn, 'idle');
     });
-    _ttsPlayChain = step.catch(() => {});
+    _ttsPlayChain = step.catch(() => { sync.off = true; });
   });
+  return sync;
 }
 
 function _ttsStopAll() {
@@ -9028,8 +9123,8 @@ function connect() {
       } else if (payload.player) {
         renderPlayerBlock(payload.player, payload.text);
       } else if (payload.npc) {
-        renderNPCBlock(payload.npc, payload.text);
-        if (_ttsAutoNarrate && _TTS_AVAILABLE) _narrate(payload.text, _voiceForName(payload.npc));
+        const _sync = _ttsAutoNarrate && _TTS_AVAILABLE ? _narrate(payload.text, _voiceForName(payload.npc)) : null;
+        renderNPCBlock(payload.npc, payload.text, false, _sync);
       } else if (payload.dice) {
         renderDiceBlock(payload.text);
       } else if (payload.tutor) {
@@ -9038,9 +9133,9 @@ function connect() {
         // Narration that arrives behind waiting NPC or dice blocks waits too,
         // or it would be typed into the paragraph above them.
         const _txt = payload.text, _op = !!payload.opener;
-        if (_pendingBlocks.length) _deferBlock(() => handleIncomingText(_txt, _op));
-        else handleIncomingText(_txt, _op);
-        if (_ttsAutoNarrate && _TTS_AVAILABLE) _narrate(payload.text, _narratorVoice());
+        const _sync = _ttsAutoNarrate && _TTS_AVAILABLE ? _narrate(_txt, _narratorVoice()) : null;
+        if (_pendingBlocks.length) _deferBlock(() => handleIncomingText(_txt, _op, _sync));
+        else handleIncomingText(_txt, _op, _sync);
       }
     }
   };
