@@ -243,3 +243,31 @@ def test_the_waiting_line_lets_this_turn_s_answer_settle_it(fenmoor):
     line = next(p for p in card(fenmoor, "We pay the 3 sp wagon rental now.").split(" | ")
                 if p.startswith("Waiting on the party"))
     assert "unless this input answers it" in line
+
+
+def _only(fenmoor, sentence):
+    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
+    edit_state(fenmoor, "; the wagon rental remains due", "")
+    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate", f"- {sentence}\n- Ilsa is at the Ashbridge west gate")
+    return next((p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party")), "")
+
+
+@pytest.mark.parametrize("sentence", [
+    "Garrick offered 2 sp to haul his flour back, but the offer has not been accepted.",
+    "The rental is unpaid and has not been settled.",
+    "Odile's salt debt is paid; the wagon rental remains due.",
+    "The 2 sp gate toll is due.",
+    "Garrick offers 2 sp to haul his flour; the party has not answered.",
+])
+def test_an_open_payment_or_offer_is_waiting_however_it_is_worded(fenmoor, sentence):
+    assert sentence.rstrip(".") in _only(fenmoor, sentence)
+
+
+@pytest.mark.parametrize("sentence", [
+    "Garrick offered 2 sp; the party agreed to haul the flour.",
+    "Rosa offered condolences for their loss.",
+    "No wages are owed to Wren.",
+    "The auditor is due tomorrow.",
+])
+def test_an_agreed_deal_or_a_non_payment_is_not_waiting(fenmoor, sentence):
+    assert _only(fenmoor, sentence) == ""

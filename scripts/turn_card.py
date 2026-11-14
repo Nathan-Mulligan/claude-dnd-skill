@@ -40,11 +40,17 @@ TITLES = frozenset("""
 """.split())
 PREP_SCRIPT = Path(__file__).resolve().parents[1] / "skills/dnd/scripts/turn_prep.py"
 PREP_TIMEOUT = 5
-# A sentence in the state that leaves money or a deal open, waiting on the party's answer.
-WAITING = re.compile(r"\b(?:owed|unpaid|(?:still|remains) due|offered|no acceptance|not (?:yet )?(?:accepted|agreed))\b",
-                     re.IGNORECASE)
-SETTLED = re.compile(r"\b(?:paid in full|(?:was|were|been|is|are) paid|(?<!not )(?<!yet )accepted|declined|refused|"
-                     r"turned (?:it )?down|settled)\b", re.IGNORECASE)
+# A clause in the state that leaves money or a deal open, waiting on the party's answer. An offer, an ask
+# or a sum due counts only with money or a deal in the same clause; a settled clause closes what came before.
+OPEN = re.compile(r"\b(?:owed|owes|unpaid|(?:still|remains) due|no acceptance|not (?:yet )?(?:been )?"
+                  r"(?:accepted|agreed|answered|paid|settled))\b", re.IGNORECASE)
+ASKED = re.compile(r"\b(?:offer(?:s|ed)?|asks? for|asking for)\b", re.IGNORECASE)
+SUM = r"\b\d+\s*(?:cp|sp|ep|gp|pp)\b"
+DUE = re.compile(SUM + r".*\b(?:is|are) due\b", re.IGNORECASE)
+DEAL = re.compile(SUM + r"|\b(?:coins?|silver|gold|copper|fee|toll|fare|price|pay|payment|wages?|rent|bribe|reward|"
+                  r"deal|job|work)\b", re.IGNORECASE)
+SETTLED = re.compile(r"\b(?:paid|accepted|agreed|declined|refused|turned (?:it )?down|settled)\b", re.IGNORECASE)
+NEGATION = {"not", "never", "no", "none", "nothing", "nobody"}
 
 
 def _clip(text: str, limit: int) -> str:
@@ -162,10 +168,28 @@ def _trade(state: str) -> str:
             f"{_clip(match.group(1), 220)}") if match else ""
 
 
+def _negated(clause: str, match) -> bool:
+    before = clause[:match.start()].lower().split()[-3:]
+    return any(word in NEGATION or word.endswith("n't") for word in before)
+
+
+def _left_open(sentence: str) -> bool:
+    waiting = False
+    for clause in re.split(r";|,?\s+but\s+|,\s+(?:and|so)\s+", sentence):
+        if any(not _negated(clause, m) for m in SETTLED.finditer(clause)):
+            waiting = False
+            continue
+        opened = next((m for m in OPEN.finditer(clause) if not _negated(clause, m)), None)
+        asked = next((m for m in ASKED.finditer(clause) if not _negated(clause, m)), None)
+        if opened or (asked and DEAL.search(clause)) or DUE.search(clause):
+            waiting = True
+    return waiting
+
+
 def _waiting(state: str) -> str:
     found = []
     for entry in bullets(state, "Live State Flags") + bullets(state, "Current Situation"):
-        found += [s for s in re.split(r"(?<=[.!?])\s+", entry) if WAITING.search(s) and not SETTLED.search(s)]
+        found += [s for s in re.split(r"(?<=[.!?])\s+", entry) if _left_open(s)]
     if not found:
         return ""
     return ("Waiting on the party (theirs to answer: put it to them unless this input answers it, then resolve that; "
