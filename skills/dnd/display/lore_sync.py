@@ -7,7 +7,9 @@ does not have to.
 
 How it runs
   push_stats.py calls `kick()` whenever the DM pushes --factions or --quests.
-  `kick()` starts this file detached and returns at once; the DM never waits.
+  `kick()` only leaves a request (helper_jobs.py) and returns at once; the DM
+  never waits. The display server then runs `run_and_log()`, outside the DM's
+  sandbox, where the Codex CLI can start.
   The run fingerprints the displayed names and statuses plus the party-known
   sections of the campaign's state.md. It calls the model only when that
   fingerprint has changed, so ordinary narration costs nothing.
@@ -46,7 +48,7 @@ from pathlib import Path
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-from runtime_paths import rt  # noqa: E402
+from runtime_paths import log_line, rt, touch  # noqa: E402
 
 # Only sections that hold what the party knows. "World State" is left out on
 # purpose: the state template keeps hidden faction activity there.
@@ -135,11 +137,7 @@ def choose_model() -> "tuple[str, str] | None":
 
 
 def log(msg: str) -> None:
-    try:
-        with open(rt("lore_sync.log"), "a", encoding="utf-8") as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
-    except OSError:
-        pass
+    log_line(rt("lore_sync.log"), msg)
 
 
 # ── state.md ─────────────────────────────────────────────────────────────────
@@ -525,7 +523,7 @@ def run(settle_s: float = 2.0, max_passes: int = 3) -> str:
     fd = _acquire_lock()
     if fd is None:
         try:
-            Path(_pending_path()).touch()
+            touch(_pending_path())
         except OSError:
             pass
         return "busy"
@@ -547,22 +545,26 @@ def run(settle_s: float = 2.0, max_passes: int = 3) -> str:
 
 
 def kick() -> None:
-    """Start a sync pass in the background. Never raises, never blocks."""
+    """Ask the display to run a sync pass (helper_jobs.py). Never raises, never blocks."""
     try:
         if choose_model() is None:
             return
-        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--run"],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        import helper_jobs
+        helper_jobs.request("lore_sync")
     except Exception as e:  # noqa: BLE001 — must never break the DM's push
         log(f"kick failed: {e}")
 
 
+def run_and_log() -> None:
+    """One run, its outcome or failure written to the log. What the display runs."""
+    try:
+        log("run: " + run())
+    except Exception as e:  # noqa: BLE001
+        log("run failed: " + failure_reason(e))
+
+
 if __name__ == "__main__":
     if "--run" in sys.argv:
-        try:
-            log("run: " + run())
-        except Exception as e:  # noqa: BLE001
-            log("run failed: " + failure_reason(e))
+        run_and_log()
     else:
         print(__doc__)

@@ -3439,6 +3439,9 @@ if __name__ == "__main__":
     if _audio:
         _audio.set_broadcast(_broadcast)
 
+    import helper_jobs
+    helper_jobs.start()
+
     host = "0.0.0.0" if _LAN_MODE else "localhost"
     # TLS — only enabled when --tls is explicitly passed; HTTP is the default.
     # Certs are runtime state (persist across plugin updates) → rt(); .scheme is a
