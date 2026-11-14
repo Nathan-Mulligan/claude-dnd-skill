@@ -17,7 +17,7 @@ turn-log.md (in the campaign folder; this module is its only writer)
 npcs.md (shared with the DM and oracle.py, through npc_entries.edit and its lock)
   For each `@npc NAME` speaker: `- **Met:** <place>, session N (<in-world date>)` and
   `- **Voice:** <id>`, each added only when the entry has no such line. A speaker with no entry
-  gets one only for a full name ("Mira Kett", not "Warden rider", "Bridge Keeper" or "Auditor"). Met is skipped
+  gets one only for a full name ("Tova Lind", not "Warden rider", "Bridge Keeper" or "Auditor"). Met is skipped
   for someone met before: their entry has a note line, an earlier session, or the DM's own
   description while the logs already name them (full or first name). `- **As seen:**`
   carries phrases the helper model copied from the narration (npc_describe.py). This module
@@ -200,7 +200,7 @@ def _npc_file(folder: Path, name: str) -> Path:
 
 
 def is_full_name(name: str) -> bool:
-    """"Mira Kett" or "Anselm of Ashbridge", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
+    """"Tova Lind" or "Anselm of Ashbridge", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
     words = name.split()
     if len(words) < 2 or words[0].casefold() in ("the", "a", "an") or words[-1].casefold() in _ROLE_WORDS:
         return False

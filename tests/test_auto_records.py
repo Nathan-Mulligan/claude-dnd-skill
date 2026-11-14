@@ -152,7 +152,7 @@ def test_the_dms_own_lines_are_never_changed(camp):
 
 
 @pytest.mark.parametrize("history", [
-    "Brackenford innkeeper; offers the wagon yard for 2 cp.",
+    "Runs the ferry inn; lets the yard for a few coppers.",
     "- Party note (16 Duskfall 1247): Took the hoop order.",
     "- **Role:** toll clerk, first seen in session 4",
 ])
@@ -160,7 +160,7 @@ def test_someone_known_from_before_gets_no_new_met(camp, history):
     (camp / "npcs.md").write_text(f"# NPCs\n\n## Hessa Varn\n{history}\n", encoding="utf-8")
     with open(camp / "session-log.md", "a", encoding="utf-8") as log:
         log.write("Hessa Varn let them stable the mule.\n")
-    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
+    records.record_send(blocks(), place="Gate", now=NOW)
     text = (camp / "npcs.md").read_text(encoding="utf-8")
     assert "- **Met:**" not in text
     assert "- **Voice:** bf_alice" in text and history in text
@@ -189,15 +189,15 @@ def test_a_title_alone_in_the_logs_is_not_a_meeting(camp):
 
 def test_a_written_up_npc_the_logs_never_mention_still_gets_met(camp):
     (camp / "npcs.md").write_text("# NPCs\n\n## Hessa Varn\nToll clerk; hides a timber advance.\n", encoding="utf-8")
-    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
-    assert "- **Met:** Brackenford toll gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
+    records.record_send(blocks(), place="Gate", now=NOW)
+    assert "- **Met:** Gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_a_new_npc_with_only_a_profile_still_gets_met(camp):
     (camp / "npcs.md").write_text("# NPCs\n\n## Hessa Varn\n- **Temperament:** tired (ordinary)\n"
                                   "- **Wants now:** a quiet audit\n", encoding="utf-8")
-    records.record_send(blocks(), place="Brackenford toll gate", now=NOW)
-    assert "- **Met:** Brackenford toll gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
+    records.record_send(blocks(), place="Gate", now=NOW)
+    assert "- **Met:** Gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("label", ["Warden rider", "Auditor", "Warden auditor", "Traveller", "Man at the barrier",
@@ -209,7 +209,7 @@ def test_an_unnamed_speaker_gets_no_entry(camp, label):
     assert f"**{label}:** \"Move along.\"" in log_text(camp)
 
 
-@pytest.mark.parametrize("name", ["Mira Kett", "Brother Aldous", "Anselm of Ashbridge", "Tam O'Rourke"])
+@pytest.mark.parametrize("name", ["Tova Lind", "Brother Aldous", "Anselm of Ashbridge", "Tam O'Rourke"])
 def test_a_named_newcomer_gets_an_entry(camp, name):
     records.record_send(blocks(f'@npc {name}\n"Move along."\n'), place="Road", now=NOW)
     assert f"### {name}\n" in (camp / "npcs.md").read_text(encoding="utf-8")
