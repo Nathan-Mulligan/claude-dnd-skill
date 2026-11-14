@@ -444,8 +444,10 @@ def new_log(m: Material, reply: dict, today: str) -> str:
     edits = [(b.start, b.end, "") for b in m.rotate]
     events = bullets(reply["events"]) or "-"
     if m.current:
+        # A Recap already there was written mid-session; its Key Events give way to the whole session's.
+        resummarised = has_recap(m.current.text)
         entry = put_subsection(m.current.text, "Recap", reply["recap"], replace=True)
-        entry = put_subsection(entry, "Key Events", events, replace=False, after="Recap")
+        entry = put_subsection(entry, "Key Events", events, replace=resummarised, after="Recap")
         edits.append((m.current.start, m.current.end, entry))
         return splice(m.log, edits)
     text = splice(m.log, edits)
@@ -508,20 +510,43 @@ def prepare(folder: Path, mark: "str | None", choice: "tuple[str, str]", today: 
     return plan
 
 
-def write(folder: Path, plan: dict) -> None:
-    """Write the planned files, refusing if any changed since they were read."""
-    folder = Path(folder)
-    for name, (base, _) in plan.items():
-        if _read(folder / name) != base:
-            raise ValueError(f"{name} changed after the summary was prepared")
-    for name in FILES:
-        if name not in plan or plan[name][0] == plan[name][1]:
-            continue
-        fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{name}.")
+def _replace(folder: Path, name: str, text: str) -> None:
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{name}.")
+    try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(plan[name][1])
+            f.write(text)
         try:
             os.chmod(tmp, (folder / name).stat().st_mode & 0o777)
         except FileNotFoundError:
             os.chmod(tmp, 0o644)
         os.replace(tmp, folder / name)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def write(folder: Path, plan: dict) -> None:
+    """Write the planned files, refusing if any changed since they were read. If one write fails,
+    the files already written are put back, so the DM's fallback starts from the saved state."""
+    folder = Path(folder)
+    for name, (base, _) in plan.items():
+        if _read(folder / name) != base:
+            raise ValueError(f"{name} changed after the summary was prepared")
+    written = []
+    try:
+        for name in FILES:
+            if name not in plan or plan[name][0] == plan[name][1]:
+                continue
+            _replace(folder, name, plan[name][1])
+            written.append(name)
+    except BaseException:
+        for name in reversed(written):
+            base = plan[name][0]
+            try:
+                if base is None:
+                    (folder / name).unlink(missing_ok=True)
+                else:
+                    _replace(folder, name, base)
+            except OSError as error:
+                log(f"{folder.name}: could not put back {name} after a failed summary write: {error}")
+        raise

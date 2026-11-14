@@ -10,6 +10,7 @@ turn-log.md (in the campaign folder; this module is its only writer)
     **Everybody:** We hand over the satchel.               one paragraph per block, word for word
     **DM:** The clerk breaks the seal.
     **Hessa Varn:** "Twenty silver, or the wagon stays."
+  A new section also starts after Save & close (the portal calls `end_session`).
   Speakers: DM (narration), DM hint (tutor), Dice, XP, Inspiration, Milestone, else the
   player, action or NPC name. The session number is one more than the newest `## Session N`
   in session-log.md, its archive or state.md. A replay (every block long and among the last
@@ -176,12 +177,14 @@ def _append_turn(folder: Path, blocks: list, place: str, date: str, now: float) 
         mine = state.get(key) if isinstance(state.get(key), dict) else {}
         prints = [_fingerprint(b) for b in blocks]
         recent = mine.get("recent") or []
-        new_session = not log.exists() or now - float(mine.get("last") or 0) >= SESSION_GAP_S
+        new_session = (not log.exists() or mine.get("closed")
+                       or now - float(mine.get("last") or 0) >= SESSION_GAP_S)
         replay = all(b.get("kind") != "award" and len(b["text"].strip()) >= REPLAY_MIN_CHARS for b in blocks)
         if not new_session and replay and all(p in recent for p in prints):
             return int(mine.get("session") or session_number(folder))
         out = "" if log.exists() else LOG_HEADER
         if new_session:
+            mine.pop("closed", None)
             mine["session"] = session_number(folder)
             out += f"\n## Session {mine['session']} · {time.strftime('%Y-%m-%d', time.localtime(now))}\n"
         heading = " · ".join(part for part in (time.strftime("%H:%M", time.localtime(now)), place, date) if part)
@@ -192,6 +195,17 @@ def _append_turn(folder: Path, blocks: list, place: str, date: str, now: float) 
         state[key] = mine
         _save_state(state)
         return int(mine["session"])
+
+
+def end_session(folder: Path) -> None:
+    """Save & close ended this campaign's session: its next send starts a new section, however soon.
+    A model switch doesn't call this, so the session it interrupts stays open."""
+    with npc_entries.locked("records-state"):
+        state = _load_state()
+        key = str(folder.resolve())
+        mine = state.get(key) if isinstance(state.get(key), dict) else {}
+        state[key] = dict(mine, closed=True)
+        _save_state(state)
 
 
 def _cast_voice(folder: Path, name: str) -> str:

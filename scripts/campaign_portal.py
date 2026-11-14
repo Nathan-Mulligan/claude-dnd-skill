@@ -27,6 +27,7 @@ import arc_pulse  # noqa: E402
 import turn_card  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/dnd/display"))
 import lore_sync  # noqa: E402  (helper choices only; the portal never runs it)
+import records  # noqa: E402
 import session_summary  # noqa: E402
 
 
@@ -866,6 +867,10 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
             stopped = True
             if close:
                 stop_voice()
+                try:
+                    records.end_session(old_path)
+                except Exception as error:  # noqa: BLE001 — the turn log falls back to its three-hour gap
+                    print(f"Turn log: could not mark the end of the session ({error}).", flush=True)
                 set_handoff("complete", "Session saved and the DM closed. Resume the campaign to start a fresh DM."
                             + note, **details)
                 return
