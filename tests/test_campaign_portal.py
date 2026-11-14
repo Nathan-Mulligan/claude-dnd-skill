@@ -340,6 +340,30 @@ def play_turn(monkeypatch, mode="resume", campaign="Fenmoor"):
     return delivered, typed[0] if typed else "", folder
 
 
+def test_a_party_reply_marks_the_session_played(client, monkeypatch):
+    # #148: Save & close summarises a session only when the party played in it.
+    import shutil
+    folder = portal.DATA_ROOT / "campaigns" / "Fenmoor"
+    shutil.copytree(REPO / "tests/fixtures/fenmoor", folder)
+    portal.records.end_session(folder)
+    assert portal.records.played(folder) is False
+    delivered, _, _ = play_turn(monkeypatch)
+    assert delivered and portal.records.played(folder) is True
+
+
+def test_a_reply_from_the_portal_box_marks_the_session_played(client, monkeypatch):
+    import shutil
+    folder = portal.DATA_ROOT / "campaigns" / "Fenmoor"
+    shutil.copytree(REPO / "tests/fixtures/fenmoor", folder)
+    portal.RUNTIME.mkdir(parents=True, exist_ok=True)
+    portal.META_FILE.write_text(json.dumps({"campaign": "Fenmoor", "mode": "resume"}), encoding="utf-8")
+    portal.records.end_session(folder)
+    monkeypatch.setattr(portal, "running", lambda: True)
+    monkeypatch.setattr(portal, "submit_to_dm", lambda text: True)
+    response = api(client, "/api/send", method="post", data={"text": "We ask Rosa."})
+    assert response.status_code == 200 and portal.records.played(folder) is True
+
+
 def test_play_turn_carries_the_turn_card_instead_of_scene_protocol(client, monkeypatch):
     delivered, prompt, _ = play_turn(monkeypatch)
     assert delivered

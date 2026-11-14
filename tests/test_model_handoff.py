@@ -799,6 +799,41 @@ def test_with_the_helper_off_the_dm_writes_the_summary(setup, monkeypatch):
     assert f"## Session {portal.session_summary.session_number(old)}" in prompt
 
 
+@pytest.mark.parametrize("helper", [("codex", "gpt-6-luna"), None])
+def test_a_close_with_no_party_reply_since_the_last_close_writes_no_summary(setup, monkeypatch, helper):
+    # #148: a resume closed with no play got its own ## Session entry that repeated the last
+    # session, and the next close's summary was refused.
+    old, previous, alive, _, _ = setup
+    token = "a" * 32
+    portal.records.end_session(old)  # the last Save & close; no party reply since
+    monkeypatch.setattr(portal.session_summary, "helper", lambda: helper)
+    monkeypatch.setattr(portal.session_summary, "prepare", lambda *args: pytest.fail("No play, no summary"))
+    prompts = []
+    monkeypatch.setattr(portal, "send_checkpoint_request",
+                        lambda prompt: prompts.append(prompt) or save_fields_and_acknowledge(old, token, names=("state.md",)))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    state = portal.handoff_state()
+    assert state["status"] == "complete", state
+    assert not alive["value"]
+    [prompt] = prompts
+    assert "no turns were played" in prompt and "no session-log.md entry" in prompt
+    assert "Write this session's entry" not in prompt and "stop_point.py write" not in prompt
+    assert "\n" not in prompt
+    assert (old / "session-log.md").read_text(encoding="utf-8") == "Saved campaign\n"
+
+
+def test_a_close_after_a_party_reply_still_gets_its_summary(setup, monkeypatch):
+    old, previous, _, _, _ = setup
+    token = "c" * 32
+    portal.records.end_session(old)
+    portal.records.mark_played(old)
+    events = helper_on(monkeypatch, lambda: {"session-log.md": ("old", "new")})
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_fields_and_acknowledge(old, token))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    assert portal.handoff_state()["status"] == "complete"
+    assert events[0][0] == "prepare"
+
+
 def test_a_model_switch_never_uses_the_helper(setup, monkeypatch):
     old, previous, alive, _, _ = setup
     token = "5" * 32

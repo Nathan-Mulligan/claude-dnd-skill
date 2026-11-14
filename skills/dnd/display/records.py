@@ -210,15 +210,32 @@ def _append_turn(folder: Path, blocks: list, place: str, date: str, now: float) 
         return int(mine["session"])
 
 
+def _update(folder: Path, **fields) -> None:
+    with npc_entries.locked("records-state"):
+        state = _load_state()
+        key = str(Path(folder).resolve())
+        mine = state.get(key) if isinstance(state.get(key), dict) else {}
+        state[key] = dict(mine, **fields)
+        _save_state(state)
+
+
 def end_session(folder: Path) -> None:
     """Save & close ended this campaign's session: its next send starts a new section, however soon.
     A model switch doesn't call this, so the session it interrupts stays open."""
-    with npc_entries.locked("records-state"):
-        state = _load_state()
-        key = str(folder.resolve())
-        mine = state.get(key) if isinstance(state.get(key), dict) else {}
-        state[key] = dict(mine, closed=True)
-        _save_state(state)
+    _update(folder, closed=True, played=False)
+
+
+def mark_played(folder: Path) -> None:
+    """A party reply reached the DM (the portal calls this), so the session has something to summarise."""
+    if not played(folder):
+        _update(folder, played=True)
+
+
+def played(folder: Path) -> bool:
+    """Whether the party replied since the last Save & close. A session without a reply gets no
+    session-log entry or summary, so its number goes to the next session (#148). True when unknown."""
+    mine = _load_state().get(str(Path(folder).resolve()))
+    return not isinstance(mine, dict) or mine.get("played") is not False
 
 
 def _cast_voice(folder: Path, name: str) -> str:

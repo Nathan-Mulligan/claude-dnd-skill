@@ -81,6 +81,7 @@ FALLBACK_MESSAGE = "The notes helper could not write the summary, so the DM is w
 REQUIRED_FILES = frozenset({"state.md", "session-log.md", "session-tail.md"})
 HELPER_REQUIRED = frozenset({"state.md", "session-tail.md"})
 FALLBACK_REQUIRED = frozenset({"session-log.md"})
+NO_PLAY_REQUIRED = frozenset({"state.md"})  # a close with no party reply: no summary, stop point kept
 STOP_POINT = REPO / "skills/dnd/scripts/stop_point.py"
 _handoff_lock = threading.Lock()
 _handoff = {"status": "idle", "message": ""}
@@ -200,6 +201,14 @@ def notify_party_consumed(reply: str | None = None) -> None:
     notify_display("/queue/consumed", {"reply": reply} if reply else {})
 
 
+def mark_played(campaign: str) -> None:
+    """A party reply reached the DM, so Save & close summarises this session."""
+    try:
+        records.mark_played(campaign_path(campaign))
+    except Exception as error:  # noqa: BLE001 — never blocks the reply; unknown counts as played
+        print(f"Turn log: could not record a party reply ({type(error).__name__}).", flush=True)
+
+
 def deliver_party_input() -> bool:
     with SESSION_LOCK:
         if handoff_busy():
@@ -257,6 +266,7 @@ def _deliver_party_input() -> bool:
     if not submit_to_dm(prompt):
         return False
     claim.unlink(missing_ok=True)
+    mark_played(str(meta.get("campaign", "")))
     if pulse:
         try:
             arc_pulse.commit(campaign_dir, pulse)
@@ -681,11 +691,22 @@ def queued_party_input() -> bool:
     return False
 
 
-def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool, helper_summary: bool = False) -> str:
+def handoff_prompt(campaign: str, folder: Path, acknowledge: str, close: bool, helper_summary: bool = False,
+                   played: bool = True) -> str:
     stop_point = f"python3 {STOP_POINT} write --campaign {campaign}"
     record_stop = (f"Record where play stopped with {stop_point} --where \"<one line>\" --waiting \"<open question or "
                    "pending roll, if any>\", piping in your last several exchanges verbatim as DM-CORE section 12 says. ")
     heading = f"## Session {session_summary.session_number(folder)}"
+    if close and not played:
+        return (
+            f"Finish your response, then close this session of campaign {campaign} in {folder} without asking "
+            "anything. The party sent no reply since the last Save & close, so no turns were played: this session "
+            "gets no session-log.md entry and no summary. Do not write one, do not touch session-log.md, "
+            "## Story So Far, the Continuity Archive, the session count or the stop point. Save state.md (rewrite it "
+            "even if unchanged) and any character sheet you changed. Send no narration except the closing line. "
+            f"After every save finishes, run {acknowledge}. If saving fails, do not acknowledge. "
+            "Then stop generating; the portal will close this session."
+        )
     if close and helper_summary:
         return (
             f"Finish your response, then wrap up this session of campaign {campaign} in {folder} without asking "
@@ -824,12 +845,13 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
         old_campaign = previous["campaign"]
         old_path = campaign_path(old_campaign)
         request_path, ack_path = handoff_paths(token)
-        helper = session_summary.helper() if close else None
-        required = HELPER_REQUIRED if helper else REQUIRED_FILES
+        played = not close or records.played(old_path)
+        helper = session_summary.helper() if close and played else None
+        required = NO_PLAY_REQUIRED if not played else HELPER_REQUIRED if helper else REQUIRED_FILES
         mark = session_summary.display_mark(old_path) if helper else None  # before the DM rewrites the stop point
         command = shlex.join(["env", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", sys.executable,
                               str(REPO / "scripts/campaign_portal.py"), "--acknowledge-handoff", token])
-        prompt = handoff_prompt(old_campaign, old_path, command, close, helper_summary=bool(helper))
+        prompt = handoff_prompt(old_campaign, old_path, command, close, helper_summary=bool(helper), played=played)
         with SESSION_LOCK:
             if session_identity(read_meta()) != session_identity(previous) or tmux_identity() != identity:
                 raise ValueError("The active DM changed before saving began")
@@ -1062,6 +1084,7 @@ def create_app() -> Flask:
             sent = submit_to_dm(text)
         if not sent:
             return jsonify(ok=False, message="Could not send the reply to the model."), 500
+        mark_played(str(read_meta().get("campaign", "")))
         notify_party_consumed(text)
         return jsonify(ok=True)
 

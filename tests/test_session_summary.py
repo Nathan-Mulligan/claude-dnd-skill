@@ -521,6 +521,35 @@ def test_a_session_reopened_soon_after_save_and_close_gets_its_own_number(tmp_pa
     assert summary.session_number(folder) == 9
 
 
+def test_a_resume_closed_without_play_does_not_use_up_a_session_number(tmp_path, monkeypatch):
+    # #148: the portal writes no summary for a session with no party reply, so the next real
+    # session takes the same number and its summary goes through.
+    root = tmp_path / "data"
+    (root / "campaigns").mkdir(parents=True)
+    folder = campaign(root / "campaigns", lines=[])
+    monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(root))
+    monkeypatch.setenv("DND_ACTIVE_CAMPAIGN", "test")
+    monkeypatch.setattr(summary.records.npc_describe, "kick", lambda: None)
+    now = 1_800_000_000.0
+    assert summary.records.played(folder) is True  # nothing recorded yet: summarise, as before
+    summary.records.end_session(folder)  # Session 7's Save & close
+    assert summary.records.played(folder) is False
+    summary.records.record_send([{"text": "RESUME-RECAP Last time, they crossed the fen with Hobb."}], now=now)
+    summary.records.end_session(folder)  # closed again with no party reply: no summary written
+    summary.records.mark_played(folder)  # the next real session: the party replies
+    shown = [{"kind": "player", "name": "Elbane", "text": "I ask the miller about the toll."},
+             {"text": "The miller, Corwin Ash, names the price: 3 gp a wagon."}]
+    summary.records.record_send(shown, place="Brackenford mill", now=now + 3600)
+    assert read(folder, "turn-log.md").count("## Session 8 · ") == 2
+    assert summary.session_number(folder) == 8
+    reply = dict(GOOD, recap="Elbane asked Corwin Ash about the toll. Corwin named 3 gp a wagon.",
+                 key_events=["Corwin Ash charges 3 gp a wagon."])
+    run(folder, monkeypatch, reply)
+    log = read(folder, "session-log.md")
+    assert log.count("## Session 8") == 1 and "## Session 9" not in log
+    assert summary.records.session_number(folder) == 9
+
+
 def test_mid_session_key_events_are_replaced_with_the_whole_sessions(tmp_path, monkeypatch):
     switched = LOG + "\n## Session 8 — 2026-11-14\n### Recap\nDM-SWITCH-RECAP.\n\n### Key Events\n- DM-SWITCH-EVENT\n"
     folder = campaign(tmp_path, log=switched, lines=[])
