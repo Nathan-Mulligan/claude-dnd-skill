@@ -453,7 +453,7 @@ echo "Ethros the 19th — Insight (reading Septemous): d20+5 = $ROLL → [brief 
 python3 ${CLAUDE_SKILL_DIR}/scripts/dice.py d20+4 | python3 ${CLAUDE_SKILL_DIR}/display/send.py --dice
 ```
 Format: `[Name] — [Skill] ([context]): d20+MOD = RESULT → [short outcome]`
-Send the roll line **immediately after rolling**, before writing the narration response.
+In a turn, the roll line goes in the narration call's `@dice` block; the piped forms above are for a roll sent on its own.
 
 ⚠ **Heredoc gotcha:** The `<< 'DNDEND'` form (single-quoted terminator) **blocks variable expansion** — `${ROLL}` will be sent literally, not expanded. Use it for static narration, but for dice/anything with shell variables, **always use `echo`/`printf` piping** (as in the examples above) or an unquoted `<< DNDEND` heredoc. Mixing the two is the most common send-formatting bug.
 
@@ -466,19 +466,13 @@ DNDEND
 Brief NPC interjections within narration don't need a separate block.
 The first time a new NPC speaks, add `--npc-voice <id>` (for example `--npc-voice bf_alice`) chosen for their gender, age and manner; the voice is saved in the campaign's `cast.json`. If you forget, the display picks a free voice by itself. Neither replaces a voice picked by hand in the voice menu.
 
-*Opener first.* The table hears nothing until a send lands, and writing a full paragraph takes several seconds. So once the outcome of the turn is decided (after any rolls), send the scene's first sentence or two on their own with `--opener`, in their own Bash call, before writing the rest. Keep it to roughly 15-30 words of plain narration, consistent with what follows, no stat flags. The display speaks it at once and holds the paragraph open, so the full narration sent next continues it. Then send the rest exactly as below, starting after the opener (don't repeat it):
-```bash
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --opener << 'DNDEND'
-The goblin's blade skitters off your shield, and for a heartbeat the cave goes silent.
-DNDEND
-```
-Skip the opener for one-line replies, out-of-character answers, and turns whose narration is only a sentence or two anyway.
+*One call, every block.* The table hears nothing until a command lands, and Codex runs a command only once all of it is written. So the narration goes out in one `send.py` call holding every block, before any bookkeeping (DM-CORE.md section 10). A line holding only `@player NAME`, `@dice`, `@narration`, `@npc NAME` (optionally ` voice=ID`), `@tutor` or `@action NAME` starts a block; text before the first marker is narration. `--opener` still works for a lone first sentence, but a turn no longer needs it.
 
 *Scene music, illustration and era.* When the party reaches a new place or its mood truly changes, add `--scene "<place>: <what is happening>"` (optional `--mood`) to that narration's send (DM-CORE.md section 10). The scene cue contract, music moods, era and place themes live in [SKILL-scripts.md](SKILL-scripts.md), in its display and scene sections.
 
 At the start of a fight, send `--music-event combat-start` with the first combat narration. The display stops the ambience and plays one fresh ten-second battle cue, then silence. At the end, send `--music-event combat-end` with the first post-combat narration. The display makes a new texture for the remembered location. Combat turn-order stats also provide a fallback if one of these cues is missed. The cues never block narration and should not be repeated on every round.
 
-*DM narration* — **CRITICAL:** compose the complete narration (after any opener) first, then call `send.py` as the very last action. Never call `send.py` mid-response apart from the opener. The send must contain the **complete, unabridged text** — do not summarize or condense. **Bundle all stat changes (HP, spell slots, conditions, concentration) into this same send.py call** using `--stat-*` flags — no separate `push_stats.py` call needed for turn-resolution state. Items and coins go through `scripts/inventory.py`, which updates the sheet and the display itself:
+*DM narration* — **CRITICAL:** compose the complete narration first, then send it in one `send.py` call. Never split it across calls, except around a player roll: the stake goes with `--dice-request`, the result in the next call. The send must contain the **complete, unabridged text** — do not summarize or condense. **Bundle all stat changes (HP, spell slots, conditions, concentration) into this same send.py call** using `--stat-*` flags — no separate `push_stats.py` call needed for turn-resolution state. Items and coins go through `scripts/inventory.py`, which updates the sheet and the display itself:
 ```bash
 # With stat changes (any HP/slot/condition that changed this turn):
 python3 ${CLAUDE_SKILL_DIR}/display/send.py \
@@ -507,31 +501,22 @@ DNDEND
 | `--effect-start` | `"NAME:SPELL:DURATION"` | Start timed effect — DURATION: `10r` / `60m` / `8h` / `indef`; append `:conc` if concentration |
 | `--effect-end` | `"NAME:SPELL"` | End effect (broken concentration, dispelled, player drops it) |
 
-**Batching rule — ONE Bash tool call per response (plus the opener's own call), multiple typed sends inside it:**
+**Batching rule — ONE `send.py` call carries the whole narration, with a marker line per block:**
 
 **CRITICAL: `send.py` calls MUST go through the explicit Bash tool — bash code blocks written in response text do not execute in Claude Code; they only display as text. Every display sync invocation requires an actual Bash tool call.**
 
-Multiple Bash tool calls = visible `⏺ Bash(...)` blocks fragmenting the CLI. Use one Bash tool call, with multiple `send.py` invocations inside it. **Never** combine all text into one `send.py` with no flag — that loses all styled distinctions.
+Each separate call costs the table seconds of silence. **Never** run one `send.py` per block, and never drop the markers and send everything as plain narration: that loses the styled distinctions.
 
 **Correct pattern:**
 ```bash
-# 1. Player action
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --player "Max of Thraxx" << 'DNDEND'
-Max of Thraxx draws her dagger and moves toward the gate.
-DNDEND
-
-# 2. Dice result
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --dice << 'DNDEND'
-Max of Thraxx — Stealth: d20+7 = 21 → Clean.
-DNDEND
-
-# 3. DM narration + stat changes bundled
 python3 ${CLAUDE_SKILL_DIR}/display/send.py --stat-hp "Max of Thraxx:14:18" << 'DNDEND'
+@player Max of Thraxx
+Max of Thraxx draws her dagger and moves toward the gate.
+@dice
+Max of Thraxx — Stealth: d20+7 = 21 → Clean.
+@narration
 The gate swings inward on silence. Beyond: cold stone, darkness, the mineral smell of something very old.
-DNDEND
-
-# 4. NPC dialogue (amber border)
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --npc "Innkeeper" << 'DNDEND'
+@npc Innkeeper
 "You shouldn't have come back here."
 DNDEND
 ```
@@ -540,19 +525,17 @@ DNDEND
 
 **Per-turn combat sequence (follow exactly):**
 ```
-a. send.py --player  ← player action (or describe NPC intent inline)
+a. Note the player action (it goes in the @player block of step e)
 b. Roll all dice (combat.py attack / dice.py)
-c. send.py --dice    ← ALL roll results with context
+c. Collect ALL roll results with context (the @dice block of step e)
 d. tracker.py        ← conditions, concentration, death saves if applicable
    tracker.py effect tick <actor>  ← decrement round effects; prints any expiry warnings
-e. send.py --opener ← first sentence or two, the moment the outcome is known
-   then write the rest of the narration for this turn
-f. send.py [--stat-*] ← send complete narration + ALL stat changes — NEVER skip
+e. send.py [--stat-*] ← ONE call: @player, @dice, the narration, @npc, with ALL stat changes — NEVER skip
    Use --effect-start / --effect-end flags when effects begin or end this turn (syncs display)
-g. push_stats.py --turn-current  ← advance turn pointer (still separate — not a narration)
+f. push_stats.py --turn-current  ← advance turn pointer, in the bookkeeping call after the narration
 ```
-Step (f) is the most commonly missed. Every narration block must be sent.
-Step (g) uses `push_stats.py --turn-current` directly because it has no narration to bundle with.
+Step (e) is the most commonly missed. Every narration block must be sent.
+Step (f) uses `push_stats.py --turn-current` directly because it has no narration to bundle with.
 `tracker.py effect tick` is the headless fallback — it fires regardless of whether the display is running.
 
 ### Tutor Mode
