@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/dnd/display
 import lore_sync  # noqa: E402  (helper choices only; the portal never runs it)
 import records  # noqa: E402
 import session_summary  # noqa: E402
+from runtime_paths import write_file  # noqa: E402
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -68,6 +69,7 @@ DM_CHOICES = {
     "qwen": DmChoice("qwen", "Qwen 3.6 35B", ()),
 }
 ALLOWED_PROVIDERS = set(DM_CHOICES)
+CLI_COMMAND_PREFIXES = set("/!#&")
 CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
 SESSION_LOCK = threading.RLock()
 HANDOFF_TIMEOUT = 180
@@ -379,9 +381,13 @@ def read_onboarding(data: dict, mode: str) -> dict | None:
 
 def initial_prompt(mode: str, name: str, description: str, onboarding: dict | None = None) -> str:
     boot = (
-        "The campaign portal launched you, so you are the DM. Per AGENTS.md, skip the Houston pre-prompt "
-        "and first read skills/dnd/DM-CORE.md in full, in chunks of at most 200 lines. Read other skill "
-        "files only by the section you need. "
+        "The campaign portal launched you, so you are the DM. Skip the Houston pre-prompt. The game's code is "
+        f"the checkout {REPO}: first read {REPO}/AGENTS.md, then {REPO}/skills/dnd/DM-CORE.md in full, in "
+        "chunks of at most 200 lines. Read other skill files only by the section you need. Run the game's "
+        f"scripts from the checkout (cd {REPO} && python3 skills/dnd/...). You may write only this campaign's "
+        f"folder, {DATA_ROOT / 'campaigns' / name}, and the display's runtime folder, {RUNTIME}; everything "
+        "else, the checkout included, is read-only to you. Skip a step that writes anywhere else (the global "
+        "character roster, name_registry.py add, build_supplemental.py) rather than working around it. "
     )
     if mode == "new" and onboarding is not None:
         return (
@@ -434,25 +440,55 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
     )
 
 
+def claude_sandbox() -> str:
+    """Per-launch settings that keep a Claude DM's file tools and shell inside its working folders.
+
+    The working folders are the campaign (its cwd) and the runtime dir (--add-dir). Nathan's own
+    Claude settings are never edited.
+    """
+    return json.dumps({
+        "permissions": {"allow": [f"Read(/{REPO}/**)"], "blockWritesOutsideWorkingDirectories": True},
+        "sandbox": {"enabled": True, "failIfUnavailable": True, "autoAllowBashIfSandboxed": True,
+                    "allowUnsandboxedCommands": False,
+                    "network": {"allowedDomains": ["*"], "allowLocalBinding": True}},
+    })
+
+
 def model_args(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None,
                effort: str = DEFAULT_EFFORT) -> list[str]:
+    """The DM's command. Codex and Claude DMs start in the campaign folder and may write only it and the
+    runtime dir, so they can never change code or files that something outside their sandbox later runs."""
     choice = DM_CHOICES[provider]
     args = ["bash", str(REPO / "scripts/play-local.sh"), choice.launcher]
     if mode == "resume":
         args += ["--campaign", name]
+    if choice.launcher != "qwen":
+        args += ["--workdir", str(DATA_ROOT / "campaigns" / name)]
     prompt = initial_prompt(mode, name, description, onboarding)
     if choice.launcher == "codex":
         if effort not in CODEX_EFFORTS:
             raise ValueError("Invalid reasoning effort")
+        # Approval "never": an escalation prompt could be answered by the party's next paste and Enter.
         args += [*choice.args, *CODEX_NO_SCREEN, "-c", f'model_reasoning_effort="{effort}"',
                  "-c", "sandbox_workspace_write.network_access=true",
-                 "-s", "workspace-write",
-                 "--add-dir", str(DATA_ROOT), prompt]
+                 "-s", "workspace-write", "-a", "never",
+                 "--add-dir", str(RUNTIME), prompt]
     elif choice.launcher == "qwen":
         args += ["-i", prompt]
     else:
-        args += [*choice.args, prompt]
+        # Project settings and MCP servers would load from the campaign folder, which the DM can write.
+        args += [*choice.args, "--permission-mode", "acceptEdits", "--add-dir", str(RUNTIME),
+                 "--setting-sources", "user", "--strict-mcp-config", "--settings", claude_sandbox(), prompt]
     return args
+
+
+def dm_folder(name: str) -> Path:
+    """The campaign folder a Codex or Claude DM starts in, created for a new campaign."""
+    folder = campaign_path(name)
+    folder.mkdir(parents=True, exist_ok=True)
+    if folder.is_symlink() or not folder.is_dir():
+        raise ValueError("The campaign folder must be a real folder inside the campaign data root")
+    return folder
 
 
 def prepare_display(name: str, reset: bool = True) -> None:
@@ -534,6 +570,11 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
         error = provider_error(provider)
         if error:
             return False, error
+        if DM_CHOICES[provider].launcher != "qwen":
+            try:
+                dm_folder(name)
+            except (OSError, ValueError):
+                return False, "Could not prepare the campaign folder. No model session was started."
         service = run("env", "DND_PORTAL_START=1", "bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--start", DM_CHOICES[provider].launcher, timeout=60)
         if service.returncode:
             return False, (service.stderr or service.stdout or "M5 services did not start.").strip()[-800:]
@@ -542,7 +583,8 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
         except (OSError, ValueError):
             return False, "Could not prepare a clean display for this campaign. No model session was started."
         path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
-        command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}",
+        venv = [f"DND_VENV={os.environ['DND_VENV']}"] if os.environ.get("DND_VENV") else []
+        command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", *venv,
                                f"DND_ACTIVE_CAMPAIGN={name}",
                                *model_args(provider, mode, name, description, onboarding, effort)])
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
@@ -554,7 +596,7 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
     metadata = {"provider": provider, "mode": mode, "campaign": name, "started_at": time.time(), "effort": effort}
     if input_started_at is not None:
         metadata["input_started_at"] = input_started_at
-    META_FILE.write_text(json.dumps(metadata), encoding="utf-8")
+    write_file(META_FILE, json.dumps(metadata))
     notify_party_consumed()
     if mode == "new" and onboarding is not None:
         return True, "Your DM is creating the campaign and characters from your answers. The story will appear here."
@@ -760,9 +802,9 @@ def request_checkpoint(token: str, previous: dict, campaign: str, required: froz
         if path.exists():
             path.unlink()
     requested_at_ns = time.time_ns()
-    write_private_json(handoff_paths(token)[0], {
+    write_file(handoff_paths(token)[0], json.dumps({
         "token": token, "campaign": campaign, "session": list(session_identity(previous)),
-        "requested_at_ns": requested_at_ns, "required": sorted(required)})
+        "requested_at_ns": requested_at_ns, "required": sorted(required)}), root=RUNTIME, mode=0o600, durable=True)
     return requested_at_ns
 
 
@@ -1082,6 +1124,9 @@ def create_app() -> Flask:
         text = str(data.get("text", ""))
         if not text or len(text) > 3000 or any(c in text for c in "\r\n\x00"):
             return jsonify(ok=False, message="Enter one reply, up to 3000 characters."), 400
+        if text.lstrip()[:1] in CLI_COMMAND_PREFIXES:
+            # The DM can reach this route too; `/add-dir` or `!cmd` would act outside its sandbox.
+            return jsonify(ok=False, message="A reply can't start with / ! # or &."), 400
         with lock:
             if handoff_busy():
                 return jsonify(ok=False, message="The campaign is being saved. Your reply was not sent; wait for the model change."), 409

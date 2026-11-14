@@ -47,12 +47,20 @@ if [[ -n "$LAN_FLAG" ]]; then
 fi
 
 # ── TLS: generate cert if missing, then start cert server ────────────────────
+# Certs live in the data root, not the runtime dir: a sandboxed DM can write the
+# runtime dir, and openssl would follow a link it planted there.
+TLS_DIR="${DND_CAMPAIGN_ROOT:-$HOME/.claude/dnd}/tls"
 if $TLS_MODE; then
-  if [[ ! -f "$RT/cert.pem" || ! -f "$RT/key.pem" ]]; then
+  mkdir -p "$TLS_DIR/public" && chmod 700 "$TLS_DIR"
+  if [[ ! -f "$TLS_DIR/cert.pem" && -f "$RT/cert.pem" && ! -L "$RT/cert.pem" && -f "$RT/key.pem" && ! -L "$RT/key.pem" ]]; then
+    # Keep the cert from the old place so devices don't have to trust a new one.
+    cp "$RT/key.pem" "$TLS_DIR/key.pem" && chmod 600 "$TLS_DIR/key.pem" && cp "$RT/cert.pem" "$TLS_DIR/cert.pem"
+  fi
+  if [[ ! -f "$TLS_DIR/cert.pem" || ! -f "$TLS_DIR/key.pem" ]]; then
     echo "Generating self-signed certificate..."
     openssl req -x509 -newkey rsa:2048 \
-      -keyout "$RT/key.pem" \
-      -out    "$RT/cert.pem" \
+      -keyout "$TLS_DIR/key.pem" \
+      -out    "$TLS_DIR/cert.pem" \
       -days 3650 -nodes \
       -subj "/CN=dnd-display" \
       -addext "subjectAltName=IP:${LAN_IP:-127.0.0.1},IP:127.0.0.1" 2>/dev/null \
@@ -60,12 +68,14 @@ if $TLS_MODE; then
     || { echo "Error: openssl not found. Install it or use HTTP mode (remove --tls)."; exit 1; }
   fi
 
-  # Start cert server (plain HTTP on :8080 so devices can download the cert from $RT)
+  # Start cert server (plain HTTP on :8080 so devices can download the cert).
+  # It serves a folder holding only cert.pem: never the key or the runtime dir's token.
+  cp "$TLS_DIR/cert.pem" "$TLS_DIR/public/cert.pem"
   if [[ -f "$CERT_SERVER_PID" ]]; then
     kill "$(cat "$CERT_SERVER_PID")" 2>/dev/null || true
     rm -f "$CERT_SERVER_PID"
   fi
-  python3 -m http.server 8080 --directory "$RT" > /dev/null 2>&1 &
+  python3 -m http.server 8080 --directory "$TLS_DIR/public" > /dev/null 2>&1 &
   echo $! > "$CERT_SERVER_PID"
 else
   # HTTP mode: shut down any leftover cert server from a previous TLS session
@@ -87,11 +97,17 @@ sleep 0.3
 
 # ── Dependency check (first run) ──────────────────────────────────────────────
 # Homebrew and most distro pythons refuse a bare `pip3 install` (PEP 668), so
-# bootstrap a venv beside the campaign data once and run the display from it.
-# It lives outside the plugin directory so a plugin update doesn't wipe it.
+# bootstrap a venv once and run the display from it. It lives outside the
+# plugin directory, so a plugin update doesn't wipe it, and outside the
+# campaign data, which a sandboxed DM can write. DND_VENV overrides the place;
+# an existing venv at the old place beside the campaign data still works.
 if ! python3 -c "import flask, flask_cors, yaml" 2>/dev/null; then
-  VENV="$(dirname "$RT")/.venv"
+  VENV="${DND_VENV:-$HOME/.local/share/dnd/venv}"
+  if [[ ! -x "$VENV/bin/python" && -x "$(dirname "$RT")/.venv/bin/python" ]]; then
+    VENV="$(dirname "$RT")/.venv"
+  fi
   if [[ ! -x "$VENV/bin/python" ]]; then
+    mkdir -p "$(dirname "$VENV")"
     python3 -m venv "$VENV" \
       || { echo "Error: could not create Python environment at $VENV"; exit 1; }
   fi
