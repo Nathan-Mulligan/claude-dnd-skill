@@ -184,6 +184,7 @@ def _rate_ok(ip: str, limit: int = _RATE_MAX) -> bool:
 _PRINTABLE    = re.compile(
     "[^"
     "\x20-\x7E"                 # ASCII printable
+    "\u2010-\u2027"             # Dashes, curly quotes, ellipsis (what phone keyboards type)
     " -ɏ"             # Latin-1 + Latin Extended A/B (é ñ ö ć ş ž etc.)
     "Ͱ-Ͽ"             # Greek
     "Ѐ-ӿ"             # Cyrillic (Russian, Ukrainian)

@@ -88,3 +88,11 @@ def test_restart_does_not_replay_another_campaign(display):
     module._load_log()
     assert list(module._text_log) == [entries[1]]
     assert json.loads(Path(module.LOG_FILE).read_text(encoding="utf-8")) == entries
+
+
+def test_phone_punctuation_in_a_reply_reaches_the_dm(display):
+    # Phones type curly apostrophes and quotes; they were stripped, so "Corin’s" reached the DM as "Corins".
+    module, client = display
+    said = "We fetch Corin’s crates — “quietly”…"
+    assert client.post("/player-input/stage", json={"character": "Everybody", "text": said}).status_code == 204
+    assert module._party_feedback_snapshot()["responses"][0]["text"] == said
