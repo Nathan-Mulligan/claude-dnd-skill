@@ -212,14 +212,12 @@ def _in_combat(state: str) -> bool:
 
 
 def _situation(state: str, party_input: str) -> str:
-    found = ["combat"] if _in_combat(state) else []
-    for name, words in SITUATIONS.items():
-        if name not in found and re.search(rf"\b(?:{words})\b", party_input, re.IGNORECASE):
-            found.append(name)
+    """One file at most, so a turn never starts with a chain of reads. SITUATIONS order is priority."""
+    found = "combat" if _in_combat(state) else next(
+        (name for name, words in SITUATIONS.items() if re.search(rf"\b(?:{words})\b", party_input, re.IGNORECASE)), "")
     if not found:
         return ""
-    files = " and ".join(f"skills/dnd/play/{name}.md" for name in found[:2])
-    return f"Situation: {', '.join(found[:2])}. Read {files} once this session if you haven't, before you narrate"
+    return f"Situation: {found}. Read skills/dnd/play/{found}.md once this session if you haven't, before you narrate"
 
 
 def _table(state: str, runtime_dir: Path | None) -> str:

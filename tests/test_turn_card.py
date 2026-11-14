@@ -191,3 +191,9 @@ def test_an_open_fight_in_the_state_names_the_combat_file(fenmoor):
 def test_every_named_situation_file_exists():
     for name in turn_card.SITUATIONS:
         assert (REPO / "skills/dnd/play" / f"{name}.md").is_file(), name
+
+
+def test_a_fight_on_the_road_names_only_the_combat_file(fenmoor):
+    line = next(p for p in card(fenmoor, "On the road two men step out; Corin draws his dagger and stabs the nearer one.")
+                .split(" | ") if p.startswith("Situation"))
+    assert "combat.md" in line and "travel.md" not in line
