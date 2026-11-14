@@ -1678,8 +1678,9 @@ def chunk():
 
     # A speaking NPC gets a saved voice before its line reaches the page, so
     # the cast broadcast lands first and the line is read in that voice.
+    voice_note = ""
     if is_npc:
-        new_cast = _ensure_npc_voice(data["npc"], data.get("npc_voice") or "")
+        new_cast, voice_note = _ensure_npc_voice(data["npc"], data.get("npc_voice") or "")
         if new_cast is not None:
             _broadcast({"cast": new_cast})
 
@@ -1691,6 +1692,8 @@ def chunk():
     _persist_log()
     _persist_tail()
     _broadcast(payload)
+    if voice_note:
+        return jsonify({"note": voice_note}), 200
     return "", 204
 
 
@@ -2369,13 +2372,19 @@ def _read_cast(path):
     return _cast_voices.voices(_cast_voices.read_raw(path))
 
 
+def _cast_voice_genders(narrator: str) -> "tuple[list, list]":
+    """The narrator's backend catalog as (male, female) voices."""
+    if _tts is None:
+        return [], []
+    if narrator in _tts.GEMINI_VALID_VOICES:
+        return list(_tts.GEMINI_VOICES_MALE), list(_tts.GEMINI_VOICES_FEMALE)
+    return list(_tts.LOCAL_VOICES_MALE), list(_tts.LOCAL_VOICES_FEMALE)
+
+
 def _cast_voice_pool(narrator: str) -> list:
     """Voices the fallback may hand out: the narrator's backend catalog."""
-    if _tts is None:
-        return []
-    if narrator in _tts.GEMINI_VALID_VOICES:
-        return list(_tts.GEMINI_VOICES_MALE + _tts.GEMINI_VOICES_FEMALE)
-    return list(_tts.LOCAL_VOICES_MALE + _tts.LOCAL_VOICES_FEMALE)
+    male, female = _cast_voice_genders(narrator)
+    return male + female
 
 
 def _recent_npc_names(limit: int = 12) -> list:
@@ -2399,19 +2408,21 @@ def _recent_npc_names(limit: int = 12) -> list:
     return names
 
 
-def _ensure_npc_voice(name: str, requested: str = "") -> "dict | None":
-    """Give a speaking NPC a saved voice; return the new cast when it changed.
+def _ensure_npc_voice(name: str, requested: str = "") -> "tuple[dict | None, str]":
+    """Give a speaking NPC a saved voice. Returns (the new cast when it changed, a note for the DM).
 
     A voice the DM names is saved unless a hand pick from the voice menu
-    already exists for that name. Otherwise an unknown name gets a stable
-    voice from `_cast_voices.pick_voice`. Existing entries are never replaced
-    by the fallback. Failures never block the narration.
+    already exists for that name. When another speaker or the narrator already
+    has it, a new speaker gets a free voice of the same gender instead, an
+    existing one keeps its voice, and the note says so. Otherwise an unknown
+    name gets a stable voice from `_cast_voices.pick_voice`. Existing entries
+    are never replaced by the fallback. Failures never block the narration.
     """
     if _tts is None:
-        return None
+        return None, ""
     raw_name = str(name or "").strip().lower()
     if not raw_name or len(raw_name) > 80 or raw_name.startswith("_"):
-        return None
+        return None, ""
     requested = str(requested or "").strip()
     narrator = _read_narrator_voice()
     gemini = narrator in _tts.GEMINI_VALID_VOICES
@@ -2425,33 +2436,44 @@ def _ensure_npc_voice(name: str, requested: str = "") -> "dict | None":
             cast = _cast_voices.voices(raw)
             src = _cast_voices.sources(raw)
             key = _cast_voices.cast_key(cast, raw_name)
-            if key in cast:
-                if not requested or cast[key] == requested:
-                    return None
-                if src.get(key) not in (_cast_voices.DM, _cast_voices.AUTO):
-                    return None          # a hand pick always wins
-                cast[key], src[key] = requested, _cast_voices.DM
-            elif requested:
-                cast[key], src[key] = requested, _cast_voices.DM
+            if key in cast and (not requested or cast[key] == requested
+                                or src.get(key) not in (_cast_voices.DM, _cast_voices.AUTO)):
+                return None, ""          # nothing new, or a hand pick, which always wins
+            with _stats_lock:
+                party_names = [str(p.get("name", "")) for p in _current_stats.get("players", [])
+                               if isinstance(p, dict)]
+            party = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in party_names if n)
+                     if k in cast]
+            note = ""
+            if requested:
+                male, female = _cast_voice_genders(narrator)
+                voice, holder = _cast_voices.dm_voice(
+                    cast, key, requested, narrator=narrator, party=party,
+                    pool=male + female, male=male, female=female)
+                if holder and key in cast:
+                    voice = cast[key]
+                if holder:
+                    spoken = str(name).strip()
+                    note = (f"{spoken} shares {requested} with {holder}: no free voice of that kind is left."
+                            if voice == requested else
+                            f"{spoken} speaks as {voice}: {requested} is already {holder}'s voice.")
+                if cast.get(key) == voice:
+                    return None, note
+                cast[key], src[key] = voice, (_cast_voices.DM if voice == requested else _cast_voices.AUTO)
             else:
-                with _stats_lock:
-                    party_names = [str(p.get("name", "")) for p in _current_stats.get("players", [])
-                                   if isinstance(p, dict)]
-                party = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in party_names if n)
-                         if k in cast]
                 recent = [cast[k] for k in (_cast_voices.cast_key(cast, n) for n in _recent_npc_names())
                           if k in cast]
                 voice = _cast_voices.pick_voice(
                     key, _cast_voice_pool(narrator), narrator=narrator,
                     party=party, recent=recent, used=cast.values())
                 if not voice:
-                    return None
+                    return None, ""
                 cast[key], src[key] = voice, _cast_voices.AUTO
             _cast_voices.write_raw(path, cast, src, raw.get("_comment"))
-            return cast
+            return cast, note
     except Exception as exc:          # never lose narration over a voice
         print(f"[cast] could not save a voice for {raw_name!r}: {exc}", file=_sys.stderr)
-        return None
+        return None, ""
 
 
 CLIENTLOG_FILE = rt("client-errors.log")
