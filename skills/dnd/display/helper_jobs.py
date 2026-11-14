@@ -12,15 +12,24 @@ How it runs
   made while that kind is running stays until it has finished, then runs it again, so no
   change is missed.
 
+Writes on request (owner_writes.py)
+  A script the DM runs can also call `request_write(kind, payload)` when its sandbox refuses a
+  write. That leaves a small JSON file in runtime/helper-jobs/writes/; the display reads it once,
+  deletes it, and hands the payload and the campaign it is showing to the writer for that kind,
+  which checks it strictly before writing anything.
+
 Rules
   * The display runs the helper code it loaded when it started. The DM can edit the files in
     its sandbox, so a helper is never loaded or started from them again while the display runs.
-  * Only the helpers `start()` lists can run, with no arguments. A request file's contents
-    are never read.
+  * Only the helpers `start()` lists can run, with no arguments. A helper request file's
+    contents are never read; a write request's contents are only ever data for its writer.
   * The DM can also place links in the runtime dir, so nothing here writes through one.
   * Each helper keeps its own log (runtime/<kind>.log); nothing is raised.
 """
+import json
 import os
+import secrets
+import stat
 import sys
 import threading
 import time
@@ -28,10 +37,15 @@ import time
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
-from runtime_paths import log_line, rt, touch  # noqa: E402
+from runtime_paths import _DIR_FD, _open_folder, log_line, rt, touch, write_file  # noqa: E402
 
 KINDS = ("lore_sync", "npc_describe")
+WRITE_KINDS = ("roster", "names", "supplemental")
+WRITE_MAX_BYTES = 16384
+WRITES_PER_PASS = 20
 POLL_S = 1.0
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
 
 _running: "dict[str, threading.Thread]" = {}
 
@@ -46,6 +60,73 @@ def request(kind: str) -> None:
         raise ValueError(f"unknown helper {kind!r}")
     os.makedirs(_folder(), exist_ok=True)
     touch(os.path.join(_folder(), kind))
+
+
+def _writes_folder() -> str:
+    return rt(os.path.join("helper-jobs", "writes"))
+
+
+def request_write(kind: str, payload: dict) -> None:
+    """Ask the display to make a write the DM's sandbox refuses (owner_writes.py).
+
+    Raises ValueError for an unknown kind or an oversized payload, OSError when it can't be asked.
+    """
+    if kind not in WRITE_KINDS:
+        raise ValueError(f"unknown write {kind!r}")
+    data = json.dumps({"kind": kind, "payload": payload}, ensure_ascii=False)
+    if len(data.encode("utf-8")) > WRITE_MAX_BYTES:
+        raise ValueError("write request is too large")
+    name = f"{time.time_ns()}-{secrets.token_hex(4)}.json"
+    write_file(os.path.join(_writes_folder(), name), data, root=rt(""), mode=0o600)
+
+
+def _take_request(folder_fd: int, name: str) -> "dict | None":
+    """Read one request file and delete it. A link, FIFO or oversized file is deleted unread."""
+    data = None
+    try:
+        fd = os.open(name, os.O_RDONLY | _NOFOLLOW | _NONBLOCK, dir_fd=folder_fd)
+    except OSError:
+        fd = None
+    if fd is not None:
+        try:
+            info = os.fstat(fd)
+            if stat.S_ISREG(info.st_mode) and info.st_size <= WRITE_MAX_BYTES:
+                with os.fdopen(fd, "rb", closefd=False) as stream:
+                    data = json.loads(stream.read(WRITE_MAX_BYTES).decode("utf-8"))
+        except (OSError, ValueError):
+            data = None
+        finally:
+            os.close(fd)
+    try:
+        os.unlink(name, dir_fd=folder_fd)
+    except OSError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def run_writes(writers: dict, active_campaign) -> None:
+    """Carry out each waiting write request with the writer for its kind ({kind: fn(payload, campaign)})."""
+    if not _DIR_FD:
+        return  # the folder can't be read without following links (Windows); the portal's sandbox is macOS-only
+    log = rt("owner-writes.log")
+    try:
+        folder_fd = _open_folder(_writes_folder(), rt(""))
+    except OSError:
+        return
+    try:
+        names = sorted(name for name in os.listdir(folder_fd) if name.endswith(".json"))[:WRITES_PER_PASS]
+        for name in names:
+            request = _take_request(folder_fd, name)
+            kind = request.get("kind") if request else None
+            if kind not in writers:
+                log_line(log, f"dropped an unreadable or unknown write request ({name})")
+                continue
+            try:
+                log_line(log, f"{kind}: {writers[kind](request.get('payload'), active_campaign())}")
+            except Exception as error:  # noqa: BLE001 — one bad request never stops the others
+                log_line(log, f"{kind} refused: {error}")
+    finally:
+        os.close(folder_fd)
 
 
 def run_due(helpers: dict) -> None:
@@ -77,15 +158,21 @@ def _helpers() -> dict:
     return {"lore_sync": lore_sync.run_and_log, "npc_describe": npc_describe.run_and_log}
 
 
-def _loop(helpers: dict) -> None:
+def _loop(run, *args) -> None:
     while True:
         try:
-            run_due(helpers)
+            run(*args)
         except Exception:  # noqa: BLE001 — the display must keep serving
             pass
         time.sleep(POLL_S)
 
 
-def start() -> None:
-    """Load the helpers now and run requested ones for as long as this process lives."""
-    threading.Thread(target=_loop, args=(_helpers(),), daemon=True, name="dnd-helper-jobs").start()
+def start(active_campaign=lambda: None) -> None:
+    """Load the helpers and writers now and run requested ones for as long as this process lives.
+
+    `active_campaign()` names the campaign the display is showing; a write request for any other is refused.
+    """
+    import owner_writes
+    threading.Thread(target=_loop, args=(run_due, _helpers()), daemon=True, name="dnd-helper-jobs").start()
+    threading.Thread(target=_loop, args=(run_writes, owner_writes.writers(), active_campaign), daemon=True,
+                     name="dnd-owner-writes").start()

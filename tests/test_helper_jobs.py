@@ -117,7 +117,7 @@ def test_display_runs_the_helper_code_it_loaded_at_start():
 def test_display_server_starts_the_runner():
     source = (DISPLAY / "dnd-display-app.py").read_text(encoding="utf-8")
     main = source[source.index('if __name__ == "__main__":'):]
-    assert "helper_jobs.start()" in main
+    assert "helper_jobs.start(_active_campaign_name)" in main
 
 
 # ── nothing outside the runtime dir is written through a link the DM placed ──

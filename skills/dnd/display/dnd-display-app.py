@@ -3485,7 +3485,7 @@ if __name__ == "__main__":
         _audio.set_broadcast(_broadcast)
 
     import helper_jobs
-    helper_jobs.start()
+    helper_jobs.start(_active_campaign_name)
 
     host = "0.0.0.0" if _LAN_MODE else "localhost"
     # TLS — only enabled when --tls is explicitly passed; HTTP is the default.

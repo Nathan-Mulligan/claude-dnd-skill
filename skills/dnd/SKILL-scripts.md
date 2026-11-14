@@ -474,6 +474,16 @@ The scripts only ever add a line the entry lacks. They never change or remove on
 
 ---
 
+## Writes outside the campaign — `display/owner_writes.py`
+
+A DM started by the portal can write only its campaign folder and the runtime folder. Three steps write elsewhere, so when the sandbox refuses them the script asks the display (which runs outside the sandbox) to do it, for the campaign the display is showing only:
+
+- `python3 ${CLAUDE_SKILL_DIR}/display/owner_writes.py roster --campaign <name>` copies the campaign's `characters/*.md` to the global roster, `<data root>/characters/`. Run by hand, it copies them itself.
+- `name_registry.py add` and `retire` record the name through the display.
+- `build_supplemental.py --character <sheet>` or `--campaign <name>`: the display fetches the campaign's non-SRD spells and features and saves them.
+
+The display logs each request it carried out or refused in `<runtime>/owner-writes.log`. `npc_rename.py` keeps its backup inside the campaign, in `.rename-backups/<time>/`.
+
 ## Where Play Stopped — `scripts/stop_point.py`
 
 Writes and shows `<campaign>/session-tail.md`: one line on where play stopped, the open question or pending roll, and the last eight exchanges word for word. Every portal save requires a fresh one, and a resumed DM reads it first. Without one, `show` prints the last eight entries of the display's `session_tail.json`.
