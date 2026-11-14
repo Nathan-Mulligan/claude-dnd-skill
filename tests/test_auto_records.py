@@ -574,3 +574,14 @@ def test_a_linked_locks_folder_is_never_followed(camp, tmp_path):
     with npc_entries.locked("npc-describe"):
         pass
     assert list(elsewhere.iterdir()) == []
+
+
+def test_a_spoken_line_is_never_kept_as_how_someone_looks():
+    # Seen in play: the helper copied a line of the NPC's dialogue, word for word, as their look.
+    narration = ('Osric Vane, a wiry man in a patched blue coat, eyes the gate. '
+                 '"Plenty of room up front if your legs are tired," he tells the guard. '
+                 'He says \u201cwatch the ditch\u201d and shakes out the reins.')
+    kept = npc_describe.copied_phrases({"phrases": ['"Plenty of room up front if your legs are tired," he tells the guard',
+                                                    "\u201cwatch the ditch\u201d",
+                                                    "a wiry man in a patched blue coat"]}, narration, "Osric Vane")
+    assert kept == ["a wiry man in a patched blue coat"]
