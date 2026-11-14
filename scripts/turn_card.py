@@ -28,9 +28,10 @@ ROLL_MODES = {"auto": "you roll openly", "players": "players roll (call for the 
 CLOCK_WINDOW = 2
 # Situation -> words in the party's input that announce it. The card names the file to read.
 SITUATIONS = {
-    "combat": r"attack|fight|charge|stab|shoot|strike|ambush|draws? (?:a |an |his |her |their |my |our )?"
-              r"(?:sword|blade|dagger|bow|weapon|steel|axe|mace)|swing at|punch|tackle",
-    "trade": r"buy|sell|sold|haggle|bargain|barter|price|trade|market|merchant|how much|pay for|purchase",
+    "combat": r"attacks?|attacking|fight|fights|fighting|stab|stabs|shoot|shoots|ambush|swing at|swings at|punch|punches|"
+              r"tackle|tackles|charges? (?:at|into|toward|towards|the (?!price|fee|toll))|strikes? (?:at|him|her|them)|"
+              r"draws? (?:a |an |his |her |their |my |our )?(?:sword|blade|dagger|bow|weapon|steel|axe|mace)",
+    "trade": r"buy|buys|sell|sells|sold|haggle|haggles|bargain over|barter|price|prices|how much|pay for|purchase",
     "travel": r"travel|ride|set (?:off|out)|head (?:to|for|out|back|toward|towards|east|west|north|south)|"
               r"push on|journey|leave for|make camp|camp for|move on|on the road|continue (?:to|toward|on)|"
               r"long rest|short rest|wait (?:until|till|for (?:the )?(?:morning|night|dawn))",
@@ -207,8 +208,11 @@ def _npcs(state: str, campaign_dir: Path, party_input: str) -> str:
 
 
 def _in_combat(state: str) -> bool:
-    body = clean(section(state, "Active Combat")).lower().strip(" .*_()")
-    return bool(body) and not body.startswith(("none", "no combat", "n/a"))
+    body = re.sub(r"[*_`()\[\]]", "", clean(section(state, "Active Combat"))).lower()
+    body = re.sub(r"^[\s\-.:]+", "", body)
+    if not body or re.match(r"(?:none|no\b|n/a|nothing|over\b|ended\b|finished\b)", body):
+        return False
+    return not re.search(r"status:\s*(?:finished|ended|over|archived)|finished in round", body)
 
 
 def _situation(state: str, party_input: str) -> str:
