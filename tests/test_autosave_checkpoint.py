@@ -173,6 +173,21 @@ class FlagAndMarkerTests(unittest.TestCase):
         self.assertFalse(counter.is_symlink())
         self.assertEqual(self.ac._load_counter(counter), 3)
 
+    @unittest.skipIf(os.name == "nt", "links are POSIX-only")
+    def test_snapshot_never_copies_a_hard_linked_state_md(self):
+        secret = self._outside("SECRET-OUTSIDE")
+        os.link(secret, self.camp_dir / "state.md")
+        self.ac.snapshot("test-camp")
+        dest = pathlib.Path(os.environ["DND_RUNTIME_DIR"]) / "test-camp.autocheckpoint.md"
+        self.assertFalse(dest.exists())
+
+    def test_a_marker_naming_a_path_outside_the_campaigns_is_ignored(self):
+        runtime = pathlib.Path(os.environ["DND_RUNTIME_DIR"])
+        runtime.mkdir(parents=True, exist_ok=True)
+        for name in ("test-camp/escape", "../outside", ".."):
+            (runtime / self.ac.ACTIVE_MARKER).write_text(json.dumps({"name": name}), encoding="utf-8")
+            self.assertIsNone(self.ac.active_campaign(), name)
+
     @unittest.skipUnless(hasattr(os, "mkfifo"), "no FIFOs on Windows")
     def test_a_fifo_state_md_never_hangs_the_hook(self):
         import subprocess

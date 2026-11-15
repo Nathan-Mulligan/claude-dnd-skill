@@ -83,8 +83,7 @@ def active_campaign() -> str | None:
         return None
     if not isinstance(data, dict):
         return None
-    name = data.get("name")
-    return name if isinstance(name, str) and name.strip() else None
+    return paths.campaign_name(data.get("name"))
 
 
 def autosave_enabled(campaign: str) -> bool:
@@ -162,7 +161,7 @@ def decide(stdin_obj: dict, prev_turns: int, every_n: int = DEFAULT_EVERY_N):
 
 def snapshot(campaign: str) -> None:
     """Deterministic durability: copy state.md to a recovery file. Best-effort."""
-    text = read_state(paths.find_campaign(campaign) / "state.md")
+    text = read_state(paths.find_campaign(campaign) / "state.md", single_link=True)
     if text is None:
         return
     try:
