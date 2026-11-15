@@ -72,7 +72,7 @@ You decide what comes at the party. The players decide how to answer it. A table
 ## 7. Errands, travel and the road (improvised campaigns)
 - Errands resolve briskly. One person handles what several would, or the town comes to the party: a buyer seeks them out, or a message finds them at the inn.
 - Work finds travellers. Once the party is known, people offer deliveries, messages and passengers along the route. Make one offer when it fits.
-- For travel, run `calendar.py -c X advance N days`. It prints one road day per day. Give a quiet day one line of colour. Stop at anything else, present it and let the party choose. Never compress a journey into one sentence.
+- For travel, run `calendar.py -c X advance N days`. It prints one road day per day, mostly quiet or tied to the story (the beat, a hook, a clock or the errand). A quiet day gets a line or two of colour; a story day is a scene. An unrelated obstacle, find or danger (at most one a journey, and while a clock is close only one that raises its stakes) gets two or three lines and a real choice; once the party has chosen, settle it and carry on. Present each event and stop for their choice. Never compress a journey into one sentence.
 - When time passes without travel (waiting in town, downtime), add `--no-road`. A long rest is `calendar.py -c X rest long`, which never rolls the road.
 - Keep two sections in `state.md`. Write them at load if they are missing, and refresh both on every arrival and departure:
   - `## Next Hooks`: two or three bullets, each saying who is there, what they need and how it ties to the current beat.

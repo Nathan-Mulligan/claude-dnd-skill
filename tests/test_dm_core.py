@@ -44,6 +44,14 @@ def test_dm_core_carries_the_play_rules(needle):
     assert needle in _read(CORE)
 
 
+def test_dm_core_plays_road_days_for_the_story():
+    core = _read(CORE)
+    travel = core[core.index("## 7."):core.index("## 8.")]
+    for words in ("tied to the story", "a story day is a scene", "a line or two", "at most one a journey",
+                  "raises its stakes", "settle it and carry on", "stop for their choice"):
+        assert words in travel, words
+
+
 def test_agents_md_sends_a_portal_dm_to_dm_core_in_chunks():
     text = _read(REPO / "AGENTS.md")
     assert "skills/dnd/DM-CORE.md" in text
