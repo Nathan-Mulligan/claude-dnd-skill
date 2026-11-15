@@ -195,13 +195,16 @@ def _load_srd_names() -> set[str]:
 
 def _extract_names_from_character(path: str) -> list[tuple[str, str]]:
     """Parse a character .md file and return (name, category) pairs to check."""
-    entries: list[tuple[str, str]] = []
     if not os.path.exists(path):
         print(f"  [skip] not found: {path}", file=sys.stderr)
-        return entries
-
+        return []
     with open(path, encoding="utf-8") as f:
-        content = f.read()
+        return _extract_names(f.read())
+
+
+def _extract_names(content: str) -> list[tuple[str, str]]:
+    """(name, category) pairs to check in a character sheet's text."""
+    entries: list[tuple[str, str]] = []
 
     # Spells section — lines like "- **Spell Name**" or "- Spell Name"
     spell_section = re.search(r"## (?:Known Cantrips|Prepared Spells|Spells?).*?\n(.*?)(?=\n##|\Z)", content, re.S | re.I)
@@ -319,15 +322,15 @@ def _fetch_into(supp: dict, entries) -> int:
     return added
 
 
-def fetch_missing(ruleset: str, character_paths) -> int:
+def fetch_missing(ruleset: str, sheet_texts) -> int:
     """Fetch the sheets' non-SRD spells and features the supplemental file lacks, save, and return how many.
 
-    The display calls this for a sandboxed DM (owner_writes.py).
+    The display calls this for a sandboxed DM (owner_writes.py) with sheet text it has already read safely.
     """
     _set_ruleset_paths(ruleset)
     supp = _load_supplemental(ruleset)
     srd_names = _load_srd_names()
-    wanted = _unique((name, cat) for path in character_paths for name, cat in _extract_names_from_character(path)
+    wanted = _unique((name, cat) for text in sheet_texts for name, cat in _extract_names(text)
                      if _norm(name) not in srd_names and not _in_supplemental(supp, name))
     added = _fetch_into(supp, wanted)
     if added:

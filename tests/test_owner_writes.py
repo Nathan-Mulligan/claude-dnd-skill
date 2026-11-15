@@ -73,6 +73,7 @@ def test_a_write_request_is_a_small_json_file(jobs, root):
         jobs.request_write("names", {"name": "x" * 20000})
 
 
+@posix_only  # without dir_fd the display doesn't read requests (Windows)
 def test_the_display_runs_each_request_once_with_the_campaign_it_shows(jobs, root):
     seen = []
     jobs.request_write("roster", {"campaign": "Fenmoor"})
@@ -85,6 +86,7 @@ def test_the_display_runs_each_request_once_with_the_campaign_it_shows(jobs, roo
     jobs.run_writes({"roster": lambda *a: pytest.fail("ran twice")}, lambda: "Fenmoor")
 
 
+@posix_only  # without dir_fd the display doesn't read requests (Windows)
 def test_a_refused_or_unknown_request_is_logged_and_the_rest_still_run(jobs, root):
     folder = root / ".runtime" / "helper-jobs" / "writes"
     jobs.request_write("roster", {"campaign": "Clockwork"})
@@ -141,6 +143,20 @@ def test_roster_refuses_any_other_campaign(writes, root, campaign):
     with pytest.raises(ValueError):
         writes.mirror_roster(campaign, "Fenmoor")
     assert not (root / "characters").exists()
+
+
+def test_a_renamed_pcs_old_roster_copy_is_set_aside_not_deleted(writes, root):
+    roster = root / "characters"
+    roster.mkdir()
+    (roster / "corin_old.md").write_text("# Corin Old\n", encoding="utf-8")
+    assert "moved corin_old.md" in writes.roster_request({"campaign": "Fenmoor", "replaces": "corin_old.md"}, "Fenmoor")
+    assert not (roster / "corin_old.md").exists()
+    [kept] = (roster / ".retired").iterdir()
+    assert kept.read_text(encoding="utf-8") == "# Corin Old\n"
+    for bad in ("Corin Ashby.md", "../state.md", ".retired", "x.txt", 5):
+        with pytest.raises(ValueError):
+            writes.roster_request({"campaign": "Fenmoor", "replaces": bad}, "Fenmoor")
+    assert (roster / "Corin Ashby.md").exists()
 
 
 @posix_only
@@ -221,6 +237,19 @@ def test_a_bad_name_request_changes_nothing(writes, root, payload):
     assert registry(root) == {}
 
 
+def test_a_name_that_cannot_be_saved_leaves_the_registry_intact(writes, root):
+    writes.record_name({"op": "add", "name": "Mira Vell", "type": "npc", "campaign": "Fenmoor", "session": 1},
+                       "Fenmoor")
+    before = (root / ".name_registry.json").read_bytes()
+    lone = json.loads('"Mira \\ud800"')
+    with pytest.raises(ValueError):
+        writes.record_name({"op": "add", "name": lone, "type": "npc", "campaign": "Fenmoor", "session": 1}, "Fenmoor")
+    import name_registry
+    with pytest.raises(UnicodeEncodeError):
+        name_registry.add(lone, "npc", "Fenmoor", 1)
+    assert (root / ".name_registry.json").read_bytes() == before
+
+
 @posix_only
 def test_a_sandboxed_name_registry_add_asks_the_display(writes, jobs, root):
     import name_registry
@@ -274,6 +303,12 @@ def test_the_display_fetches_the_shown_campaigns_supplemental(writes, root, supp
                     {"campaign": "Fenmoor"}, {"campaign": "Fenmoor", "ruleset": "2014", "file": "/etc/passwd"}):
         with pytest.raises(ValueError):
             writes.fetch_supplemental(payload, "Fenmoor")
+
+
+def test_the_display_parses_the_sheets_it_already_read(writes, root, supplemental, monkeypatch):
+    build, _ = supplemental
+    monkeypatch.setattr(build, "_extract_names_from_character", lambda path: pytest.fail("reopened a sheet"))
+    assert "added 1" in writes.fetch_supplemental({"campaign": "Fenmoor", "ruleset": "2014"}, "Fenmoor")
 
 
 def test_a_sandboxed_supplemental_build_asks_the_display(jobs, root, supplemental, monkeypatch):

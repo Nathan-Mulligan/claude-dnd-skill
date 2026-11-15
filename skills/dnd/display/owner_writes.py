@@ -18,6 +18,7 @@ import argparse
 import os
 import re
 import sys
+import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
@@ -67,17 +68,35 @@ def sheets(folder: str) -> "list[tuple[str, str]]":
     return found
 
 
-def mirror_roster(campaign, active) -> str:
-    """Copy the campaign's sheets to the global roster, replacing each sheet's earlier copy."""
+def mirror_roster(campaign, active, replaces=None) -> str:
+    """Copy the campaign's sheets to the global roster, replacing each sheet's earlier copy.
+
+    `replaces` names the roster file of a PC this campaign renamed. It is moved to characters/.retired/,
+    never deleted, and only once the campaign has no sheet of that name.
+    """
     copied = sheets(campaign_folder(campaign, active))
+    roster = str(characters_dir())
     for name, text in copied:
-        write_file(os.path.join(str(characters_dir()), name), text, root=str(_root()))
-    return f"copied {len(copied)} sheet(s) of {campaign} to the roster"
+        write_file(os.path.join(roster, name), text, root=str(_root()))
+    note = ""
+    if replaces is not None:
+        if not isinstance(replaces, str) or not _SHEET.fullmatch(replaces) or replaces in dict(copied):
+            raise ValueError("invalid roster file to retire")
+        old = os.path.join(roster, replaces)
+        if os.path.isfile(old) and not os.path.islink(old):
+            os.makedirs(os.path.join(roster, ".retired"), exist_ok=True)
+            os.replace(old, os.path.join(roster, ".retired", f"{replaces[:-3]}-{time.strftime('%Y%m%d-%H%M%S')}.md"))
+            note = f"; moved {replaces} to the roster's .retired folder"
+    return f"copied {len(copied)} sheet(s) of {campaign} to the roster{note}"
 
 
 def _name(value, field: str) -> str:
     if not isinstance(value, str) or not _NAME.fullmatch(value.strip()):
         raise ValueError(f"invalid {field}")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:  # a lone surrogate from JSON would break the registry's save
+        raise ValueError(f"invalid {field}") from None
     return value.strip()
 
 
@@ -114,8 +133,7 @@ def fetch_supplemental(payload: dict, active) -> str:
     if payload["ruleset"] not in ("2014", "2024"):
         raise ValueError("invalid ruleset")
     folder = campaign_folder(payload["campaign"], active)
-    paths = [os.path.join(folder, "characters", name) for name, _ in sheets(folder)]
-    added = build_supplemental.fetch_missing(payload["ruleset"], paths)
+    added = build_supplemental.fetch_missing(payload["ruleset"], [text for _, text in sheets(folder)])
     return f"added {added} supplemental entries for {payload['campaign']}"
 
 
@@ -123,13 +141,12 @@ def writers() -> dict:
     """The display's handlers, loaded when it starts (helper_jobs.py)."""
     import build_supplemental  # noqa: F401 — loaded now, like the helpers
     import name_registry  # noqa: F401
-    return {"roster": lambda payload, active: mirror_roster(_campaign_of(payload), active),
-            "names": record_name, "supplemental": fetch_supplemental}
+    return {"roster": roster_request, "names": record_name, "supplemental": fetch_supplemental}
 
 
-def _campaign_of(payload) -> str:
-    _fields(payload, {"campaign"})
-    return payload["campaign"]
+def roster_request(payload, active) -> str:
+    _fields(payload, {"campaign"}, {"replaces"})
+    return mirror_roster(payload["campaign"], active, payload.get("replaces"))
 
 
 def request(kind: str, payload: dict) -> bool:

@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import pathlib
 import re
 import sys
@@ -93,9 +94,14 @@ def _save(data: dict) -> None:
     """Raises PermissionError when this process may not write the registry (a portal DM's sandbox)."""
     data["updated"] = _today()
     p = _registry_path()
+    payload = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")  # fails before the file is touched
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, indent=2, ensure_ascii=False),
-                 encoding="utf-8")
+    temporary = p.with_name(f"{p.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_bytes(payload)
+        os.replace(temporary, p)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _ask_display(payload: dict) -> None:

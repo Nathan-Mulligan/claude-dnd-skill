@@ -479,7 +479,7 @@ def main() -> int:
                 except PermissionError:
                     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "display"))
                     import owner_writes
-                    owner_writes.request("roster", {"campaign": args.campaign})
+                    owner_writes.request("roster", {"campaign": args.campaign, "replaces": global_old.name})
 
     # Archive audit note (only if NOT including archive in rename)
     if not args.include_archive:
