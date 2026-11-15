@@ -47,8 +47,9 @@ TMUX_DIR = Path.home() / ".local/state/dnd/tmux"
 SHARED_TEMP = (Path("/tmp"), Path("/private/tmp"), Path(tempfile.gettempdir()))
 TMUX_VARIABLES = ("TMUX", "TMUX_PANE")
 LEGACY_SERVER = ("-L", "default")
-LEGACY_GONE = re.compile(r"can't find session|no server running|No such file or directory|Connection refused")
-_legacy_adopted = False  # a DM started before #161 still runs on the default server
+LEGACY_EXIT_WAIT = 5
+# A DM started before #161, driven on the server it runs on until its process exits: (server, pane pid).
+_legacy: tuple[tuple[str, ...], int] | None = None
 PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Only Safari, signed in through a link the portal opens itself, may use the /api/ routes (#139). The key
@@ -173,25 +174,44 @@ def tmux_socket() -> Path:
 
 
 def tmux_server() -> tuple[str, ...]:
-    return LEGACY_SERVER if _legacy_adopted else ("-S", str(tmux_socket()))
+    return _legacy[0] if _legacy else ("-S", str(tmux_socket()))
+
+
+def legacy_servers() -> list[tuple[str, ...]]:
+    """Where the portal ran tmux before #161: the server this portal was started inside, else the default."""
+    inherited = os.environ.get("TMUX", "").split(",")[0]
+    return ([("-S", inherited)] if inherited else []) + [LEGACY_SERVER]
 
 
 def adopt_legacy_session() -> None:
-    """Keep driving a DM started before #161 on the default server, so it can still be saved and stopped.
+    """Keep driving a DM started before #161 where it runs, so it can still be saved and stopped.
 
-    Only the session named SESSION is ever used there. Every DM started after it stops gets the private socket.
+    Only the session named SESSION is ever used there. Every DM started after it exits gets the private socket.
     """
-    global _legacy_adopted
+    global _legacy
     if running():
         return
+    for server in legacy_servers():
+        try:
+            found = run("tmux", "display-message", "-p", "-t", f"={SESSION}:", "#{pane_pid}", server=server)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        pid = found.stdout.strip()
+        if found.returncode == 0 and pid.isdigit():
+            _legacy = (server, int(pid))
+            print("The DM started before this update runs on a shared tmux server. Save & reload or Save & close "
+                  "it once; the next DM starts on the portal's private tmux socket.", flush=True)
+            return
+
+
+def process_alive(pid: int) -> bool:
     try:
-        found = run("tmux", "has-session", "-t", f"={SESSION}", server=LEGACY_SERVER).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return
-    if found:
-        _legacy_adopted = True
-        print("The DM started before this update runs on the shared tmux server. Save & reload or Save & close "
-              "it once; the next DM starts on the portal's private tmux socket.", flush=True)
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def paste_into_dm(text: str) -> bool:
@@ -227,18 +247,23 @@ def submit_to_dm(text: str) -> bool:
 
 
 def running() -> bool:
-    global _legacy_adopted
+    global _legacy
     try:
         result = run("tmux", "has-session", "-t", f"={SESSION}")
     except FileNotFoundError:
         return False
-    if result.returncode == 0:
-        return True
-    if _legacy_adopted and LEGACY_GONE.search(result.stderr):
-        _legacy_adopted = False
-        print("The DM from before the update has stopped; new DMs start on the private tmux socket.", flush=True)
-        return running()
-    return False
+    if result.returncode == 0 or _legacy is None:
+        return result.returncode == 0
+    # tmux can't reach the old DM. Only its process ending proves it stopped: the shared socket sits in /tmp,
+    # where the DM itself could delete it, and a second DM must never start beside the first.
+    deadline = time.monotonic() + LEGACY_EXIT_WAIT
+    while process_alive(_legacy[1]):
+        if time.monotonic() > deadline:
+            return True
+        time.sleep(0.1)
+    _legacy = None
+    print("The DM from before the update has stopped; new DMs start on the private tmux socket.", flush=True)
+    return running()
 
 
 def read_meta() -> dict:
@@ -638,7 +663,7 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
     error = selection_error(provider, mode, name, description)
     if error:
         return False, error
-    if running() or _legacy_adopted:
+    if running() or _legacy:
         return False, "A model session is already running. Finish it before changing models or campaigns."
     input_started_at = None
     previous = read_meta()

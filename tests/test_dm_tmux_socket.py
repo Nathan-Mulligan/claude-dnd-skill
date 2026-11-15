@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -28,20 +29,26 @@ def private(monkeypatch):
     folder = Path(tempfile.mkdtemp(prefix="t")) / "tmux"
     monkeypatch.setattr(portal, "TMUX_DIR", folder)
     monkeypatch.setattr(portal, "SHARED_TEMP", ())
-    monkeypatch.setattr(portal, "_legacy_adopted", False)
-    monkeypatch.setenv("TMUX", "/private/tmp/tmux-501/default,123,0")
+    monkeypatch.setattr(portal, "_legacy", None)
+    monkeypatch.setenv("TMUX", f"{INHERITED[1]},123,0")
     monkeypatch.setenv("TMUX_PANE", "%0")
     yield folder
     shutil.rmtree(folder.parent, ignore_errors=True)
 
 
 class Servers:
-    """Fake tmux servers keyed by how they are named on the command line (-S path or -L name)."""
+    """Fake tmux servers keyed by how they are named on the command line (-S path or -L name).
+
+    A session is {"id": "$N", "pid": pane pid, "proc": a real process standing in for its DM, if any}."""
 
     def __init__(self):
         self.sessions = {}
         self.calls = []
         self.next_id = 50
+
+    def add(self, server, name, session_id, proc=None):
+        self.sessions.setdefault(server, {})[name] = {"id": session_id, "pid": proc.pid if proc else 99999999,
+                                                      "proc": proc}
 
     def run(self, args, **kwargs):
         self.calls.append((tuple(args), kwargs))
@@ -50,9 +57,9 @@ class Servers:
         sessions = self.sessions.setdefault(server, {})
         target = next((rest[i + 1] for i, value in enumerate(rest) if value in ("-t", "-pt")), "")
         name = target.lstrip("=").split(":")[0]
-        found = next((key for key, value in sessions.items() if name in (key, value)), None)
+        found = next((key for key, value in sessions.items() if name in (key, value["id"])), None)
         if command == "new-session":
-            sessions[rest[rest.index("-s") + 1]] = f"${self.next_id}"
+            self.add(server, rest[rest.index("-s") + 1], f"${self.next_id}")
             self.next_id += 1
             return subprocess.CompletedProcess(args, 0, "", "")
         if not target:
@@ -60,9 +67,15 @@ class Servers:
         if found is None:
             error = f"can't find session: {name}" if sessions else f"no server running on {server[1]}"
             return subprocess.CompletedProcess(args, 1, "", error)
+        session = sessions[found]
         if command == "kill-session":
             del sessions[found]
-        out = sessions.get(found, "") + "\n" if command == "display-message" else ""
+            if session["proc"]:
+                session["proc"].kill()
+                session["proc"].wait()
+        out = ""
+        if command == "display-message":
+            out = str(session["pid"] if "#{pane_pid}" in rest else session["id"]) + "\n"
         return subprocess.CompletedProcess(args, 0, out, "")
 
     def servers_used(self, start=0):
@@ -74,6 +87,7 @@ def private_server(folder):
 
 
 DEFAULT = ("-L", "default")
+INHERITED = ("-S", "/private/tmp/tmux-501/agents")
 
 
 @pytest.fixture
@@ -90,7 +104,7 @@ def saved(tmp_path, monkeypatch):
 
 def test_every_portal_tmux_call_uses_the_private_socket_without_tmux_variables(private, monkeypatch):
     servers = Servers()
-    servers.sessions[private_server(private)] = {portal.SESSION: "$3"}
+    servers.add(private_server(private), portal.SESSION, "$3")
     monkeypatch.setattr(portal.subprocess, "run", servers.run)
     monkeypatch.setattr(portal.time, "sleep", lambda _: None)
     assert portal.running()
@@ -109,7 +123,7 @@ def test_every_portal_tmux_call_uses_the_private_socket_without_tmux_variables(p
 
 def test_party_text_reaches_tmux_through_stdin_not_a_temp_file(private, monkeypatch):
     servers = Servers()
-    servers.sessions[private_server(private)] = {portal.SESSION: "$3"}
+    servers.add(private_server(private), portal.SESSION, "$3")
     monkeypatch.setattr(portal.subprocess, "run", servers.run)
     assert portal.paste_into_dm("[Everybody]: We haggle.")
     load = next((args, kwargs) for args, kwargs in servers.calls if args[3] == "load-buffer")
@@ -182,13 +196,24 @@ def test_a_socket_path_too_long_for_unix_is_refused(private, monkeypatch):
 
 # ── The DM that was already running when this update arrived ──────────────────
 
-def test_an_old_dm_on_the_default_server_is_driven_until_it_stops(private, saved, monkeypatch):
+@pytest.fixture
+def old_dm():
+    """A real process standing in for the DM that was started before the update."""
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    yield proc
+    if proc.poll() is None:
+        proc.kill()
+        proc.wait()
+
+
+def test_an_old_dm_on_the_default_server_is_driven_until_it_stops(private, saved, old_dm, monkeypatch):
     servers = Servers()
-    servers.sessions[DEFAULT] = {portal.SESSION: "$0", "another-agent": "$1"}
+    servers.add(DEFAULT, portal.SESSION, "$0", old_dm)
+    servers.add(DEFAULT, "another-agent", "$1")
     monkeypatch.setattr(portal.subprocess, "run", servers.run)
     monkeypatch.setattr(portal.time, "sleep", lambda _: None)
     portal.adopt_legacy_session()
-    assert portal._legacy_adopted
+    assert portal._legacy == (DEFAULT, old_dm.pid)
     adopted = len(servers.calls)
     assert portal.running()
     assert portal.submit_to_dm("We rest.")
@@ -200,56 +225,71 @@ def test_an_old_dm_on_the_default_server_is_driven_until_it_stops(private, saved
     # What a save handoff does once the DM has saved: stop exactly that session.
     assert portal.run("tmux", "kill-session", "-t", identity).returncode == 0
     assert portal.running() is False
-    assert not portal._legacy_adopted
+    assert portal._legacy is None
     stopped = len(servers.calls)
     portal.running()
     assert set(servers.servers_used(stopped)) == {private_server(private)}
-    assert servers.sessions[DEFAULT] == {"another-agent": "$1"}
-    default_commands = [call[0][3] for call in servers.calls if call[0][1:3] == DEFAULT]
-    assert "kill-server" not in default_commands
-    kills = [call[0] for call in servers.calls if call[0][3] == "kill-session"]
+    assert list(servers.sessions[DEFAULT]) == ["another-agent"]
+    kills = [call[0] for call in servers.calls if call[0][3] in ("kill-session", "kill-server")]
     assert kills == [("tmux", *DEFAULT, "kill-session", "-t", "$0")]
 
 
-def test_no_old_dm_means_the_default_server_is_only_asked_once(private, monkeypatch):
+def test_an_old_dm_on_the_server_the_portal_was_started_inside_is_found(private, old_dm, monkeypatch):
     servers = Servers()
-    servers.sessions[DEFAULT] = {"another-agent": "$1"}
+    servers.add(INHERITED, portal.SESSION, "$2", old_dm)
     monkeypatch.setattr(portal.subprocess, "run", servers.run)
     portal.adopt_legacy_session()
-    assert not portal._legacy_adopted
+    assert portal._legacy == (INHERITED, old_dm.pid)
+    assert portal.running() and set(servers.servers_used(len(servers.calls) - 1)) == {INHERITED}
+
+
+def test_an_old_dm_whose_socket_was_deleted_still_blocks_a_second_dm(private, saved, old_dm, monkeypatch):
+    # The shared socket is in /tmp, so the DM itself could delete it while it keeps running.
+    servers = Servers()
+    servers.add(DEFAULT, portal.SESSION, "$0", old_dm)
+    monkeypatch.setattr(portal.subprocess, "run", servers.run)
+    monkeypatch.setattr(portal, "LEGACY_EXIT_WAIT", 0)
+    portal.adopt_legacy_session()
+    del servers.sessions[DEFAULT]
+    assert portal.running() is True
+    ok, message = portal.start_session("qwen", "resume", "demo", "")
+    assert not ok and "already running" in message
+    assert not any(call[0][3] == "new-session" for call in servers.calls)
+    old_dm.kill()
+    old_dm.wait()
+    assert portal.running() is False and portal._legacy is None
+
+
+def test_no_old_dm_means_each_old_server_is_asked_once(private, monkeypatch):
+    servers = Servers()
+    servers.add(DEFAULT, "another-agent", "$1")
+    monkeypatch.setattr(portal.subprocess, "run", servers.run)
+    portal.adopt_legacy_session()
+    assert portal._legacy is None
     portal.running()
-    default_calls = [call[0] for call in servers.calls if call[0][1:3] == DEFAULT]
-    assert default_calls == [("tmux", *DEFAULT, "has-session", "-t", f"={portal.SESSION}")]
+    probe = ("display-message", "-p", "-t", f"={portal.SESSION}:", "#{pane_pid}")
+    old = [call[0] for call in servers.calls if call[0][1:3] != private_server(private)]
+    assert old == [("tmux", *INHERITED, *probe), ("tmux", *DEFAULT, *probe)]
 
 
-def test_a_dm_already_on_the_private_socket_ignores_the_default_server(private, monkeypatch):
+def test_a_dm_already_on_the_private_socket_ignores_the_old_servers(private, monkeypatch):
     servers = Servers()
-    servers.sessions[private_server(private)] = {portal.SESSION: "$4"}
-    servers.sessions[DEFAULT] = {portal.SESSION: "$0"}
+    servers.add(private_server(private), portal.SESSION, "$4")
+    servers.add(DEFAULT, portal.SESSION, "$0")
     monkeypatch.setattr(portal.subprocess, "run", servers.run)
     portal.adopt_legacy_session()
-    assert not portal._legacy_adopted
-    assert DEFAULT not in servers.servers_used()
+    assert portal._legacy is None
+    assert set(servers.servers_used()) == {private_server(private)}
 
 
 def test_a_throwaway_portal_never_adopts_the_live_session(private, monkeypatch):
     monkeypatch.setattr(portal, "SESSION", "tmuxfix-preview")
     servers = Servers()
-    servers.sessions[DEFAULT] = {"dnd-campaign-portal": "$0"}
+    servers.add(DEFAULT, "dnd-campaign-portal", "$0")
     monkeypatch.setattr(portal.subprocess, "run", servers.run)
     portal.adopt_legacy_session()
-    assert not portal._legacy_adopted
+    assert portal._legacy is None
     assert all("dnd-campaign-portal" not in " ".join(call[0]) for call in servers.calls)
-
-
-def test_an_unclear_answer_about_the_old_dm_never_starts_a_second_one(private, saved, monkeypatch):
-    monkeypatch.setattr(portal, "_legacy_adopted", True)
-    monkeypatch.setattr(portal.subprocess, "run",
-                        lambda args, **kwargs: subprocess.CompletedProcess(args, 1, "", "server exited unexpectedly"))
-    assert portal.running() is False
-    assert portal._legacy_adopted
-    ok, message = portal.start_session("qwen", "resume", "demo", "")
-    assert not ok and "already running" in message
 
 
 # ── A real tmux server ───────────────────────────────────────────────────────
