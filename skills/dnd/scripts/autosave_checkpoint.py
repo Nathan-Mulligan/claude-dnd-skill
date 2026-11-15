@@ -69,7 +69,10 @@ def _read_stdin_json():
 
 
 def active_campaign() -> str | None:
-    """Return the name of the campaign marked active by the last /dm:dnd load."""
+    """The owner's chosen campaign (#139), else the one marked active by the last /dm:dnd load."""
+    chosen = paths.chosen_campaign()
+    if chosen:
+        return chosen
     marker = paths.runtime_dir() / ACTIVE_MARKER
     if not marker.exists():
         return None

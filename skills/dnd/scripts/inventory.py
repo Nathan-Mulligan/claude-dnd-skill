@@ -506,9 +506,9 @@ def display_sheet(sheet: Path, ledger: dict | None, cargo: dict | None) -> dict 
 
 
 def _display_campaign() -> str:
+    from paths import agreed_campaign, runtime_dir
     try:
-        from paths import runtime_dir
-        return (runtime_dir() / ".campaign").read_text(encoding="utf-8").strip()
+        return agreed_campaign((runtime_dir() / ".campaign").read_text(encoding="utf-8")) or ""
     except OSError:
         return ""
 

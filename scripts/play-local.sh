@@ -36,6 +36,12 @@ while [[ "${1:-}" == "--campaign" || "${1:-}" == "--workdir" ]]; do
   shift 2
 done
 
+# The display serves only the campaign the owner chose (#139). The portal records its own choice;
+# started by hand, this launcher records the campaign it was given, or that none was.
+if [[ "${DND_PORTAL_LAUNCH:-}" != 1 ]]; then
+  python3 skills/dnd/scripts/paths.py choose-campaign ${DND_ACTIVE_CAMPAIGN:+"$DND_ACTIVE_CAMPAIGN"}
+fi
+
 case "$backend" in
   codex)
     if ! command -v codex >/dev/null; then
