@@ -92,7 +92,8 @@ if [[ -f "$PID_FILE" ]]; then
   kill -9 "$(cat "$PID_FILE")" 2>/dev/null || true
   rm -f "$PID_FILE"
 fi
-pkill -9 -f "dnd-display-app\.py" 2>/dev/null || true
+# Only this checkout's display: a test copy must never stop the live one.
+pkill -9 -f "$DISPLAY_DIR/dnd-display-app\.py" 2>/dev/null || true
 sleep 0.3
 
 # ── Dependency check (first run) ──────────────────────────────────────────────

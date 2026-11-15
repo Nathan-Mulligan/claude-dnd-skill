@@ -168,7 +168,7 @@ def main() -> None:
     _print_urls(lan_ip)
     print()
     print("Restart the display to apply:")
-    print(f"  pkill -f dnd-display-app.py ; bash {DISPLAY_DIR}/start-display.sh")
+    print(f"  pkill -f {DISPLAY_DIR}/dnd-display-app.py ; bash {DISPLAY_DIR}/start-display.sh")
 
 
 def _print_urls(lan_ip: Optional[str]) -> None:
