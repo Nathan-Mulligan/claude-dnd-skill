@@ -34,10 +34,14 @@ import sys
 import os
 import json
 import argparse
-import shutil
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "display"))
 import paths  # noqa: E402
+# The hook runs outside the DM's sandbox, and the DM can write the campaign and the runtime dir:
+# never read or write through a link it placed there, nor block on a FIFO.
+from runtime_paths import write_file  # noqa: E402
+from sidebar_sync import read_state  # noqa: E402
 
 DEFAULT_EVERY_N = 10          # cadence checkpoint every N turns
 ACTIVE_MARKER = "active-campaign.json"   # written by /dm:dnd load, under runtime_dir()
@@ -73,12 +77,11 @@ def active_campaign() -> str | None:
     chosen = paths.chosen_campaign()
     if chosen:
         return chosen
-    marker = paths.runtime_dir() / ACTIVE_MARKER
-    if not marker.exists():
-        return None
     try:
-        data = json.loads(marker.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        data = json.loads(read_state(paths.runtime_dir() / ACTIVE_MARKER) or "")
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
         return None
     name = data.get("name")
     return name if isinstance(name, str) and name.strip() else None
@@ -86,12 +89,8 @@ def active_campaign() -> str | None:
 
 def autosave_enabled(campaign: str) -> bool:
     """Read the `autosave` flag from state.md → ## Session Flags. Default: on."""
-    state = paths.find_campaign(campaign) / "state.md"
-    if not state.exists():
-        return False
-    try:
-        text = state.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    text = read_state(paths.find_campaign(campaign) / "state.md")
+    if text is None:
         return False
     # Look only inside the Session Flags section so we don't match prose elsewhere.
     flags = _section(text, "## Session Flags")
@@ -131,20 +130,15 @@ def _counter_path(session_id: str | None, campaign: str) -> "paths.pathlib.Path"
 
 
 def _load_counter(path) -> int:
-    if not path.exists():
-        return 0
     try:
-        return int(json.loads(path.read_text(encoding="utf-8")).get("turns", 0))
-    except (OSError, ValueError, TypeError):
+        return int(json.loads(read_state(path) or "{}").get("turns", 0))
+    except (ValueError, TypeError, AttributeError):
         return 0
 
 
 def _save_counter(path, turns: int, campaign: str) -> None:
     try:
-        path.write_text(
-            json.dumps({"turns": turns, "campaign": campaign}),
-            encoding="utf-8",
-        )
+        write_file(path, json.dumps({"turns": turns, "campaign": campaign}))
     except OSError:
         pass
 
@@ -168,13 +162,11 @@ def decide(stdin_obj: dict, prev_turns: int, every_n: int = DEFAULT_EVERY_N):
 
 def snapshot(campaign: str) -> None:
     """Deterministic durability: copy state.md to a recovery file. Best-effort."""
-    camp_dir = paths.find_campaign(campaign)
-    state = camp_dir / "state.md"
-    if not state.exists():
+    text = read_state(paths.find_campaign(campaign) / "state.md")
+    if text is None:
         return
-    dest = paths.runtime_dir() / f"{_safe(campaign)}.autocheckpoint.md"
     try:
-        shutil.copy2(str(state), str(dest))
+        write_file(paths.runtime_dir() / f"{_safe(campaign)}.autocheckpoint.md", text)
     except OSError:
         pass
 
