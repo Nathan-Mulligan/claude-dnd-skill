@@ -26,7 +26,7 @@ def fenmoor(tmp_path):
     return folder
 
 
-def card(folder, party_input="[Corin Ashby]: We ask Rosa about cargo."):
+def card(folder, party_input="[Corin Ashby]: We ask Effie about cargo."):
     return turn_card.build(folder, party_input)
 
 
@@ -42,15 +42,15 @@ def test_fenmoor_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoo
     assert text.startswith("[[Turn card, hidden from players: ") and text.endswith("]] ")
     assert "roll mode" not in text
     assert "\n" not in text
-    assert "Where: Brinewick, Rosa Whitlow’s bakery, 16 Leaffall 1247, morning" in text
-    assert 'Beat 1b "Broken Ledgers": Bring the couple back toward Ashbridge' in text
-    assert "Tamsin Cole needs barrel hoops" in text and "Reeve courier with a lame horse" in text
-    assert "Ilsa quietly asks Corin" not in text
-    assert "auditor reaches the Ashbridge tollhouse" in text and "[in 2 days]" in text
-    assert "bridge closes to loaded wagons" not in text
-    assert "Trade policy (" in text and "aim for a 20% margin" in text
-    assert "People here: Rosa Whitlow (Brinewick baker whose shop is by the market well)" in text
-    assert "Ilsa Brook" not in text
+    assert "Where: Reedhythe, Effie Cobb’s candle shop, 9 Mistmonth 1312, morning" in text
+    assert 'Beat 1b "Fish Oil and Smoke": Steer the cousins to Gullmere' in text
+    assert "apprentice is buying every candle" in text and "eel barge has run onto the mudflats" in text
+    assert "lend the cousins his fast skiff" not in text
+    assert "eel barges try the night crossing" in text and "[in 2 days]" in text
+    assert "fever house burns its last lamp oil" not in text
+    assert "Trade policy (" in text and "aim for a 25% margin" in text
+    assert "People here: Effie Cobb (Reedhythe candle-maker whose shop faces the fish quay)" in text
+    assert "Maud Pellow" not in text
     assert "rolls: players roll" in text
     for rule in ("never a bare \"what do you do?\"", "name the DC and the stake", "Never decide for the player characters"):
         assert rule in text
@@ -70,11 +70,11 @@ def test_table_settings_from_the_display_reach_the_dm(fenmoor):
 
 def test_clock_window_includes_overdue_and_skips_far_off(fenmoor):
     calendar = json.loads((fenmoor / "calendar.json").read_text(encoding="utf-8"))
-    calendar["day"] = 20
+    calendar["day"] = 13
     (fenmoor / "calendar.json").write_text(json.dumps(calendar), encoding="utf-8")
     text = card(fenmoor)
-    assert "auditor reaches the Ashbridge tollhouse" in text and "[overdue]" in text
-    assert "bridge closes to loaded wagons" in text and "[in 1 day]" in text
+    assert "eel barges try the night crossing" in text and "[overdue]" in text
+    assert "fever house burns its last lamp oil" in text and "[in 1 day]" in text
     calendar["day"] = 1
     (fenmoor / "calendar.json").write_text(json.dumps(calendar), encoding="utf-8")
     assert "Clocks due" not in card(fenmoor)
@@ -82,10 +82,10 @@ def test_clock_window_includes_overdue_and_skips_far_off(fenmoor):
 
 def test_npc_named_in_the_party_input_is_listed_with_attitude(fenmoor):
     (fenmoor / "npcs.md").write_text(
-        "| Name | Role | Attitude |\n|---|---|---|\n| Bram Tully | Toll clerk | unfriendly |\n\n"
-        "### Bram Tully\n- **Demeanor:** jumpy, over-polite\n- **Attitude toward party:** unfriendly\n", encoding="utf-8")
-    text = card(fenmoor, "[Wren Talley]: I ask Bram for the ledger.")
-    assert "People here: Bram Tully (jumpy, over-polite; unfriendly)" in text
+        "| Name | Role | Attitude |\n|---|---|---|\n| Silas Crane | Oil factor | unfriendly |\n\n"
+        "### Silas Crane\n- **Demeanor:** jumpy, over-polite\n- **Attitude toward party:** unfriendly\n", encoding="utf-8")
+    text = card(fenmoor, "[Wren Talley]: I ask Silas for the manifest.")
+    assert "People here: Silas Crane (jumpy, over-polite; unfriendly)" in text
 
 
 def test_npc_is_matched_by_their_name_not_a_title_or_role_word(fenmoor):
@@ -122,9 +122,9 @@ def test_npc_saved_by_the_oracle_shows_temperament_and_want(fenmoor):
     oracle_spec = importlib.util.spec_from_file_location("oracle_for_card", REPO / "skills/dnd/scripts/oracle.py")
     oracle = importlib.util.module_from_spec(oracle_spec)
     oracle_spec.loader.exec_module(oracle)
-    oracle.save_npc_fields(fenmoor / "npcs.md", "Rosa Whitlow",
-                           [("Temperament", "brisk, counts twice (ordinary)"), ("Wants now", "flour before the frost")])
-    assert "People here: Rosa Whitlow (brisk, counts twice (ordinary); wants flour before the frost)" in card(fenmoor)
+    oracle.save_npc_fields(fenmoor / "npcs.md", "Effie Cobb",
+                           [("Temperament", "brisk, counts twice (ordinary)"), ("Wants now", "beeswax before the fair")])
+    assert "People here: Effie Cobb (brisk, counts twice (ordinary); wants beeswax before the fair)" in card(fenmoor)
 
 
 def test_missing_sections_are_skipped(tmp_path):
@@ -166,9 +166,9 @@ def test_broken_files_never_raise(fenmoor, damage):
 
 
 def test_control_characters_never_reach_the_terminal(fenmoor):
-    edit_state(fenmoor, "Brinewick, Rosa", "Salt\x00mere\x1b[2J, Rosa")
+    edit_state(fenmoor, "Reedhythe, Effie", "Reed\x00hythe\x1b[2J, Effie")
     text = card(fenmoor)
-    assert "Salt mere [2J, Rosa" in text
+    assert "Reed hythe [2J, Effie" in text
     assert not any(ord(ch) < 32 or ord(ch) == 127 for ch in text)
 
 
@@ -184,9 +184,9 @@ def test_card_does_not_save_the_steering_count(fenmoor):
 
 def test_steering_nudge_takes_the_beat_line(fenmoor):
     (fenmoor / "arc_pulse.json").write_text(json.dumps({"beat": "1b", "turns": 3}), encoding="utf-8")
-    text, pulse = turn_card.prepare(fenmoor, "[Corin Ashby]: We load the wagon.")
+    text, pulse = turn_card.prepare(fenmoor, "[Corin Ashby]: We load the punt.")
     assert pulse.directive and "DM steering, mandatory this turn" in text
-    assert 'Beat 1b "Broken Ledgers":' not in text
+    assert 'Beat 1b "Fish Oil and Smoke":' not in text
 
 
 def test_every_card_asks_for_narration_first_and_a_one_word_close(fenmoor):
@@ -201,7 +201,7 @@ def test_the_trade_policy_shapes_a_trade_but_never_says_yes_for_the_party(fenmoo
     line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Trade policy"))
     assert "without asking" not in line
     assert "never agrees a price, fee or deal for them" in line
-    assert "aim for a 20% margin" in line
+    assert "aim for a 25% margin" in line
 
 
 def test_every_card_keeps_the_party_s_coin_and_word_theirs(fenmoor):
@@ -211,69 +211,69 @@ def test_every_card_keeps_the_party_s_coin_and_word_theirs(fenmoor):
 
 
 def test_a_debt_or_offer_left_open_in_the_state_is_put_back_to_the_party(fenmoor):
-    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate",
-               "- Garrick offered 2 sp to haul his flour back, not yet accepted. Rosa sold them bread.\n"
-               "- Ilsa is at the Ashbridge west gate")
+    edit_state(fenmoor, "- Maud is at the Gullmere beacon",
+               "- Ned offered 2 sp to tow his skiff back, not yet accepted. Effie sold them tea.\n"
+               "- Maud is at the Gullmere beacon")
     line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party"))
     assert "never pay, accept or hand over for them unasked" in line
-    assert "The 3 sp wagon and mule rental is still owed to its owner at the next market" in line
-    assert "Garrick offered 2 sp to haul his flour back, not yet accepted" in line
-    assert "salt debt is paid in full" not in line and "Rosa sold them bread" not in line
+    assert "The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves" in line
+    assert "Ned offered 2 sp to tow his skiff back, not yet accepted" in line
+    assert "share of the eel money was paid in full" not in line and "Effie sold them tea" not in line
 
 
 def test_nothing_waiting_means_no_waiting_line(fenmoor):
-    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
-    edit_state(fenmoor, "; the wagon rental remains due", "")
+    edit_state(fenmoor, " The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.", "")
+    edit_state(fenmoor, " The mooring fee remains due.", "")
     assert "Waiting on the party" not in card(fenmoor)
 
 
 @pytest.mark.parametrize("settled", [
-    "Garrick offered 2 sp to haul his flour back, and the party accepted.",
-    "The 2 sp Garrick was owed was paid in full.",
-    "Garrick offered 2 sp to haul his flour back; they declined.",
+    "Ned offered 2 sp to tow his skiff back, and the party accepted.",
+    "The 2 sp Ned was owed was paid in full.",
+    "Ned offered 2 sp to tow his skiff back; they declined.",
 ])
 def test_a_settled_debt_or_offer_is_not_put_back_to_the_party(fenmoor, settled):
-    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
-    edit_state(fenmoor, "; the wagon rental remains due", "")
-    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate", f"- {settled}\n- Ilsa is at the Ashbridge west gate")
+    edit_state(fenmoor, " The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.", "")
+    edit_state(fenmoor, " The mooring fee remains due.", "")
+    edit_state(fenmoor, "- Maud is at the Gullmere beacon", f"- {settled}\n- Maud is at the Gullmere beacon")
     assert "Waiting on the party" not in card(fenmoor)
 
 
 def test_the_waiting_line_lets_this_turn_s_answer_settle_it(fenmoor):
-    line = next(p for p in card(fenmoor, "We pay the 3 sp wagon rental now.").split(" | ")
+    line = next(p for p in card(fenmoor, "We pay the 2 sp mooring fee now.").split(" | ")
                 if p.startswith("Waiting on the party"))
     assert "unless this input answers it" in line
 
 
 def _only(fenmoor, sentence):
-    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
-    edit_state(fenmoor, "; the wagon rental remains due", "")
-    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate", f"- {sentence}\n- Ilsa is at the Ashbridge west gate")
+    edit_state(fenmoor, " The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.", "")
+    edit_state(fenmoor, " The mooring fee remains due.", "")
+    edit_state(fenmoor, "- Maud is at the Gullmere beacon", f"- {sentence}\n- Maud is at the Gullmere beacon")
     return next((p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party")), "")
 
 
 @pytest.mark.parametrize("sentence", [
-    "Garrick offered 2 sp to haul his flour back, but the offer has not been accepted.",
-    "The rental is unpaid and has not been settled.",
-    "Odile's salt debt is paid; the wagon rental remains due.",
-    "The 2 sp gate toll is due.",
-    "Garrick offers 2 sp to haul his flour; the party has not answered.",
-    "The 3 sp rental remains due; the salt debt is paid.",
-    "The 3 sp rental is owed and must be paid tomorrow.",
-    "The agreed 3 sp fee is still owed.",
-    "Garrick offered 2 sp; the offer has not yet actually been accepted.",
+    "Ned offered 2 sp to tow his skiff back, but the offer has not been accepted.",
+    "The mooring fee is unpaid and has not been settled.",
+    "Ned's eel money is paid; the mooring fee remains due.",
+    "The 2 sp quay fee is due.",
+    "Ned offers 2 sp to tow his skiff; the party has not answered.",
+    "The 2 sp mooring fee remains due; the eel money is paid.",
+    "The 2 sp mooring fee is owed and must be paid tomorrow.",
+    "The agreed 2 sp fee is still owed.",
+    "Ned offered 2 sp; the offer has not yet actually been accepted.",
 ])
 def test_an_open_payment_or_offer_is_waiting_however_it_is_worded(fenmoor, sentence):
     assert sentence.rstrip(".") in _only(fenmoor, sentence)
 
 
 @pytest.mark.parametrize("sentence", [
-    "Garrick offered 2 sp; the party agreed to haul the flour.",
-    "Rosa offered condolences for their loss.",
+    "Ned offered 2 sp; the party agreed to tow the skiff.",
+    "Effie offered condolences for their loss.",
     "No wages are owed to Wren.",
-    "The auditor is due tomorrow.",
+    "The night barge is due tomorrow.",
     "The party has 2 gp and the courier is due tomorrow.",
-    "Rosa offers help with the work.",
+    "Effie offers help with the work.",
     "No wages are still owed to Wren.",
 ])
 def test_an_agreed_deal_or_a_non_payment_is_not_waiting(fenmoor, sentence):

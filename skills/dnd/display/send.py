@@ -37,25 +37,25 @@ Usage:
     DNDEND
 
     # Scene change, bundled with the narration that enters it
-    python3 send.py --scene "Brinewick, Rosa's bakery: haggling over flour by the ovens" << 'DNDEND'
-    Warm bread and woodsmoke fill the little shop.
+    python3 send.py --scene "Reedhythe, Effie's candle shop: haggling over beeswax by the dipping vats" << 'DNDEND'
+    Warm wax and woodsmoke fill the little shop.
     DNDEND
 
     # A whole turn in one call: a line holding only @player NAME, @npc NAME [voice=ID],
     # @dice, @tutor, @action NAME or @narration starts a block; text before the first marker
     # is narration. Scene, mood, music and stat flags apply to the whole call.
-    python3 send.py --scene "Ashbridge: the toll gate at dusk" << 'DNDEND'
+    python3 send.py --scene "Gullmere: the beacon stair in fog" << 'DNDEND'
     @player Everybody
-    We hand over the satchel.
+    We show her the cask brand.
     @narration
-    The clerk breaks the seal.
-    @npc Odile Varn voice=bf_alice
-    "Twenty silver, or the wagon stays."
+    The keeper pries the bung loose.
+    @npc Maud Pellow voice=bf_alice
+    "Smell that? Fish. I will not light the tower with it."
     DNDEND
 
     # A roll in the same call: the narration naming the DC goes first, then the request
     python3 send.py --dice-request --character Wren --modifier 3 --dc 13 --label "Persuasion" --wait << 'DNDEND'
-    Odile folds her arms. DC 13; fail and the price holds.
+    Maud squints at the cask. DC 13; fail and the tower stays dark.
     DNDEND
 
     # Short inline string

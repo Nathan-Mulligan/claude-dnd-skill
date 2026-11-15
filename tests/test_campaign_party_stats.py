@@ -71,7 +71,7 @@ def test_clear_does_not_erase_the_saved_party(display):
     select(client, "Fenmoor")
     client.post("/stats", json={"players": [CORIN], "replace_players": True})
     assert client.post("/clear", json={}).status_code == 204
-    client.post("/stats", json={"world_time": {"date": "16 Leaffall"}})
+    client.post("/stats", json={"world_time": {"date": "9 Mistmonth"}})
     assert (tmp_path / "campaigns/Fenmoor/party_stats.json").exists()
     saved = json.loads((tmp_path / "campaigns/Fenmoor/party_stats.json").read_text(encoding="utf-8"))
     assert [p["name"] for p in saved["players"]] == ["Corin Ashby"]

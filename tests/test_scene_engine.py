@@ -22,12 +22,12 @@ SPEC.loader.exec_module(send)
 
 FENMOOR = """# Fenmoor — World
 ## World Foundations
-Era: medieval. Medium magic: uncommon trained practitioners.
+Era: medieval. Low magic: hedge-witches and fen charms.
 
 ## Place Themes
-Ashbridge: [{"name":"Ashbridge","mood":"tense"}]. West Gate: child {"name":"West Gate"}. Mill: child {"name":"Mill","mood":"warm"}. The tension is economic.
+Gullmere: [{"name":"Gullmere","mood":"tense"}]. Fish Quay: child {"name":"Fish Quay"}. Smokehouse: child {"name":"Smokehouse","mood":"warm"}. Fog and a dark beacon keep tempers short.
 
-Brinewick: [{"name":"Brinewick","mood":"curious"}]. Rosa’s Bakery: child {"name":"Rosa’s Bakery","mood":"warm"}. Western salt-working town.
+Reedhythe: [{"name":"Reedhythe","mood":"curious"}]. Effie’s Candle Shop: child {"name":"Effie’s Candle Shop","mood":"warm"}. Market town on the causeway, busy and nosy.
 
 ## Three Truths
 """
@@ -45,9 +45,9 @@ MACHINES = """# World: Clockwork
 
 def test_same_place_gives_the_same_key_whatever_is_happening():
     world = WorldNotes.parse(FENMOOR)
-    first = derive("Brinewick, Rosa's Bakery: haggling over flour by the ovens", world=world)
-    second = derive("Rosa’s bakery in Brinewick: the ovens cool at dusk", world=world)
-    assert first.scene.key == second.scene.key == "brinewick.rosas-bakery"
+    first = derive("Reedhythe, Effie's Candle Shop: haggling over beeswax by the vats", world=world)
+    second = derive("Effie’s candle shop in Reedhythe: the vats cool at dusk", world=world)
+    assert first.scene.key == second.scene.key == "reedhythe.effies-candle-shop"
     plain = [derive(f"The Old Mill: {doing}").scene.key for doing in ("grinding grain", "a quiet night")]
     assert plain == ["old-mill", "old-mill"]
 
@@ -62,7 +62,7 @@ def test_keys_stay_valid_for_long_or_non_latin_places():
 
 @pytest.mark.parametrize("cue,setting", [
     ("The Prancing Pony inn: a fiddler plays", "tavern"),
-    ("Brinewick market square: stalls open", "city"),
+    ("Gullmere market square: stalls open", "city"),
     ("Crystal Cavern: light glimmers on a pool", "cave"),
     ("The ashen crypt: bones underfoot", "crypt"),
     ("The wizard tower: books float past", "arcane"),
@@ -100,8 +100,8 @@ def test_world_era_wins_and_missing_era_inherits_the_current_scene():
 
 
 def test_known_places_take_their_saved_theme_path_and_mood():
-    cue = derive("Brinewick, Rosa's Bakery: flour dust in the air", world=WorldNotes.parse(FENMOOR))
-    assert cue.scene.theme == (PlaceTheme("Brinewick", "curious"), PlaceTheme("Rosa’s Bakery", "warm"))
+    cue = derive("Reedhythe, Effie's Candle Shop: wax smoke in the air", world=WorldNotes.parse(FENMOOR))
+    assert cue.scene.theme == (PlaceTheme("Reedhythe", "curious"), PlaceTheme("Effie’s Candle Shop", "warm"))
     assert cue.mood == "warm"
     glade = derive("Sunlit Glade: butterflies over the stream", world=WorldNotes.parse(MACHINES))
     assert glade.scene.theme == (PlaceTheme("Gloaming Forest", "curious"), PlaceTheme("Sunlit Glade", "warm"))
@@ -113,34 +113,34 @@ def test_known_places_take_their_saved_theme_path_and_mood():
 
 def test_unsaved_places_nest_under_a_named_or_current_region():
     world = WorldNotes.parse(FENMOOR)
-    docks = derive("Brinewick docks: gulls over the brine sheds", world=world)
-    assert docks.scene.theme == (PlaceTheme("Brinewick", "curious"), PlaceTheme("Brinewick docks"))
+    docks = derive("Reedhythe jetty: herons over the eel traps", world=world)
+    assert docks.scene.theme == (PlaceTheme("Reedhythe", "curious"), PlaceTheme("Reedhythe jetty"))
     assert docks.mood == "curious"
-    current = {"setting": "city", "key": "brinewick.rosas-bakery", "mood": "warm",
-               "theme": [{"name": "Brinewick", "mood": "curious"}, {"name": "Rosa’s Bakery", "mood": "warm"}]}
+    current = {"setting": "city", "key": "reedhythe.effies-candle-shop", "mood": "warm",
+               "theme": [{"name": "Reedhythe", "mood": "curious"}, {"name": "Effie’s Candle Shop", "mood": "warm"}]}
     alley = derive("A narrow back alley: a cat watches", world=world, current=current)
-    assert alley.scene.theme == (PlaceTheme("Brinewick", "curious"), PlaceTheme("A narrow back alley"))
+    assert alley.scene.theme == (PlaceTheme("Reedhythe", "curious"), PlaceTheme("A narrow back alley"))
     assert derive("A narrow back alley: quiet").scene.theme is None
 
 
 def test_mood_is_explicit_then_place_then_setting_default():
     world = WorldNotes.parse(FENMOOR)
-    assert derive("Ashbridge mill: wheels turn", "ominous", world=world).mood == "ominous"
-    assert derive("Ashbridge mill: wheels turn", world=world).mood == "warm"
+    assert derive("Gullmere smokehouse: eels hang in the rafters", "ominous", world=world).mood == "ominous"
+    assert derive("Gullmere smokehouse: eels hang in the rafters", world=world).mood == "warm"
     assert derive("The Prancing Pony inn: songs").mood == "warm"
     assert derive("The ashen crypt: dust").mood == "ominous"
 
 
 def test_same_place_cue_is_a_no_op_unless_the_mood_or_era_changes():
     world = WorldNotes.parse(FENMOOR)
-    cue = derive("Brinewick, Rosa's Bakery: buying bread", world=world)
+    cue = derive("Reedhythe, Effie's Candle Shop: buying wicks", world=world)
     current = {"setting": cue.setting, "mood": "warm", **cue.scene.to_dict()}
-    again = derive("Rosa's Bakery in Brinewick: the baker laughs", world=world, current=current)
+    again = derive("Effie's Candle Shop in Reedhythe: the chandler laughs", world=world, current=current)
     assert is_continuation(again, current, None)
     assert is_continuation(again, current, "warm")
-    assert not is_continuation(derive("Rosa's Bakery in Brinewick: fire!", "tense", world=world, current=current),
+    assert not is_continuation(derive("Effie's Candle Shop in Reedhythe: fire!", "tense", world=world, current=current),
                                current, "tense")
-    assert not is_continuation(derive("Brinewick docks: gulls", world=world, current=current), current, None)
+    assert not is_continuation(derive("Reedhythe jetty: herons", world=world, current=current), current, None)
     assert not is_continuation(cue, None, None)
     assert not is_continuation(cue, current | {"era": "modern"}, None)
 
@@ -163,7 +163,7 @@ def test_music_and_backgrounds_draw_from_the_shared_engine(tmp_path):
     assert backgrounds.prompt_for is scene_engine.image_prompt
     assert music.SETTINGS is backgrounds.SETTINGS is scene_engine.SETTINGS
 
-    cue = derive("Brinewick, Rosa's Bakery: flour dust", world=WorldNotes.parse(FENMOOR))
+    cue = derive("Reedhythe, Effie's Candle Shop: wax smoke", world=WorldNotes.parse(FENMOOR))
     director = music.MusicDirector(tmp_path / "music", None, None, renderer=lambda job: None, autostart=False)
     state = director.transition("scene", "derived", **cue.music_fields())
     assert state["scene"] == cue.scene.to_dict() and state["mood"] == "warm" and state["setting"] == "city"
@@ -174,7 +174,7 @@ def test_music_and_backgrounds_draw_from_the_shared_engine(tmp_path):
     queued = images.jobs.get_nowait()
     assert queued.scene == cue.scene
     expected = scene_engine.image_prompt("city", "warm", scene=cue.scene)
-    assert "Rosa’s Bakery" in expected and "flour dust" in expected
+    assert "Effie’s Candle Shop" in expected and "wax smoke" in expected
 
 
 def _run_send(monkeypatch, argv, health, text="The bell over the door rings."):
@@ -194,15 +194,15 @@ def test_send_scene_derives_the_full_cue_from_health_and_world_notes(tmp_path, m
     campaign.mkdir(parents=True)
     (campaign / "world.md").write_text(FENMOOR, encoding="utf-8")
     health = {"campaign": "fenmoor", "data_root": str(tmp_path),
-              "scene": {"setting": "city", "mood": "tense", "key": "ashbridge.west-gate", "label": "West Gate",
-                        "description": "x", "theme": [{"name": "Ashbridge", "mood": "tense"}]}}
-    payloads = _run_send(monkeypatch, ["--scene", "Brinewick, Rosa's Bakery: warm loaves cooling"], health)
+              "scene": {"setting": "city", "mood": "tense", "key": "gullmere.fish-quay", "label": "Fish Quay",
+                        "description": "x", "theme": [{"name": "Gullmere", "mood": "tense"}]}}
+    payloads = _run_send(monkeypatch, ["--scene", "Reedhythe, Effie's Candle Shop: fresh candles cooling"], health)
     cue = payloads[0]["music"]
     assert cue["event"] == "scene" and cue["setting"] == "city" and cue["mood"] == "warm"
-    assert cue["scene"]["key"] == "brinewick.rosas-bakery"
+    assert cue["scene"]["key"] == "reedhythe.effies-candle-shop"
     assert cue["scene"]["era"] == "medieval"
-    assert cue["scene"]["theme"] == [{"name": "Brinewick", "mood": "curious"}, {"name": "Rosa’s Bakery", "mood": "warm"}]
-    assert "brinewick.rosas-bakery" in capsys.readouterr().out
+    assert cue["scene"]["theme"] == [{"name": "Reedhythe", "mood": "curious"}, {"name": "Effie’s Candle Shop", "mood": "warm"}]
+    assert "reedhythe.effies-candle-shop" in capsys.readouterr().out
 
 
 def test_send_scene_same_place_sends_narration_without_a_cue(monkeypatch, capsys):
@@ -254,12 +254,12 @@ def test_malformed_world_notes_never_stop_a_scene_cue(line):
 
 
 def test_named_region_picks_the_matching_branch_and_current_region_breaks_ties():
-    world = WorldNotes.parse('Ashbridge: [{"name":"Ashbridge","mood":"warm"}]. Mill: child {"name":"Mill","mood":"warm"}.\n'
-                             'Brinewick: [{"name":"Brinewick","mood":"ominous"}]. Mill: child {"name":"Mill","mood":"ominous"}.\n')
-    cue = derive("Brinewick Mill: wheels turn", world=world)
-    assert cue.scene.key == "brinewick.mill" and cue.mood == "ominous"
-    current = {"setting": "city", "key": "brinewick", "theme": [{"name": "Brinewick", "mood": "ominous"}]}
-    assert derive("The mill: wheels turn", world=world, current=current).scene.key == "brinewick.mill"
+    world = WorldNotes.parse('Gullmere: [{"name":"Gullmere","mood":"warm"}]. Mill: child {"name":"Mill","mood":"warm"}.\n'
+                             'Reedhythe: [{"name":"Reedhythe","mood":"ominous"}]. Mill: child {"name":"Mill","mood":"ominous"}.\n')
+    cue = derive("Reedhythe Mill: wheels turn", world=world)
+    assert cue.scene.key == "reedhythe.mill" and cue.mood == "ominous"
+    current = {"setting": "city", "key": "reedhythe", "theme": [{"name": "Reedhythe", "mood": "ominous"}]}
+    assert derive("The mill: wheels turn", world=world, current=current).scene.key == "reedhythe.mill"
 
 
 def test_places_differing_only_in_non_latin_text_get_different_keys():

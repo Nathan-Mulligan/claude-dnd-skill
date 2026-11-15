@@ -64,7 +64,7 @@ def test_parse_and_format_coins():
     assert inv.parse_coins("1,000 gp and 5 sp")["gp"] == 1000
     assert inv.format_coins({"pp": 0, "gp": 3, "ep": 0, "sp": 0, "cp": 2}) == "3 gp, 2 cp"
     assert inv.format_coins(inv.empty_purse()) == "0 gp"
-    for bad in ("", "banana", "5 gold", "3 gp of salt", "0 gp"):
+    for bad in ("", "banana", "5 gold", "3 gp of oil", "0 gp"):
         with pytest.raises(inv.LedgerError):
             inv.parse_coins(bad)
 
@@ -237,11 +237,11 @@ def test_commands_need_a_ledger_first(hollowmere):
 
 def test_cargo_is_shared_and_shows_on_every_sheet(hollowmere):
     migrated(hollowmere)
-    assert cli("cargo", "add", "Sack of salt", "--qty", "3")[0] == 0
+    assert cli("cargo", "add", "Cask of lamp oil", "--qty", "3")[0] == 0
     assert cli("cargo", "remove", "Mule")[1].endswith("0 left.")
     for stem in ("oswin-iv", "wynn-harrow"):
         text = (hollowmere / f"characters/{stem}.md").read_text(encoding="utf-8")
-        assert "Sack of salt ×3" in text and "Mule" not in text.split("## Equipment & Inventory")[1].split("\n## ")[0]
+        assert "Cask of lamp oil ×3" in text and "Mule" not in text.split("## Equipment & Inventory")[1].split("\n## ")[0]
 
 
 def test_hand_edited_ledger_with_bad_coins_is_refused(hollowmere):
@@ -387,14 +387,14 @@ def test_renaming_a_pc_moves_the_ledger_with_the_sheet(hollowmere):
 
 def test_tonights_lines_become_cargo_and_a_document_item():
     parsed = inv.parse_prose_inventory(
-        "**Shared caravan property:** one additional shortbow confiscated from the captured hill "
-        "bandit on 9 Rainmoot; no extra arrows or coins taken.\n"
-        "**Business documents:** Brisa Oakes’s order: three crates of lamp wicks, 5 sp cartage.\n")
+        "**Shared punt gear:** one additional boat hook found floating off the Gullmere "
+        "jetty on 9 Rainmoot; nobody has claimed it yet.\n"
+        "**Business documents:** Perrin Lusk’s note: six pots of pitch, 3 sp a pot on delivery.\n")
     assert [(c["name"], c["notes"]) for c in parsed["cargo"]] == [
-        ("Shortbow", "confiscated from the captured hill bandit on 9 Rainmoot")]
-    assert parsed["notes"] == ["Shared caravan property: No extra arrows or coins taken."]
+        ("Boat hook", "found floating off the Gullmere jetty on 9 Rainmoot")]
+    assert parsed["notes"] == ["Shared punt gear: Nobody has claimed it yet."]
     doc = parsed["items"][0]
-    assert doc["name"] == "Business documents" and doc["category"] == "gear" and "5 sp cartage" in doc["notes"]
+    assert doc["name"] == "Business documents" and doc["category"] == "gear" and "3 sp a pot" in doc["notes"]
     assert not parsed["unread"]
 
 
@@ -416,7 +416,7 @@ def test_cargo_change_refused_before_writing_when_a_ledger_is_broken(hollowmere)
     migrated(hollowmere)
     (hollowmere / "characters/wynn-harrow.inventory.json").write_text("{bad", encoding="utf-8")
     before = (hollowmere / "party_inventory.json").read_text(encoding="utf-8")
-    code, _, err = cli("cargo", "add", "Barrel hoops", "--qty", "2")
+    code, _, err = cli("cargo", "add", "Pitch pots", "--qty", "2")
     assert code == 2 and "wynn-harrow.inventory.json" in err
     assert (hollowmere / "party_inventory.json").read_text(encoding="utf-8") == before
 

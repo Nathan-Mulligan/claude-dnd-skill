@@ -23,7 +23,7 @@ STATE = """# Campaign
 
 ## Next Hooks
 - Fernhollow: the abbey cellarer is short of wine for the feast and will pay well for speed.
-- The ferry crossing: the ferryman is overcharging and the reeve wants to know why.
+- The ferry crossing: the ferryman has vanished and his raft is tied up on the far bank.
 
 ## Clocks
 - 12 Rainmonth 900: the abbey feast begins and the cellar is sealed (seen by: pilgrims hurrying the same way)
@@ -35,9 +35,9 @@ acts:
 - act: 1
   beats:
   - id: 1a
-    label: Short Measures
-    what_changes: The party learns the reeve skims the ferry tolls
-    world_pressure: The reeve's men lean on every carter to pay twice at the ferry.
+    label: The Empty Raft
+    what_changes: The party learns why the ferryman ran
+    world_pressure: The ferryman's creditors stop every carter at the landing.
     status: current
 current_beat: 1a
 ```
@@ -142,7 +142,7 @@ def test_a_far_off_or_past_clock_is_not_a_race(due):
 
 def test_story_days_draw_on_the_beat_hooks_clocks_and_errand():
     texts = {d["text"] for journey in journeys("adventure", days=3, n=600) for d in journey if d["kind"] == "story"}
-    for words in ("lean on every carter", "three casks", "ferryman", "abbey feast begins"):
+    for words in ("stop every carter", "three casks", "ferryman", "abbey feast begins"):
         assert any(words in t for t in texts), words
 
 

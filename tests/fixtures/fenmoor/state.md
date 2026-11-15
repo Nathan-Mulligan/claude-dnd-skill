@@ -1,99 +1,99 @@
 # Campaign: Fenmoor
-**Created:** 2026-11-09  **Last session:** 2026-11-09  **Session count:** 1  **Ruleset:** 2024
+**Created:** 2026-11-01  **Last session:** 2026-11-02  **Session count:** 1  **Ruleset:** 2024
 
 ## Current Situation
-- **Location:** Brinewick, Rosa Whitlow’s bakery
-- **In-world date/time:** 16 Leaffall 1247, morning
-- **Party:** Corin Ashby — Human Rogue 1 | HP 10/10 | AC 13 | Heroic Inspiration; Wren Talley — Human Paladin 1 | HP 12/12 | AC 14 | Lay on Hands 5/5 | spell slots 2/2 | Heroic Inspiration
-- **Party status:** At Rosa Whitlow’s bakery; the couple sold their 50 lb flour to her for 26 sp. No remaining trade cargo from this circuit.
-- **Trade status:** The couple visited the market square after exchanging four salt sacks for 16 sp and 50 lb flour. Corin has 32 gp 8 sp 7 cp after paying Hilde and buying one rope coil for 7 sp. One flour sack was inspected and found sound; other stock was not individually inspected. Odile’s salt debt is paid; the wagon rental remains due.
+- **Location:** Reedhythe, Effie Cobb’s candle shop
+- **In-world date/time:** 9 Mistmonth 1312, morning
+- **Party:** Corin Ashby — Halfling Bard 1 | HP 9/9 | AC 13 | Bardic Inspiration 3/3 | spell slots 2/2; Wren Talley — Dwarf Fighter 1 | HP 13/13 | AC 16 | Second Wind 2/2
+- **Party status:** Inside the candle shop, warming up after a cold crossing; the punt is tied up at the fish quay with nothing aboard.
+- **Trade status:** The cousins sold a basket of smoked eel to Effie for 12 sp and bought a coil of tarred line for 4 sp. Corin carries 14 gp 3 sp 6 cp. The tarred line has not been checked for rot. The mooring fee remains due.
 
 ## Pinned Facts
-- Trade policy: aim for a 20% margin; inspect goods before buying; Corin leads the haggling and Wren backs him up.
-- Adult dark fantasy; no gratuitous cruelty or sexual violence. Avoid relentless misery, constant betrayal, arbitrary puzzles, invalidated choices, or removal of agency. Trust and kindness matter.
-- Corin and Wren are married and equal partners in their travelling trade business; Wren is a player character, controlled by her player. Reputation, costs and enduring relationships matter.
+- Trade policy: aim for a 25% margin; test goods before paying; Wren does the haggling and Corin keeps the tally.
+- Grim fen folklore with room for warmth. Horror stays off-screen, no cruelty for its own sake; choices stick and kindness is remembered.
+- Corin and Wren are cousins who share a hired punt and split every coin; Wren is a player character, controlled by her player. Favours owed and the town's opinion of them carry from session to session.
 
 ## World State
-- **In-world date:** 16 Leaffall 1247
-- **Season:** autumn  **Weather:** cold drizzle
+- **In-world date:** 9 Mistmonth 1312
+- **Season:** autumn  **Weather:** fog on the mere
 - **Threat arc stage:** 1 — Now
-- **Faction states:** Toll Reeves maintain the toll and road; Bakers' Guild buys grain and funds repairs, strained by shortages.
+- **Faction states:** The Lamplighters' Guild keeps the beacons and the lamp-oil stores; the Weir Union fishes the mere by night and is losing money while the Gullmere beacon stays dark.
 
 ## Active Quests
-- Pay the 3 sp wagon and mule rental to its owner at the next market.
-- Find a return cargo in Brinewick before heading back toward Ashbridge.
+- Bring Effie's empty candle crates back to her by the next market day.
+- Learn why the Gullmere beacon is dark before risking a night crossing.
 
 ## Open Threads & Rumours
-- The Ashbridge wagon toll doubled from one silver to two. Ilsa hinted she could show them the posted notice when they pass back through. The reason is still unknown to the party.
+- The Gullmere beacon has been dark for three nights. Its keeper will say only that the last oil delivery was "wrong".
 
 ## Next Hooks
-- Brinewick: Tamsin Cole needs barrel hoops from the Ashbridge smith before her salt shipment and offers 2 sp a crate carried, paid on delivery. A reason to head back with cargo.
-- Road back: a Reeve courier with a lame horse asks the couple to carry a sealed satchel to the Ashbridge tollhouse. It holds the auditor's arrival notice (beat 1b).
-- Ashbridge: Ilsa quietly asks Corin, as a trader who reads figures, to look over a copy of the toll ledger. The figures don't match the posted notice.
+- Reedhythe: Juniper Vane's apprentice is buying every candle in Effie's shop and paying in Heron Isle silver, too much and too fast, and won't say who the candles are for.
+- The causeway: a Weir Union eel barge has run onto the mudflats in the fog; its crew offer a share of the catch to be towed off before the tide turns, and one swears the beacon oil "stank of fish" (beat 1b).
+- Gullmere: Ned Harrow will lend the cousins his fast skiff for the season if they keep the beacon lit for one night themselves.
 
 ## Faction Moves
-- 16 Leaffall: the Toll Reeves have sent an auditor toward Ashbridge to check the toll accounts. The Bakers' Guild is buying salt and grain ahead of the first frost and grumbling openly about the toll.
+- 9 Mistmonth: the Lamplighters' Guild has posted a notice in Reedhythe that beacon oil is rationed until the spring barge. The Weir Union has voted to run the night crossing anyway.
 
 ## Clocks
-- 18 Leaffall 1247: the Reeves' auditor reaches the Ashbridge tollhouse and starts on the toll accounts (seen by: a rider in Reeve grey passing them on the Brinewick road; carters gossiping)
-- 21 Leaffall 1247: the old Ashbridge bridge closes to loaded wagons for repairs (seen by: a notice posted in Brinewick market; carters turning back)
+- 11 Mistmonth 1312: the Weir Union's eel barges try the night crossing to Gullmere, beacon or no beacon (seen by: bargemen at the Reedhythe quay arguing about the dark)
+- 14 Mistmonth 1312: the Heron Isle fever house burns its last lamp oil (seen by: a lone rowboat crossing from the Isle at dusk; a chalked plea on the quay post)
 
 ## Recent Events
-- Session 1 (played 9 to 10 Nov): the couple talked the Ashbridge toll down to one silver, sold their salt to Garrick for silver and flour, delivered Agnes's parcel and blankets to Tamsin in Brinewick, sold the flour to Rosa and paid Odile in full. They stand in Brinewick on the morning of 16 Leaffall with an empty wagon.
+- Session 1 (played 1 to 2 Nov): the cousins poled Ned Harrow's smoked eel across the mere, waited out a fog bank on the causeway and sold the catch to Effie in Reedhythe. They spend the morning of 9 Mistmonth in her shop with an empty punt.
 
 ## Active Combat
 None.
 
 ## Live State Flags
-- Odile's 20 sp salt debt is paid in full. The 3 sp wagon and mule rental is still owed to its owner at the next market.
-- The wagon is empty: the salt, flour and blankets are sold and Agnes's parcel is delivered.
-- Ilsa is at the Ashbridge west gate; Garrick is at his mill.
+- The punt is empty and tied up at the Reedhythe fish quay.
+- Ned's 5 sp share of the eel money was paid in full. The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.
+- Maud is at the Gullmere beacon; Ned is out on the weirs.
 
 ## Campaign Arc
 ```yaml
 type: dynamic
 arc_number: 1
-theme: Trust is built through choices made when survival and fair dealing compete.
-resolution: If Corin succeeds, people can sustain a more dependable trade network through commitments they have chosen and defended.
+theme: A town shows what it values by whom it keeps in the light.
+resolution: If the cousins succeed, Fenmoor keeps both its beacon and its sick provided for, through bargains its people can live with.
 acts:
 - act: 1
-  title: The Narrow Road
+  title: Lamps Gone Dark
   beats:
   - id: 1a
-    label: The Cost of Passage
-    what_changes: Corin's trade becomes entangled in Ashbridge's shortage and disputed toll
-    world_pressure: Ilsa enforces the posted rate while Garrick seeks salt
+    label: The Unlit Tower
+    what_changes: The cousins' punt trade is tied to the dark beacon and the Weir Union's lost night runs
+    world_pressure: Maud keeps the beacon shuttered while Ned's eel barges sit idle
     status: complete
   - id: 1b
-    label: Broken Ledgers
-    what_changes: The disruption proves to have interests beyond one gate
-    world_pressure: Bram Tully, the Ashbridge toll clerk, panics as the Reeves' auditor arrives on 18 Leaffall; the skimmed takings and his gambling debt start to unravel, and both Ilsa and the Guild want the couple's help or silence.
+    label: Fish Oil and Smoke
+    what_changes: The dark beacon proves to be someone's choice, not bad luck
+    world_pressure: Silas Crane, the Guild's oil factor in Reedhythe, scrambles as the Weir Union barges risk the night crossing on 11 Mistmonth; the refilled casks and the oil shipped to Heron Isle start to surface, and both Maud and Ned want the cousins on their side.
     status: current
 - act: 2
-  title: Debts and Duties
+  title: The Fever Isle
   beats:
   - id: 2a
-    label: Who Pays
-    what_changes: The party discovers whose needs and choices sustain the shortage
-    world_pressure: Competing buyers seek control of deliveries
+    label: Where the Oil Went
+    what_changes: The cousins learn who is kept alive by the missing oil
+    world_pressure: The Guild and the Union each want the Isle's supply cut or kept
     status: pending
   - id: 2b
-    label: A Costly Winter
-    what_changes: A trusted arrangement suffers a concrete setback
-    world_pressure: Weather and unresolved claims strain the road
+    label: A Night Without Light
+    what_changes: A crossing goes wrong in the dark and someone the cousins know is hurt
+    world_pressure: Fog and a frightened town turn against the Isle
     status: pending
 - act: 3
-  title: The Road Kept Open
+  title: Bright Water
   beats:
   - id: 3a
-    label: Terms of Passage
-    what_changes: A decisive choice reshapes who controls or maintains the trade route
-    world_pressure: Both factions pursue incompatible proposals
+    label: The Sluice Moot
+    what_changes: The cousins' word at the moot decides who carries the cost of the beacon and of the sick
+    world_pressure: The Guild and the Union bring rival terms to the moot
     status: pending
   - id: 3b
-    label: What Remains
-    what_changes: Consequences settle into relationships and a changed trading network
-    world_pressure: Communities act on promises kept or broken
+    label: Morning on the Mere
+    what_changes: What was promised in the fog turns into friendships, grudges and a changed fen
+    world_pressure: Old grudges and new friends test every promise
     status: pending
 current_act: 1
 current_beat: 1b
@@ -103,20 +103,20 @@ outstanding_beats:
 - 2b
 - 3a
 - 3b
-steering_notes: Bring the couple back toward Ashbridge with a reason (Tamsin's hoop order, the courier's satchel). Let the auditor's arrival and the mismatched ledger land as concrete events. The strongbox count, the boatman's tally and Bram's ledger are independent evidence. Keep their choices real.
+steering_notes: Steer the cousins to Gullmere with a reason (the candle buyer, the stranded barge). Let them smell the bad oil and see the barges cross without a light. Clues are the cask brands, the Isle's receipts and Silas's manifest. Nobody here is a villain.
 revision_log:
-- '13 Nov 2026: 1a landed in session 1 (trade entangled in the toll and shortage); 1b given a named actor and date.'
+- '2 Nov 2026: beat 1a done (the punt trade is tied to the dark beacon); 1b now names Silas and the crossing date.'
 ```
 
 ## Session Flags
-tts_voice: bm_fable
+tts_voice: bm_george
 roll_mode: players
 autosave: on
 spotlight: dm_led
 pacing: adventure
 
 ## DM Style Notes
-Investigable clues, multiple solutions, realistic commerce, loyal allies, earned warmth; players roll their own checks in the dice tray and the DM rolls for NPCs openly. Heroic danger. Present one interaction or decision at a time, and make each one push the story: end turns on pressure, an NPC who wants something, or a choice with stakes, never a bare "what would you like to do?". Summarise routine haggling unless the trade itself carries the current beat; play the road day by day; every roll risks something. Wren’s player controls her choices.
+Fog, small kindnesses and hard bargains. Clues sit where the players can find them and every problem has more than one way through. Players roll for their characters with the dice tray; the DM rolls for NPCs in the open. Give each turn one person or one choice, and finish on something that pulls the story forward: a question with a price, someone who needs something, or the weather turning, never just "what would you like to do?". Wave through small purchases unless the deal itself is the beat; travel goes day by day across the mere. Wren's player decides what Wren does.
 
 ## DM Notes (hidden from players)
-The toll rise is genuine, but Bram Tully has been skimming the extra coin to pay a gambling debt to a river boatman. Ilsa suspects the takings but has no proof. Evidence: the boatman's tally stick, the tollhouse strongbox count, Bram's pawned ring.
+Silas Crane, the Guild's oil factor, has been sending the clean beacon oil to Juniper Vane's fever house on Heron Isle, where the lamps must burn all night, and refilling the beacon casks with rendered fish oil that smokes and gutters. He believes he is saving lives and has told no one. Maud knows the oil is bad but not why. Clues: the cask brands, Juniper's oil receipts, Silas's manifest.

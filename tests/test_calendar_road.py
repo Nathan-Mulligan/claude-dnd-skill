@@ -24,7 +24,7 @@ def make(root, name, kind):
     folder = root / "campaigns" / name
     folder.mkdir(parents=True)
     (folder / "state.md").write_text(state(kind), encoding="utf-8")
-    run(root, name, "init", "--date", "15 Duskfall 1247", "--months", "Harvestmoon,Duskfall")
+    run(root, name, "init", "--date", "4 Mistmonth 1312", "--months", "Reaping,Mistmonth")
     return folder
 
 
@@ -40,10 +40,10 @@ def run(root, name, *args):
 def test_travel_days_bring_one_road_roll_each(root, kind):
     folder = make(root, "Improv", kind)
     out = run(root, "Improv", "advance", "3", "days")
-    assert "18 Duskfall 1247" in out
+    assert "7 Mistmonth 1312" in out
     for day in (1, 2, 3):
         assert f"Day {day} of 3" in out
-    assert "16 Duskfall 1247" in out and "17 Duskfall 1247" in out
+    assert "5 Mistmonth 1312" in out and "6 Mistmonth 1312" in out
     assert "--no-road" in out
     assert len(json.loads((folder / "road_log.json").read_text(encoding="utf-8"))) == 3
 
@@ -63,7 +63,7 @@ def test_prebuilt_campaigns_get_no_road_rolls(root):
 def test_no_road_skips_the_rolls(root):
     folder = make(root, "Improv", "dynamic")
     out = run(root, "Improv", "advance", "2", "days", "--no-road")
-    assert "17 Duskfall 1247" in out
+    assert "6 Mistmonth 1312" in out
     assert "On the road" not in out
     assert not (folder / "road_log.json").exists()
 
@@ -77,6 +77,6 @@ def test_hours_short_of_a_day_and_rests_roll_nothing(root):
 
 def test_campaign_without_state_still_advances(root):
     (root / "campaigns" / "Bare").mkdir(parents=True)
-    run(root, "Bare", "init", "--date", "1 Duskfall 1247", "--months", "Duskfall")
+    run(root, "Bare", "init", "--date", "1 Mistmonth 1312", "--months", "Mistmonth")
     out = run(root, "Bare", "advance", "2", "days")
-    assert "3 Duskfall 1247" in out and "On the road" not in out
+    assert "3 Mistmonth 1312" in out and "On the road" not in out

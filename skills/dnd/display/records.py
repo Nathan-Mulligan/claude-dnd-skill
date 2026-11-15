@@ -6,10 +6,10 @@ here; it runs in a few milliseconds inside the DM's narration call.
 turn-log.md (in the campaign folder; this module is its only writer)
     # Turn log
     ## Session 7 · 2026-11-14              a new section after a gap of SESSION_GAP_S or more
-    ### 21:04 · Ashbridge toll gate · 18 Duskfall 1247   one entry per send: time, place, in-world date
-    **Everybody:** We hand over the satchel.               one paragraph per block, word for word
-    **DM:** The clerk breaks the seal.
-    **Odile Varn:** "Twenty silver, or the wagon stays."
+    ### 21:04 · Gullmere beacon stair · 12 Harvestmoon 1247   one entry per send: time, place, in-world date
+    **Everybody:** We show her the cask brand.               one paragraph per block, word for word
+    **DM:** The keeper pries the bung loose.
+    **Maud Pellow:** "Smell that? Fish. I will not light the tower with it."
   A new section also starts after Save & close (the portal calls `end_session`).
   Speakers: DM (narration), DM hint (tutor), Dice, XP, Inspiration, Milestone, else the
   player, action or NPC name. The session number is one more than the newest `## Session N`
@@ -259,7 +259,7 @@ def _npc_file(folder: Path, name: str) -> Path:
 
 
 def is_full_name(name: str) -> bool:
-    """"Tova Lind" or "Anselm of Ashbridge", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
+    """"Tova Lind" or "Anselm of Reedhythe", not a role label such as "Warden rider", "Auditor" or "The Ferryman"."""
     words = name.split()
     if len(words) < 2 or words[0].casefold() in ("the", "a", "an") or words[-1].casefold() in _ROLE_WORDS:
         return False

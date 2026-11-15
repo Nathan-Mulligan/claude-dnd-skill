@@ -49,15 +49,15 @@ def _run(sender, argv, body, urlopen=None):
 
 
 TURN = """@player Everybody
-We take the satchel and ask who gets it.
+We take the eel-pot and ask who it is for.
 @narration
-Aldo presses the satchel into Wren's hands.
+Aldo presses the eel-pot into Wren's hands.
 @npc Aldo Kerr voice=bm_lewis
-"The auditor. Nobody else."
+"The headman. Nobody else."
 @narration
-Behind him the horse stamps; the light is going.
+Behind him the barge creaks; the light is going.
 @tutor
-Ashbridge is half a day east.
+Gullmere is half a day east by punt.
 """
 
 
@@ -66,24 +66,24 @@ def test_one_call_sends_every_block_in_order_with_its_own_style(sender):
     assert [(c.get("player"), c.get("npc"), bool(c.get("tutor"))) for c in chunks] == [
         ("Everybody", None, False), (None, None, False), (None, "Aldo Kerr", False),
         (None, None, False), (None, None, True)]
-    assert chunks[0]["text"] == "We take the satchel and ask who gets it."
-    assert chunks[2]["text"] == '"The auditor. Nobody else."'
+    assert chunks[0]["text"] == "We take the eel-pot and ask who it is for."
+    assert chunks[2]["text"] == '"The headman. Nobody else."'
     assert chunks[2]["npc_voice"] == "bm_lewis"
     assert "@" not in "".join(c["text"] for c in chunks)
 
 
 def test_text_before_the_first_marker_is_narration(sender):
-    chunks = _run(sender, [], "The rain thickens.\n@npc Odile\n\"Twenty silver.\"\n")
-    assert [c.get("npc") for _, c in chunks] == [None, "Odile"]
+    chunks = _run(sender, [], "The rain thickens.\n@npc Maud\n\"Smell that.\"\n")
+    assert [c.get("npc") for _, c in chunks] == [None, "Maud"]
     assert chunks[0][1]["text"] == "The rain thickens."
 
 
 def test_scene_cue_rides_on_the_first_narration_block_not_the_player_echo(sender):
     from scene_engine import SceneContext
-    scene = SceneContext.parse({"key": "ashbridge", "label": "Ashbridge", "description": "toll gate at dusk"})
+    scene = SceneContext.parse({"key": "gullmere", "label": "Gullmere", "description": "beacon stair in fog"})
     derived = mock.Mock(setting="town", mood="tense", scene=scene)
     with mock.patch.object(sender, "_derive_scene", return_value=(derived, False)):
-        chunks = _run(sender, ["--scene", "Ashbridge: the toll gate at dusk"], TURN)
+        chunks = _run(sender, ["--scene", "Gullmere: the beacon stair in fog"], TURN)
     assert "music" not in chunks[0][1]
     assert chunks[1][1]["music"]["event"] == "scene"
     assert sum("music" in c for _, c in chunks) == 1
@@ -102,7 +102,7 @@ def test_a_marker_needs_the_whole_line(sender):
 
 def test_an_unknown_voice_on_a_marker_is_refused_before_anything_is_sent(sender, capsys):
     with pytest.raises(SystemExit):
-        _run(sender, [], "@npc Odile voice=not a voice\nHello.\n")
+        _run(sender, [], "@npc Maud voice=not a voice\nHello.\n")
     assert "voice" in capsys.readouterr().err
 
 
@@ -112,8 +112,8 @@ def test_a_turn_that_ends_on_a_bare_question_still_warns(sender, capsys):
 
 
 def test_content_flags_keep_their_single_block_behaviour(sender):
-    chunks = _run(sender, ["--npc", "Odile"], "@player Everybody\nstill hers\n")
-    assert len(chunks) == 1 and chunks[0][1]["npc"] == "Odile"
+    chunks = _run(sender, ["--npc", "Maud"], "@player Everybody\nstill hers\n")
+    assert len(chunks) == 1 and chunks[0][1]["npc"] == "Maud"
     assert chunks[0][1]["text"].startswith("@player")
 
 
@@ -163,7 +163,7 @@ def test_dice_request_alone_never_hangs_on_an_open_empty_stdin(sender):
 
 def test_a_bad_marker_is_refused_before_the_display_switches_campaign(sender, capsys):
     with mock.patch.object(sender, "_ensure_active_campaign") as ensure, pytest.raises(SystemExit):
-        _run(sender, [], "@npc Odile voice=not a voice\nHello.\n")
+        _run(sender, [], "@npc Maud voice=not a voice\nHello.\n")
     assert not ensure.called
 
 
@@ -193,12 +193,12 @@ def test_a_failed_narration_post_keeps_the_scene_cue_for_the_next_narration(send
 
 def test_with_a_roll_request_stdout_keeps_only_the_request_id_and_rolls(sender, capsys):
     from scene_engine import SceneContext
-    scene = SceneContext.parse({"key": "gate", "label": "Gate", "description": "the toll gate"})
+    scene = SceneContext.parse({"key": "gate", "label": "Gate", "description": "the beacon gate"})
     derived = mock.Mock(setting="town", mood="tense", scene=scene)
     replies = iter([_Response({"request_id": "abc", "pending": []})])
     with mock.patch.object(sender, "_derive_scene", return_value=(derived, False)):
-        _run(sender, ["--scene", "Gate: the toll gate", "--dice-request", "--character", "any"],
-             "DC 13; fail and the toll doubles.\n", urlopen=lambda *a, **k: next(replies))
+        _run(sender, ["--scene", "Gate: the beacon gate", "--dice-request", "--character", "any"],
+             "DC 13; fail and the tower stays dark.\n", urlopen=lambda *a, **k: next(replies))
     assert capsys.readouterr().out.split() == ["abc"]
 
 

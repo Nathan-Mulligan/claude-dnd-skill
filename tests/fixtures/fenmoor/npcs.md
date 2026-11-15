@@ -1,28 +1,27 @@
 # People of Fenmoor
 | Name | Role | Current goal |
 |---|---|---|
-| Ilsa Brook | Reeve gatekeeper | Maintain passage and account honestly |
-| Garrick Hale | Miller, Guild member | Preserve food before frost |
-| Odile Fenn | Salt supplier | Collect debts and maintain a trade partner |
-| Bram Tully | Reeve toll clerk, Ashbridge | Hide skimmed toll money before the audit |
+| Maud Pellow | Beacon keeper, Gullmere | Get clean oil and relight the tower |
+| Ned Harrow | Weir Union headman | Get the eel barges running at night again |
+| Silas Crane | Lamplighters' Guild oil factor, Reedhythe | Keep the Isle supplied without the Guild noticing |
+| Juniper Vane | Apothecary, Heron Isle fever house | Keep her patients warm and lit through the nights |
 
-## Ilsa Brook
-Practical veteran, guard stat block if needed; folds paper precisely; says “on the record” when nervous. Wants a sound bridge and fair accounting; fears being blamed for missing funds. Secret: suspects the toll takings are short. Loyal to the Reeves, not blind to wrongdoing. At the gate through dusk. Careful, fair, slow to accuse. Knows Garrick from childhood; owes Odile for a winter delivery, already repaid.
+## Maud Pellow
+Wiry, wind-burned and blunt, use the guard stat block if it comes to blows; hums sea shanties under her breath when she is lying. Has kept the Gullmere beacon for twenty years and will not light it with oil that smokes. Secret: she lit the tower once with the bad oil and it nearly set the lamp room alight; she has told no one she is afraid to try again. Loyal to the Guild but tired of its silence. At the beacon from dusk till dawn.
 
-## Garrick Hale
-Miller, commoner if needed; flour on dark sleeves, tells dry jokes. Needs salt for communal stores; limited cash and a family to feed. Secret: pledged next week's mill income to a sick neighbour's medicine, explaining limited cash; not a betrayal. Bakers' Guild. At mill by day, gate today looking for cargo. Principled but pressed. Ilsa once saved his brother; Odile has supplied him at fair prices.
+## Ned Harrow
+Weir Union headman, use the scout stat block if it comes to blows; enormous, soft-spoken, smells of smoke and river weed. Needs the night runs to pay his crews. Secret: his nephew's barge struck the old sluice on a dark night last week and the Union owes the Guild for the lost cargo. Fair with the cousins; quick to blame the Guild.
 
-## Odile Fenn
-Salt factor, commoner if needed; concise, keeps meticulous accounts. Wants reliable long-term customers; fears another unpaid winter. Sold Corin four sacks on 20 silver credit due in 15 days. In the western salt town, not present. Knows Ilsa as a reliable debtor and Garrick as a regular customer.
+## Silas Crane
+Lamplighters' Guild oil factor in Reedhythe; neat, anxious, always cleaning his spectacles. Secret (DM only): diverting the clean beacon oil to the Heron Isle fever house and refilling the casks with fish oil. Not cruel; he thinks the beacon can wait and the sick cannot.
+
+## Juniper Vane
+Apothecary who runs the fever house on Heron Isle; calm, sleepless, ink on her fingers. Keeps careful receipts for everything she is given. The cousins have not met her.
 
 Wren Talley is a player character, not an NPC; her player decides her actions.
 
-## Agnes Shaw
-Wool merchant in Ashbridge market, practical and attentive; sells cloth, felt and blankets. At her stall under an awning as dusk approaches. Met the couple; no offer or sale yet.
+## Effie Cobb
+Reedhythe candle-maker whose shop faces the fish quay. Cheerful, nosy and generous with tea; buys smoked eel and sells beeswax candles and lamp wicks. Met the cousins this morning.
 
-## Tamsin Cole
-Runs the western salt-town cooperage, marked by a painted barrel; usually there during the day. Agnes says she ordered mended blankets for her workers. The couple have not met her.
-
-## Rosa Whitlow
-Brinewick baker whose shop is by the market well. Odile says she was looking for flour this week. The couple have not met her.
-
+## Perrin Lusk
+Gullmere boatwright with a yard full of half-built skiffs. Short of pitch before the ice. The cousins know him by sight.

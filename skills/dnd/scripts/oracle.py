@@ -466,7 +466,7 @@ def day_number(cal: dict):
 
 
 def date_number(text: str, cal: dict):
-    """The day number of an in-world date such as "18 Duskfall 1247", read against the calendar's month names."""
+    """The day number of an in-world date such as "12 Harvestmoon 1247", read against the calendar's month names."""
     months = cal.get("months")
     if months == [] or (months is None and "month" in cal):
         # calendar.py names an unnamed month "Month N".
@@ -1066,7 +1066,7 @@ def main() -> int:
     note = npc_sub.add_parser("note", help="append one line about how a meeting with the party went")
     note.add_argument("--campaign", required=True)
     note.add_argument("--name", required=True, help="the NPC's full name, as in npcs.md")
-    note.add_argument("text", nargs="+", help='e.g. "Sold 4 blankets at 18. Thinks they drive a hard bargain."')
+    note.add_argument("text", nargs="+", help='e.g. "Bought 6 candles at 2 sp. Counts the coins twice."')
 
     sp = sub.add_parser("road", help="what each travel day brings (improvised campaigns)")
     sp.add_argument("--days", type=_positive_int, default=1)

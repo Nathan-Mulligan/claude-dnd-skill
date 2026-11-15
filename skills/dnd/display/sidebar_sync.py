@@ -4,13 +4,13 @@ The display checks state.md every few seconds and shows what these two party-kno
 so the sidebar never depends on the DM remembering a push:
 
   ## Active Quests                one top-level bullet per quest
-  - **Wagon rental** (active): pay the 3 sp rental at the next market.
+  - **Borrowed skiff** (active): return it to Ned before the ice.
   - [resolved] Deliver the parcel.          status: active (default), threat, resolved, failed
-  - Collect the hoops from the forge; ...   no bold name: a short name is cut from the text
+  - Carry the pitch pots to Perrin; ...     no bold name: a short name is cut from the text
 
   ## Faction Standings            one bullet per faction the party knows
-  - **Toll Reeves**: Suspicious — they doubled the toll.
-  - Bakers' Guild: Friendly
+  - **Lamplighters' Guild**: Suspicious — they rationed the beacon oil.
+  - Weir Union: Friendly
 
 A missing section leaves that list as the DM last pushed it. Only these two sections are read;
 both are in lore_sync.PUBLIC_SECTIONS, so DM-only sections never reach the screen.
