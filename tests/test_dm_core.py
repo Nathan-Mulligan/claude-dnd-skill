@@ -244,6 +244,15 @@ def test_dm_core_keeps_quests_and_factions_in_state_md_for_the_sidebar():
     assert "- **Faction**: Standing" in flags
 
 
+def test_a_resume_adds_a_missing_sidebar_section_from_the_load_dm_core_lists():
+    # #165: the portal's Resume follows section 11, not SKILL-commands' load, so a fresh DM never
+    # added a missing Faction Standings and the sidebar's factions stayed as last pushed.
+    core = _read(CORE)
+    opening = core[core.index("## 11."):core.index("## 12.")]
+    assert "## Active Quests" in opening and "## Faction Standings" in opening
+    assert "Faction stances" in opening and "section 16" in opening
+
+
 def test_skill_files_keep_the_sidebar_lists_in_state_md_not_in_pushes():
     # #149: after #147 the display puts a pushed list back to state.md within seconds, so a push is a
     # wasted call. The load, --clear and mid-session instructions must say to keep the sections current.
