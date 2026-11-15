@@ -78,16 +78,12 @@ CODEX_NO_SCREEN = ("--disable", "computer_use",
                    "-c", 'plugins."unified-computer-use@openai-bundled".enabled=false',
                    "-c", 'mcp_servers.cua_repl={command="true",enabled=false}',
                    "-c", 'mcp_servers.node_repl={command="true",enabled=false}')
-# Commands get the network through Codex's proxy, which lets them reach the display on localhost but no
-# Unix socket. Plain `network_access=true` let them connect to any tmux server, which runs outside the
-# sandbox and would run whatever it was sent (#171).
-CODEX_SANDBOX = ("-c", 'default_permissions="dnd_dm"',
-                 "-c", 'permissions.dnd_dm.extends=":workspace"',
-                 "-c", "permissions.dnd_dm.network.enabled=true",
-                 "-c", 'permissions.dnd_dm.network.mode="full"',
-                 "-c", 'permissions.dnd_dm.network.domains={"localhost"="allow","127.0.0.1"="allow","*"="allow"}',
-                 "-c", "permissions.dnd_dm.network.dangerously_allow_all_unix_sockets=false",
-                 "--enable", "network_proxy")
+# Where the DM's sandbox settings could be widened by a file that outranks or merges with the launch flags.
+CODEX_CONFIG = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "config.toml"
+CODEX_MANAGED = (Path("/etc/codex/requirements.toml"), Path("/etc/codex/managed_config.toml"),
+                 Path("/Library/Managed Preferences/com.openai.codex.plist"))
+CLAUDE_SETTINGS = (Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "settings.json",
+                   Path("/Library/Application Support/ClaudeCode/managed-settings.json"))
 # Sidebar-notes helper (display/lore_sync.py); the choice is saved where lore_sync reads it.
 HELPER_CHOICES = {key: label for key, (_, _, label) in lore_sync.HELPERS.items()}
 # Keys are stored in portal-session.json as "provider"; "codex" and "claude" keep their original meaning.
@@ -567,6 +563,72 @@ def claude_sandbox() -> str:
     })
 
 
+def codex_sandbox() -> tuple[str, ...]:
+    """Flags that let a Codex DM's commands reach the display on localhost, and no Unix socket (#171).
+
+    Plain `network_access=true` let them connect to any tmux server, which runs outside the sandbox and
+    runs what it is sent. Here their network goes through Codex's proxy. The profile gets a new name
+    each launch, so no `[permissions.<name>]` table in a config file can merge grants into it, and the
+    proxy feature's own settings, which Codex applies after the profile's, are pinned too.
+    """
+    profile = f"dnd_dm_{secrets.token_hex(4)}"
+    return ("-c", f'default_permissions="{profile}"',
+            "-c", f'permissions.{profile}.extends=":workspace"',
+            "-c", f"permissions.{profile}.network.enabled=true",
+            # "limited" lets only GET through, and send.py POSTs.
+            "-c", f'permissions.{profile}.network.mode="full"',
+            "-c", f'permissions.{profile}.network.domains={{"localhost"="allow","127.0.0.1"="allow","*"="allow"}}',
+            "-c", f"permissions.{profile}.network.dangerously_allow_all_unix_sockets=false",
+            "-c", "features.network_proxy.enabled=true",
+            "-c", 'features.network_proxy.mode="full"',
+            "-c", "features.network_proxy.dangerously_allow_all_unix_sockets=false")
+
+
+def codex_config_error() -> str | None:
+    """Why a Codex DM can't be sandboxed as intended: a socket a config file allows can't be taken
+    back by a launch flag, and managed requirements outrank every flag."""
+    for path in CODEX_MANAGED:
+        if path.exists():
+            return f"Codex has a managed policy on this Mac ({path}), so the portal can't keep a Codex DM off Unix sockets. Choose Claude."
+    if not CODEX_CONFIG.exists():
+        return None
+    try:
+        import tomllib
+        proxy = tomllib.loads(CODEX_CONFIG.read_text(encoding="utf-8")).get("features", {}).get("network_proxy", False)
+    except (ImportError, OSError, ValueError, AttributeError):
+        proxy = None
+    if isinstance(proxy, dict):
+        sockets = proxy.get("unix_sockets") or {}
+        opened = not isinstance(sockets, dict) or "allow" in sockets.values() or bool(proxy.get("allow_unix_sockets"))
+    else:
+        opened = not isinstance(proxy, bool)
+    if opened:
+        return (f"{CODEX_CONFIG} lets sandboxed commands use a Unix socket (or couldn't be read), so a Codex DM "
+                "could reach a tmux server outside its sandbox. Remove features.network_proxy.unix_sockets there, "
+                "or choose Claude.")
+    return None
+
+
+def claude_settings_error() -> str | None:
+    """Why a Claude DM can't be sandboxed as intended: these lists merge with --settings instead of
+    being replaced, and managed settings outrank it."""
+    for path in CLAUDE_SETTINGS:
+        if not path.exists():
+            continue
+        try:
+            sandbox = json.loads(path.read_text(encoding="utf-8")).get("sandbox") or {}
+            network = sandbox.get("network") or {}
+            opened = bool(network.get("allowUnixSockets") or network.get("allowAllUnixSockets")
+                          or sandbox.get("excludedCommands"))
+        except (OSError, ValueError, AttributeError):
+            opened = True
+        if opened:
+            return (f"{path} lets sandboxed commands use a Unix socket or skip the sandbox (or couldn't be read), so "
+                    "a Claude DM could reach a tmux server outside its sandbox. Remove allowUnixSockets, "
+                    "allowAllUnixSockets and excludedCommands there, or choose Codex.")
+    return None
+
+
 def model_args(provider: str, mode: str, name: str, description: str, onboarding: dict | None = None,
                effort: str = DEFAULT_EFFORT) -> list[str]:
     """The DM's command. Codex and Claude DMs start in the campaign folder and may write only it and the
@@ -583,7 +645,7 @@ def model_args(provider: str, mode: str, name: str, description: str, onboarding
             raise ValueError("Invalid reasoning effort")
         # Approval "never": an escalation prompt could be answered by the party's next paste and Enter.
         args += [*choice.args, *CODEX_NO_SCREEN, "-c", f'model_reasoning_effort="{effort}"',
-                 *CODEX_SANDBOX, "-a", "never",
+                 *codex_sandbox(), "-a", "never",
                  "--add-dir", str(RUNTIME), prompt]
     elif choice.launcher == "qwen":
         args += ["-i", prompt]
@@ -660,6 +722,9 @@ def provider_error(provider: str) -> str | None:
     installed = run("bash", "-c", 'command -v "$1" >/dev/null', "dnd-provider-check", launcher)
     if installed.returncode:
         return f"The selected DM ({launcher}) is not installed. Choose another model."
+    error = codex_config_error() if launcher == "codex" else claude_settings_error() if launcher == "claude" else None
+    if error:
+        return error
     if launcher == "claude":
         auth = run("bash", str(REPO / "scripts/launch-campaign-m5.sh"), "--claude-auth")
         if auth.returncode:

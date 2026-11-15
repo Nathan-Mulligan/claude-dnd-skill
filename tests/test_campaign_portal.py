@@ -282,7 +282,7 @@ def test_codex_can_write_selected_campaign_and_runtime(tmp_path, monkeypatch):
     assert args[args.index("-m") + 1] == "gpt-6.1-terra"
     assert args[args.index("--workdir") + 1] == str(tmp_path / "campaigns" / "demo")
     assert args[args.index("--add-dir") + 1] == str(tmp_path / ".runtime")
-    assert 'permissions.dnd_dm.extends=":workspace"' in args
+    assert any(value.startswith("permissions.dnd_dm_") and value.endswith('.extends=":workspace"') for value in args)
 
 
 def test_codex_dm_has_no_screen_control(tmp_path, monkeypatch):

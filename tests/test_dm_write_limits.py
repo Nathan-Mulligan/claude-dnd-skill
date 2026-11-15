@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -108,7 +109,7 @@ def test_codex_dm_runs_in_its_campaign_and_may_write_only_there_and_runtime(data
     args = portal.model_args(provider, "resume", "demo", "")
     assert flag(args, "--workdir") == [str(data_root / "campaigns" / "demo")]
     assert flag(args, "--add-dir") == [str(data_root / ".runtime")]
-    assert 'permissions.dnd_dm.extends=":workspace"' in args and 'default_permissions="dnd_dm"' in args
+    assert any(re.fullmatch(r'permissions\.dnd_dm_\w+\.extends=":workspace"', value) for value in args)
     # The DM can never ask to leave the sandbox: an approval prompt could be answered by party input.
     assert flag(args, "-a") == ["never"]
 
