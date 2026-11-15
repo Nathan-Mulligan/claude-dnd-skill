@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -108,8 +109,7 @@ def test_codex_dm_runs_in_its_campaign_and_may_write_only_there_and_runtime(data
     args = portal.model_args(provider, "resume", "demo", "")
     assert flag(args, "--workdir") == [str(data_root / "campaigns" / "demo")]
     assert flag(args, "--add-dir") == [str(data_root / ".runtime")]
-    assert flag(args, "-s") == ["workspace-write"]
-    assert "sandbox_workspace_write.network_access=true" in args
+    assert any(re.fullmatch(r'permissions\.dnd_dm_\w+\.extends=":workspace"', value) for value in args)
     # The DM can never ask to leave the sandbox: an approval prompt could be answered by party input.
     assert flag(args, "-a") == ["never"]
 
@@ -127,7 +127,7 @@ def test_claude_dm_is_sandboxed_to_its_campaign_and_runtime(data_root, provider)
     sandbox = settings["sandbox"]
     assert sandbox["enabled"] is True and sandbox["failIfUnavailable"] is True
     assert sandbox["allowUnsandboxedCommands"] is False and sandbox["autoAllowBashIfSandboxed"] is True
-    assert sandbox["network"] == {"allowedDomains": ["*"], "allowLocalBinding": True}
+    assert sandbox["network"] == {"allowedDomains": ["*"], "allowLocalBinding": True, "allowAllUnixSockets": False}
     assert not sandbox.get("excludedCommands")
     assert not sandbox.get("filesystem")
     assert settings["permissions"]["blockWritesOutsideWorkingDirectories"] is True

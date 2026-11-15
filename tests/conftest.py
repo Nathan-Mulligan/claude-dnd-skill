@@ -31,3 +31,9 @@ def _no_real_dm_tmux_server(request, monkeypatch):
     portal = getattr(request.module, "portal", None)
     if portal is not None and hasattr(portal, "TMUX_DIR"):
         monkeypatch.setattr(portal, "TMUX_DIR", Path(_campaign_sandbox.name) / "tmux")
+    # The DM checks read the owner's Codex and Claude config; tests see none.
+    if portal is not None and hasattr(portal, "CODEX_CONFIG"):
+        absent = Path(_campaign_sandbox.name) / "no-agent-config"
+        monkeypatch.setattr(portal, "CODEX_CONFIG", absent / "config.toml")
+        monkeypatch.setattr(portal, "CODEX_MANAGED", (absent / "requirements.toml",))
+        monkeypatch.setattr(portal, "CLAUDE_SETTINGS", (absent / "settings.json",))
