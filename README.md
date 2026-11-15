@@ -39,7 +39,9 @@ Safari with a sign-in link that works once, for five minutes, and Safari then
 stays signed in to `http://127.0.0.1:5002/` until the portal stops. Other
 programs on the Mac, the DM included, can't use the portal's controls. If
 Safari loses its sign-in, run `bash scripts/start-campaign-portal.sh --restart`
-for a new link; a running DM keeps running. The Desktop app opens this same page. Its startup lightbox offers a new campaign,
+for a new link; a running DM keeps running. If Safari can't be opened, run
+`bash scripts/start-campaign-portal.sh --foreground` in Terminal: the portal
+prints the link there and runs until you press Ctrl-C. The Desktop app opens this same page. Its startup lightbox offers a new campaign,
 a saved campaign, and a DM model. The story fills the window after selection.
 Use **Campaign & model** to reopen the choices. **Continue campaign** keeps the
 current view, music and unfinished reply.

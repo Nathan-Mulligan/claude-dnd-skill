@@ -419,8 +419,11 @@ def test_portal_reply_can_never_be_a_cli_command(data_root, monkeypatch, text):
     app = portal.create_app()
     client = app.test_client()
     base = "http://127.0.0.1:5002"
+    import re
     import urllib.parse
-    assert client.get(urllib.parse.urlsplit(app.config["NEW_LOGIN_LINK"]()).path, base_url=base).status_code == 303
+    link = urllib.parse.urlsplit(app.config["NEW_LOGIN_LINK"]())
+    page = client.get(link.path, base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    client.environ_base["HTTP_X_DND_PORTAL_SESSION"] = json.loads(re.search(r'setItem\("dnd-portal-session", ("[^"]+")\)', page).group(1))
     response = client.post("/api/send", base_url=base, json={"text": text}, headers={"Origin": base})
     assert response.status_code == 400
 

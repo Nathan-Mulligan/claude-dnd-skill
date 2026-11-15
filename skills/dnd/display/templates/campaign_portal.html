@@ -118,8 +118,11 @@
   <script>
     const $ = id => document.getElementById(id);
     const dialog = $('campaign-dialog');
+    const sessionKey = () => { try { return localStorage.getItem({{ session_storage|tojson }}) || ''; } catch { return ''; } };
     const api = async (path, method='GET', body) => {
-      const response = await fetch(path, {method, headers:{'Content-Type':'application/json'}, body:body ? JSON.stringify(body) : undefined});
+      const headers = {'Content-Type':'application/json'};
+      headers[{{ session_header|tojson }}] = sessionKey();
+      const response = await fetch(path, {method, headers, body:body ? JSON.stringify(body) : undefined});
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || data.error || 'Request failed');
       return data;

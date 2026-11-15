@@ -52,7 +52,8 @@ def setup(tmp_path, monkeypatch):
     app.testing = True
     client = app.test_client()
     link = urllib.parse.urlsplit(app.config["NEW_LOGIN_LINK"]())
-    assert client.get(link.path, base_url="http://127.0.0.1:5002").status_code == 303
+    page = client.get(link.path, base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    client.environ_base["HTTP_X_DND_PORTAL_SESSION"] = json.loads(re.search(r'setItem\("dnd-portal-session", ("[^"]+")\)', page).group(1))
 
     def api(path, payload=None, method="post"):
         return getattr(client, method)(path, base_url="http://127.0.0.1:5002", json=payload,

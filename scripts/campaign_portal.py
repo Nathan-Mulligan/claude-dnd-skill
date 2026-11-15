@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from flask import Flask, jsonify, redirect, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.serving import make_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -42,10 +42,13 @@ META_FILE = RUNTIME / "portal-session.json"
 SESSION = os.environ.get("DND_PORTAL_TMUX_SESSION", "dnd-campaign-portal")
 PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-# Only Safari, signed in through a link the portal opens itself, may use the /api/ routes (#139).
-SESSION_COOKIE = "dnd_portal_session"
-SESSION_MAX_AGE = 30 * 24 * 3600
+# Only Safari, signed in through a link the portal opens itself, may use the /api/ routes (#139). The key
+# lives in the portal page's own storage and travels in a header: a cookie would also go to every other
+# port on 127.0.0.1, including a listener the DM starts and points the display page at.
+SESSION_HEADER = "X-DND-Portal-Session"
+SESSION_STORAGE = "dnd-portal-session"
 LOGIN_TTL = 300
+NO_LINK = "No sign-in link was handed out"
 NEW_LINK_HINT = ("Restart the portal to get a new sign-in link: "
                  f"bash {Path(__file__).resolve().parent}/start-campaign-portal.sh --restart")
 NOT_SIGNED_IN = "This browser isn't signed in to the portal. " + NEW_LINK_HINT
@@ -981,21 +984,25 @@ def perform_handoff(provider: str, mode: str, name: str, description: str,
                 path.unlink(missing_ok=True)
 
 
-def hand_out_login(link: str) -> None:
+def hand_out_login(link: str) -> bool:
     """Give the sign-in link to the owner only: Safari, and this terminal if there is one.
 
     Never print it to portal.log, which sits in the runtime folder the DM can read.
     """
-    if sys.stdout.isatty():
+    terminal = sys.stdout.isatty()
+    if terminal:
         print(f"Sign-in link (works once, for {LOGIN_TTL // 60} minutes): {link}", flush=True)
-    if os.environ.get("DND_PORTAL_OPEN_BROWSER", "1") != "1" or sys.platform != "darwin":
-        print("The portal did not open Safari. Sign in with the link the portal prints in a terminal.", flush=True)
-        return
-    try:
-        opened = subprocess.run(["open", "-a", "Safari", link], capture_output=True, timeout=15).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        opened = False
-    print("Opened Safari to sign in." if opened else "Could not open Safari to sign in.", flush=True)
+    opened = False
+    if os.environ.get("DND_PORTAL_OPEN_BROWSER", "1") == "1" and sys.platform == "darwin":
+        try:
+            opened = subprocess.run(["open", "-a", "Safari", link], capture_output=True, timeout=15).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        print("Opened Safari to sign in." if opened else "Could not open Safari to sign in.", flush=True)
+    if not (opened or terminal):
+        print(f"{NO_LINK}: Safari did not open. To see the link, start the portal in a Terminal window with "
+              f"bash {Path(__file__).resolve().parent}/start-campaign-portal.sh --foreground", flush=True)
+    return opened or terminal
 
 
 def create_app() -> Flask:
@@ -1021,7 +1028,7 @@ def create_app() -> Flask:
     app.config["NEW_LOGIN_LINK"] = new_login_link
 
     def signed_in() -> bool:
-        return hmac.compare_digest(request.cookies.get(SESSION_COOKIE, "").encode(), session_key.encode())
+        return hmac.compare_digest(request.headers.get(SESSION_HEADER, "").encode(), session_key.encode())
 
     @app.errorhandler(413)
     def too_large(error):
@@ -1052,15 +1059,17 @@ def create_app() -> Flask:
             response.headers["Cache-Control"] = "no-store"
             return response
         last_browser_poll = time.monotonic()
-        response = redirect("/", code=303)
-        response.set_cookie(SESSION_COOKIE, session_key, max_age=SESSION_MAX_AGE, path="/", httponly=True,
-                            samesite="Strict")
-        response.headers["Cache-Control"] = "no-store"
+        page = ("<!doctype html><meta charset=utf-8><title>Signing in</title><script>"
+                f"localStorage.setItem({json.dumps(SESSION_STORAGE)}, {json.dumps(session_key)});"
+                "location.replace('/');</script>")
+        response = app.make_response(page)
+        response.headers.update({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
         return response
 
     @app.get("/")
     def home():
-        return render_template("campaign_portal.html", dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS,
+        return render_template("campaign_portal.html", session_header=SESSION_HEADER, session_storage=SESSION_STORAGE,
+                               dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS,
                                efforts=CODEX_EFFORTS, default_effort=DEFAULT_EFFORT, helpers=HELPER_CHOICES)
 
     @app.get("/icon.png")

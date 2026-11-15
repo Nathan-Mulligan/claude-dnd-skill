@@ -18,7 +18,7 @@ portal_ready() {
 }
 
 if portal_ready; then
-  if [[ "${1:-}" != --restart ]]; then
+  if [[ "${1:-}" != --restart && "${1:-}" != --foreground ]]; then
     printf 'Campaign portal ready: http://127.0.0.1:%s/\n' "$port"
     exit 0
   fi
@@ -44,6 +44,8 @@ if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
 fi
 
 mkdir -p "$data_root/.runtime"
+foreground=0
+[[ "${1:-}" == --foreground ]] && foreground=1
 python_bin="$(command -v python3)"
 # First virtualenv found wins; the ones inside a data root are the old locations.
 for venv in "${DND_VENV:-}" "$HOME/.local/share/dnd/venv" "$data_root/.venv" "$HOME/.claude/dnd/.venv"; do
@@ -51,12 +53,24 @@ for venv in "${DND_VENV:-}" "$HOME/.local/share/dnd/venv" "$data_root/.venv" "$H
 done
 "$python_bin" -c 'import flask' >/dev/null 2>&1 || { echo 'Flask is needed for the campaign portal.' >&2; exit 1; }
 
+if (( foreground )); then
+  # Here the portal prints its sign-in link to this terminal; Ctrl-C stops it.
+  exec "$python_bin" -u "$repo_root/scripts/campaign_portal.py"
+fi
 # The DM can write the runtime dir: replace any file or link there, and never open an existing one.
 log="$data_root/.runtime/portal.log"
 rm -f "$log"
 (set -C; exec nohup "$python_bin" -u "$repo_root/scripts/campaign_portal.py" > "$log" 2>&1 < /dev/null) &
 for attempt in {1..20}; do
-  portal_ready && { printf 'Campaign portal ready: http://127.0.0.1:%s/\n' "$port"; exit 0; }
+  if portal_ready; then
+    sleep 1
+    if grep -q 'No sign-in link was handed out' "$log"; then
+      grep 'No sign-in link was handed out' "$log" >&2
+      exit 1
+    fi
+    printf 'Campaign portal ready: http://127.0.0.1:%s/\n' "$port"
+    exit 0
+  fi
   sleep 0.5
 done
 echo "Campaign portal did not start. Check $data_root/.runtime/portal.log" >&2

@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+import re
 import subprocess
 import urllib.parse
 from pathlib import Path
@@ -50,8 +51,10 @@ def client(tmp_path, monkeypatch):
 
 
 def sign_in(app, test_client):
+    """What the sign-in page does in Safari: keep the key and send it with every API call."""
     link = urllib.parse.urlsplit(app.config["NEW_LOGIN_LINK"]())
-    assert test_client.get(link.path, base_url="http://127.0.0.1:5002").status_code == 303
+    page = test_client.get(link.path, base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    test_client.environ_base["HTTP_X_DND_PORTAL_SESSION"] = json.loads(re.search(r'setItem\("dnd-portal-session", ("[^"]+")\)', page).group(1))
 
 
 def api(client, path, *, method="get", data=None, origin="http://127.0.0.1:5002", token=True):

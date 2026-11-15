@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -48,9 +49,17 @@ def link_path(app):
 
 
 def sign_in(app, client):
+    """Redeem a link as Safari would; returns the key the page keeps in its storage."""
     response = client.get(link_path(app), base_url=BASE)
-    assert response.status_code == 303 and response.headers["Location"].endswith("/")
-    return response
+    assert response.status_code == 200
+    match = re.search(r'localStorage.setItem\("dnd-portal-session", ("[^"]+")\);location.replace\(\'/\'\)',
+                      response.get_data(as_text=True))
+    return json.loads(match.group(1)), response
+
+
+def state(client, key=None):
+    headers = {portal.SESSION_HEADER: key} if key is not None else {}
+    return client.get("/api/state", base_url=BASE, headers=headers)
 
 
 OWNER_ROUTES = [("get", "/api/state"), ("post", "/api/helper"), ("post", "/api/start"),
@@ -59,40 +68,39 @@ OWNER_ROUTES = [("get", "/api/state"), ("post", "/api/helper"), ("post", "/api/s
 
 def test_the_page_holds_no_key_to_the_api(app):
     client = app.test_client()
+    key, _ = sign_in(app, client)
     page = client.get("/", base_url=BASE).get_data(as_text=True)
-    assert "X-DND-Portal-Token" not in page and "const token" not in page
-    cookie = sign_in(app, client).headers["Set-Cookie"].split(";")[0].split("=", 1)[1]
-    assert cookie not in client.get("/", base_url=BASE).get_data(as_text=True)
+    assert key not in page and "X-DND-Portal-Token" not in page
+    assert '"X-DND-Portal-Session"' in page and "localStorage.getItem" in page
 
 
 @pytest.mark.parametrize(("method", "route"), OWNER_ROUTES)
-def test_every_api_route_refuses_a_caller_that_has_not_signed_in(app, monkeypatch, method, route):
+def test_every_api_route_refuses_a_caller_without_the_key(app, monkeypatch, method, route):
     monkeypatch.setattr(portal, "run", lambda *a, **k: pytest.fail("must not reach tmux"))
     client = app.test_client()
-    response = getattr(client, method)(route, base_url=BASE, json={"text": "hi", "provider": "codex"},
-                                       headers={"Origin": BASE, "X-DND-Portal-Token": "anything"})
-    assert response.status_code == 403
-    assert response.json["message"] == portal.NOT_SIGNED_IN
+    for headers in ({}, {portal.SESSION_HEADER: "guess"}, {"X-DND-Portal-Token": "anything"}):
+        response = getattr(client, method)(route, base_url=BASE, json={"text": "hi", "provider": "codex"},
+                                           headers={"Origin": BASE, **headers})
+        assert response.status_code == 403
+        assert response.json["message"] == portal.NOT_SIGNED_IN
     assert "start-campaign-portal.sh --restart" in portal.NOT_SIGNED_IN
 
 
-def test_the_sign_in_link_sets_a_strict_http_only_cookie(app):
+def test_signing_in_sets_no_cookie_so_no_other_port_ever_receives_the_key(app):
     client = app.test_client()
-    header = sign_in(app, client).headers["Set-Cookie"]
-    attributes = {part.strip().split("=")[0].lower() for part in header.split(";")}
-    assert header.startswith(portal.SESSION_COOKIE + "=")
-    assert {"httponly", "path", "max-age"} <= attributes and "SameSite=Strict" in header
-    assert client.get("/api/state", base_url=BASE).status_code == 200
+    key, response = sign_in(app, client)
+    assert "Set-Cookie" not in response.headers
+    assert response.headers["Cache-Control"] == "no-store" and response.headers["Referrer-Policy"] == "no-referrer"
+    assert state(client).status_code == 403
+    assert state(client, key).status_code == 200
 
 
 def test_the_sign_in_link_works_once(app):
     path = link_path(app)
-    assert app.test_client().get(path, base_url=BASE).status_code == 303
-    second = app.test_client()
-    response = second.get(path, base_url=BASE)
-    assert response.status_code == 403 and "Set-Cookie" not in response.headers
+    assert app.test_client().get(path, base_url=BASE).status_code == 200
+    response = app.test_client().get(path, base_url=BASE)
+    assert response.status_code == 403 and "dnd-portal-session" not in response.get_data(as_text=True)
     assert "--restart" in response.get_data(as_text=True)
-    assert second.get("/api/state", base_url=BASE).status_code == 403
 
 
 def test_the_sign_in_link_runs_out(app, monkeypatch):
@@ -107,22 +115,22 @@ def test_a_new_link_cancels_the_old_one(app):
     old = link_path(app)
     new = link_path(app)
     assert app.test_client().get(old, base_url=BASE).status_code == 403
-    assert app.test_client().get(new, base_url=BASE).status_code == 303
+    assert app.test_client().get(new, base_url=BASE).status_code == 200
 
 
 def test_a_wrong_guess_neither_signs_in_nor_spoils_the_real_link(app):
     path = link_path(app)
     for guess in ("/login/wrong", "/login/" + "x" * 43, "/login/%C3%A9"):
         assert app.test_client().get(guess, base_url=BASE).status_code == 403
-    assert app.test_client().get(path, base_url=BASE).status_code == 303
+    assert app.test_client().get(path, base_url=BASE).status_code == 200
 
 
 def test_a_signed_in_browser_still_needs_the_portal_origin(app, monkeypatch):
     monkeypatch.setattr(portal, "run", lambda *a, **k: pytest.fail("must not reach tmux"))
     client = app.test_client()
-    sign_in(app, client)
+    key, _ = sign_in(app, client)
     for origin in ("http://127.0.0.1:5001", "http://127.0.0.1:9999", None):
-        headers = {"Origin": origin} if origin else {}
+        headers = {portal.SESSION_HEADER: key, **({"Origin": origin} if origin else {})}
         response = client.post("/api/helper", base_url=BASE, json={"helper": "off"}, headers=headers)
         assert response.status_code == 403
 
@@ -146,20 +154,54 @@ def test_the_link_goes_to_safari_and_never_to_the_log(monkeypatch, capsys):
     monkeypatch.delenv("DND_PORTAL_OPEN_BROWSER", raising=False)
     monkeypatch.setattr(portal.subprocess, "run",
                         lambda args, **kwargs: calls.append(args) or subprocess.CompletedProcess(args, 0))
-    portal.hand_out_login("http://127.0.0.1:5002/login/secret-code")
+    assert portal.hand_out_login("http://127.0.0.1:5002/login/secret-code") is True
     assert calls == [["open", "-a", "Safari", "http://127.0.0.1:5002/login/secret-code"]]
-    assert "secret-code" not in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "secret-code" not in out and portal.NO_LINK not in out
 
 
 def test_the_link_is_printed_only_to_a_terminal(monkeypatch, capsys):
     monkeypatch.setenv("DND_PORTAL_OPEN_BROWSER", "0")
     monkeypatch.setattr(portal.subprocess, "run", lambda *a, **k: pytest.fail("must not open Safari"))
     monkeypatch.setattr(portal.sys.stdout, "isatty", lambda: True)
-    portal.hand_out_login("http://127.0.0.1:5002/login/secret-code")
+    assert portal.hand_out_login("http://127.0.0.1:5002/login/secret-code") is True
     assert "secret-code" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("safari", ["off", "fails"])
+def test_a_link_nobody_received_is_reported(monkeypatch, capsys, safari):
+    monkeypatch.setattr(portal.sys, "platform", "darwin")
     monkeypatch.setattr(portal.sys.stdout, "isatty", lambda: False)
-    portal.hand_out_login("http://127.0.0.1:5002/login/secret-code")
-    assert "secret-code" not in capsys.readouterr().out
+    monkeypatch.setenv("DND_PORTAL_OPEN_BROWSER", "0" if safari == "off" else "1")
+    monkeypatch.setattr(portal.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 1))
+    assert portal.hand_out_login("http://127.0.0.1:5002/login/secret-code") is False
+    out = capsys.readouterr().out
+    assert portal.NO_LINK in out and "--foreground" in out and "secret-code" not in out
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the launcher is a bash script")
+def test_the_launcher_fails_when_no_sign_in_link_was_handed_out(tmp_path):
+    import socket
+    data = tmp_path / "data"
+    data.mkdir()
+    state = tmp_path / "curl-state"
+    health = json.dumps({"service": "dnd-campaign-portal", "ready": True, "data_root": str(data)})
+    bin_dir = tmp_path / "bin"
+    venv = tmp_path / "venv" / "bin"
+    for folder, name, body in (
+            (bin_dir, "curl", f'[ -e "{state}" ] && {{ printf %s \'{health}\'; exit 0; }}\ntouch "{state}"; exit 1\n'),
+            (venv, "python3", f'[ "$1" = -c ] && exit 0\necho "{portal.NO_LINK}: Safari did not open."\n')):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / name).write_text("#!/bin/sh\n" + body, encoding="utf-8")
+        (folder / name).chmod(0o755)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    env = dict(os.environ, DND_CAMPAIGN_ROOT=str(data), DND_VENV=str(venv.parent), DND_PORTAL_BOOT_SERVICES="0",
+               DND_PORTAL_PORT=str(port), PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    result = subprocess.run(["bash", str(REPO / "scripts/start-campaign-portal.sh")], env=env,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 1 and portal.NO_LINK in result.stderr
 
 
 # ── Portal: it records the chosen campaign before the display selects it ──────
