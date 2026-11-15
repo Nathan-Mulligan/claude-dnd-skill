@@ -77,6 +77,7 @@ def request_write(kind: str, payload: dict) -> None:
     if len(data.encode("utf-8")) > WRITE_MAX_BYTES:
         raise ValueError("write request is too large")
     name = f"{time.time_ns()}-{secrets.token_hex(4)}.json"
+    os.makedirs(_writes_folder(), exist_ok=True)  # write_file makes it itself only where it has dir_fd
     write_file(os.path.join(_writes_folder(), name), data, root=rt(""), mode=0o600)
 
 

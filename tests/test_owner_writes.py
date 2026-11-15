@@ -188,14 +188,14 @@ def test_roster_by_hand_copies_itself_and_a_sandboxed_dm_asks_the_display(writes
     script = DISPLAY / "owner_writes.py"
     env = dict(os.environ, DND_CAMPAIGN_ROOT=str(root), DND_RUNTIME_DIR=str(root / ".runtime"))
     done = subprocess.run([sys.executable, str(script), "roster", "--campaign", "Fenmoor"], env=env,
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8")
     assert done.returncode == 0, done.stderr
     assert (root / "characters/Corin Ashby.md").exists()
     (root / "characters/Corin Ashby.md").unlink()
     (root / "characters").chmod(0o500)
     try:
         asked = subprocess.run([sys.executable, str(script), "roster", "--campaign", "Fenmoor"], env=env,
-                               capture_output=True, text=True)
+                               capture_output=True, text=True, encoding="utf-8")
     finally:
         (root / "characters").chmod(0o700)
     assert asked.returncode == 0, asked.stderr
@@ -338,7 +338,7 @@ def test_a_rename_backs_up_inside_its_campaign(root):
         for new in ("Mira Holt", "Mira Dunn"):
             old = "Mira Vell" if new == "Mira Holt" else "Mira Holt"
             done = subprocess.run([sys.executable, str(SCRIPTS / "npc_rename.py"), "--campaign", "Fenmoor",
-                                   "--old", old, "--new", new, "--yes"], env=env, capture_output=True, text=True)
+                                   "--old", old, "--new", new, "--yes"], env=env, capture_output=True, text=True, encoding="utf-8")
             assert done.returncode == 0, done.stderr
     finally:
         (root / "campaigns").chmod(0o700)

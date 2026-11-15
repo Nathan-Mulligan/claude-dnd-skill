@@ -76,6 +76,7 @@ def mirror_roster(campaign, active, replaces=None) -> str:
     """
     copied = sheets(campaign_folder(campaign, active))
     roster = str(characters_dir())
+    os.makedirs(roster, exist_ok=True)  # write_file makes it itself only where it has dir_fd
     for name, text in copied:
         write_file(os.path.join(roster, name), text, root=str(_root()))
     note = ""
