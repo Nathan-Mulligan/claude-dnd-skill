@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import pathlib
 import re
 import sys
@@ -90,15 +91,26 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
+    """Raises PermissionError when this process may not write the registry (a portal DM's sandbox)."""
     data["updated"] = _today()
     p = _registry_path()
+    payload = json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8")  # fails before the file is touched
+    p.parent.mkdir(parents=True, exist_ok=True)
+    temporary = p.with_name(f"{p.name}.{os.getpid()}.tmp")
     try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(data, indent=2, ensure_ascii=False),
-                     encoding="utf-8")
-    except PermissionError:
-        # A portal DM may write only its own campaign; `rebuild` later picks the name up from its files.
-        sys.stderr.write(f"name_registry: {p} is read-only here; not recorded\n")
+        temporary.write_bytes(payload)
+        os.replace(temporary, p)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _ask_display(payload: dict) -> None:
+    """A portal DM may write only its own campaign, so the display records the name instead (#138)."""
+    display = pathlib.Path(__file__).resolve().parents[1] / "display"
+    if str(display) not in sys.path:
+        sys.path.insert(0, str(display))
+    import owner_writes
+    owner_writes.request("names", payload)
 
 
 # ── Scanners ──────────────────────────────────────────────────────────────
@@ -234,18 +246,26 @@ def rebuild() -> dict:
             new_entries[s]["retired_from"] = old_e["retired_from"]
 
     data["entries"] = new_entries
-    _save(data)
+    try:
+        _save(data)
+    except PermissionError:
+        sys.stderr.write(f"name_registry: {_registry_path()} is read-only here; not rebuilt\n")
     return {"campaigns": campaign_count, "entries": len(new_entries)}
 
 
-def add(name: str, ntype: str, campaign: str, session: int) -> dict:
+def add(name: str, ntype: str, campaign: str, session: int, ask_display: bool = True) -> dict:
     data = _load()
     entry = _ensure_entry(data["entries"], name, ntype, campaign, session)
-    _save(data)
+    try:
+        _save(data)
+    except PermissionError:
+        if not ask_display:
+            raise
+        _ask_display({"op": "add", "name": name, "type": ntype, "campaign": campaign, "session": session})
     return entry
 
 
-def retire(name: str, campaign: str, replaced_by: str | None = None) -> dict | None:
+def retire(name: str, campaign: str, replaced_by: str | None = None, ask_display: bool = True) -> dict | None:
     data = _load()
     s = slug(name)
     if s not in data["entries"]:
@@ -257,7 +277,12 @@ def retire(name: str, campaign: str, replaced_by: str | None = None) -> dict | N
         "replaced_by": slug(replaced_by) if replaced_by else None,
         "date": _today(),
     })
-    _save(data)
+    try:
+        _save(data)
+    except PermissionError:
+        if not ask_display:
+            raise
+        _ask_display({"op": "retire", "name": name, "campaign": campaign, "replaced_by": replaced_by})
     return e
 
 
@@ -492,7 +517,10 @@ def rebuild_with_prose() -> dict:
             prose_added += 1
 
     data["entries"] = entries
-    _save(data)
+    try:
+        _save(data)
+    except PermissionError:
+        sys.stderr.write(f"name_registry: {_registry_path()} is read-only here; not rebuilt\n")
     return {"campaigns": canonical_result["campaigns"],
             "entries": len(entries),
             "prose_added": prose_added}

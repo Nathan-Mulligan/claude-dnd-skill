@@ -195,13 +195,16 @@ def _load_srd_names() -> set[str]:
 
 def _extract_names_from_character(path: str) -> list[tuple[str, str]]:
     """Parse a character .md file and return (name, category) pairs to check."""
-    entries: list[tuple[str, str]] = []
     if not os.path.exists(path):
         print(f"  [skip] not found: {path}", file=sys.stderr)
-        return entries
-
+        return []
     with open(path, encoding="utf-8") as f:
-        content = f.read()
+        return _extract_names(f.read())
+
+
+def _extract_names(content: str) -> list[tuple[str, str]]:
+    """(name, category) pairs to check in a character sheet's text."""
+    entries: list[tuple[str, str]] = []
 
     # Spells section — lines like "- **Spell Name**" or "- Spell Name"
     spell_section = re.search(r"## (?:Known Cantrips|Prepared Spells|Spells?).*?\n(.*?)(?=\n##|\Z)", content, re.S | re.I)
@@ -298,6 +301,69 @@ def _build_entry(name: str, category: str) -> dict | None:
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+def _unique(entries) -> "list[tuple[str, str]]":
+    seen: set[str] = set()
+    unique: list[tuple[str, str]] = []
+    for name, cat in entries:
+        if _norm(name) not in seen:
+            seen.add(_norm(name))
+            unique.append((name, cat))
+    return unique
+
+
+def _fetch_into(supp: dict, entries) -> int:
+    added = 0
+    for name, cat in entries:
+        entry = _build_entry(name, cat)
+        if entry:
+            supp.setdefault("spells" if cat == "spell" else "features", []).append(entry)
+            added += 1
+        time.sleep(FETCH_DELAY)
+    return added
+
+
+def fetch_missing(ruleset: str, sheet_texts) -> int:
+    """Fetch the sheets' non-SRD spells and features the supplemental file lacks, save, and return how many.
+
+    The display calls this for a sandboxed DM (owner_writes.py) with sheet text it has already read safely.
+    """
+    _set_ruleset_paths(ruleset)
+    supp = _load_supplemental(ruleset)
+    srd_names = _load_srd_names()
+    wanted = _unique((name, cat) for text in sheet_texts for name, cat in _extract_names(text)
+                     if _norm(name) not in srd_names and not _in_supplemental(supp, name))
+    added = _fetch_into(supp, wanted)
+    if added:
+        _save_supplemental(supp)
+    return added
+
+
+def _campaign_of(args) -> "str | None":
+    """The campaign whose sheets these arguments name, if they are inside the campaigns folder."""
+    if args.campaign:
+        return args.campaign
+    if args.character:
+        sheet = os.path.realpath(os.path.expanduser(args.character))
+        folder = os.path.dirname(os.path.dirname(sheet))
+        if os.path.dirname(folder) == os.path.realpath(CAMPAIGNS_DIR):
+            return os.path.basename(folder)
+    return None
+
+
+def _save_or_ask(supp: dict, args) -> None:
+    """Save, or when a portal DM's sandbox refuses it, ask the display to fetch and save (#138)."""
+    try:
+        _save_supplemental(supp)
+    except PermissionError:
+        campaign = _campaign_of(args)
+        if campaign is None:
+            print("This DM can't write the supplemental file; nothing was saved.", file=sys.stderr)
+            return
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "display"))
+        import owner_writes
+        owner_writes.request("supplemental", {"campaign": campaign, "ruleset": args.ruleset})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build/update dnd5e_supplemental.json")
     parser.add_argument("--campaign", metavar="NAME",
@@ -371,21 +437,14 @@ def main() -> None:
                     if _norm(name) not in srd_names and not _in_supplemental(supp, name):
                         to_fetch.append((name, cat))
 
-    # Deduplicate
-    seen: set[str] = set()
-    unique_fetch: list[tuple[str, str]] = []
-    for name, cat in to_fetch:
-        key = _norm(name)
-        if key not in seen:
-            seen.add(key)
-            unique_fetch.append((name, cat))
+    unique_fetch = _unique(to_fetch)
 
     if not unique_fetch:
         # 2024 stub: if the supplemental file doesn't exist yet, write a
         # documented empty stub so downstream loaders don't trip on a missing
         # path and the DM can see "yes, this was intentionally produced".
         if args.ruleset == "2024" and not os.path.exists(SUPPLEMENTAL_FILE):
-            _save_supplemental(supp)
+            _save_or_ask(supp, args)
             print("Wrote 2024 stub — no upstream fetches available.")
             return
         print("Nothing to fetch — supplemental is up to date.")
@@ -400,17 +459,10 @@ def main() -> None:
         return
 
     print()
-    added = 0
-    for name, cat in unique_fetch:
-        entry = _build_entry(name, cat)
-        if entry:
-            cat_key = "spells" if cat == "spell" else "features"
-            supp.setdefault(cat_key, []).append(entry)
-            added += 1
-        time.sleep(FETCH_DELAY)
+    added = _fetch_into(supp, unique_fetch)
 
     if added:
-        _save_supplemental(supp)
+        _save_or_ask(supp, args)
         print(f"\nAdded {added} entries to supplemental.")
     else:
         print("\nNo new entries added.")

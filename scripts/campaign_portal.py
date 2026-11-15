@@ -399,8 +399,9 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
         "chunks of at most 200 lines. Read other skill files only by the section you need. Run the game's "
         f"scripts from the checkout (cd {REPO} && python3 skills/dnd/...). You may write only this campaign's "
         f"folder, {DATA_ROOT / 'campaigns' / name}, and the display's runtime folder, {RUNTIME}; everything "
-        "else, the checkout included, is read-only to you. Skip a step that writes anywhere else (the global "
-        "character roster, name_registry.py add, build_supplemental.py) rather than working around it. "
+        "else, the checkout included, is read-only to you. The roster mirror (display/owner_writes.py roster), "
+        "name_registry.py add and retire, and build_supplemental.py ask the display to make their writes for "
+        "you. Skip any other step that writes elsewhere rather than working around it. "
     )
     if mode == "new" and onboarding is not None:
         return (
