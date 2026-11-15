@@ -118,7 +118,7 @@ def delivery(tmp_path, monkeypatch):
 
     def fake_run(*args, **kwargs):
         if args[:2] == ("tmux", "load-buffer"):
-            sent.append(Path(args[-1]).read_text(encoding="utf-8"))
+            sent.append(kwargs["stdin"])
         return subprocess.CompletedProcess(args, result["code"], "", "")
 
     monkeypatch.setattr(portal, "run", fake_run)

@@ -17,16 +17,16 @@ portal = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(portal)
 
 
-def record(args):
-    """The tmux call, with the text of any pasted file inline (the file is deleted after the paste)."""
+def record(args, kwargs):
+    """The tmux call, with any text pasted through stdin inline."""
     if args[:2] == ("tmux", "load-buffer"):
-        return args + (Path(args[-1]).read_text(encoding="utf-8"),)
+        return args + (kwargs["stdin"],)
     return args
 
 
 def tmux_recorder(calls, fail=()):
     def fake_run(*args, **kwargs):
-        calls.append(record(args))
+        calls.append(record(args, kwargs))
         return subprocess.CompletedProcess(args, 1 if args[1] in fail else 0, "", "")
     return fake_run
 
@@ -242,7 +242,7 @@ def test_long_input_reaches_the_dm_as_one_bracketed_paste(monkeypatch):
     assert paste[paste.index("-b") + 1] == buffer and paste[paste.index("-t") + 1] == "dnd-campaign-portal:0.0"
     assert enter[1:] == ("send-keys", "-t", "dnd-campaign-portal:0.0", "Enter")
     assert second[second.index("-b") + 1] != buffer
-    assert not any(Path(args[-2]).exists() for args in calls if args[1] == "load-buffer")
+    assert all(args[-2] == "-" for args in calls if args[1] == "load-buffer")
     assert not any("-l" in args for args in calls)
 
 
@@ -256,16 +256,15 @@ def test_paste_into_a_closed_pane_cleans_up_and_keeps_the_reply(client, monkeypa
     assert portal.deliver_party_input() is False
     load = calls[0]
     assert ("tmux", "delete-buffer", "-b", load[load.index("-b") + 1]) in calls
-    assert not Path(load[-2]).exists()
     assert not any(args[-1] == "Enter" for args in calls)
     assert "Keep me" in (portal.RUNTIME / ".portal-input-claim").read_text(encoding="utf-8")
 
 
-def test_paste_timeout_still_removes_the_buffer_and_file(monkeypatch):
+def test_paste_timeout_still_removes_the_buffer(monkeypatch):
     calls = []
 
     def fake_run(*args, **kwargs):
-        calls.append(record(args))
+        calls.append(record(args, kwargs))
         if args[1] == "paste-buffer":
             raise subprocess.TimeoutExpired(args, 15)
         return subprocess.CompletedProcess(args, 0, "", "")
@@ -275,7 +274,6 @@ def test_paste_timeout_still_removes_the_buffer_and_file(monkeypatch):
         portal.submit_to_dm("hello")
     load = calls[0]
     assert ("tmux", "delete-buffer", "-b", load[load.index("-b") + 1]) in calls
-    assert not Path(load[-2]).exists()
 
 def test_codex_can_write_selected_campaign_and_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
@@ -343,7 +341,7 @@ def play_turn(monkeypatch, mode="resume", campaign="Fenmoor"):
     def fake_run(*args, **kwargs):
         if any("\x00" in arg for arg in args):
             raise ValueError("embedded null byte")  # as subprocess does
-        calls.append(record(args))
+        calls.append(record(args, kwargs))
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(portal, "running", lambda: True)
@@ -489,7 +487,7 @@ def test_reply_arriving_during_same_campaign_startup_remains_deliverable(client,
     calls = []
 
     def startup(*args, **kwargs):
-        calls.append(record(args))
+        calls.append(record(args, kwargs))
         if "--start" in args:
             (portal.RUNTIME / ".input_queue").write_text("[Everybody]: Arrived while starting", encoding="utf-8")
         return subprocess.CompletedProcess(args, 0, "", "")
@@ -734,6 +732,7 @@ def test_no_tmux_means_no_dm_running(monkeypatch):
     def missing(*args, **kwargs):
         raise FileNotFoundError("tmux")
     monkeypatch.setattr(portal.subprocess, "run", missing)
+    monkeypatch.setattr(portal, "tmux_server", lambda: ("-S", "unused"))
     assert portal.running() is False
 
 

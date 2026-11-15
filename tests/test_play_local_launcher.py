@@ -85,3 +85,18 @@ def test_codex_named_campaign_uses_shared_root_and_forwards_model(tmp_path):
     assert result.stdout.splitlines() == [
         f"ROOT={tmp_path}", "ACTIVE=trial", "--model", "gpt-6.1-terra",
     ]
+
+
+def test_the_dm_never_inherits_the_tmux_server_it_runs_on(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "codex"
+    stub.write_text("#!/bin/sh\nprintf 'TMUX=%s\\nTMUX_PANE=%s\\n' \"${TMUX-unset}\" \"${TMUX_PANE-unset}\"\n",
+                    encoding="utf-8")
+    stub.chmod(0o755)
+    env = dict(os.environ, DND_PORTAL_LAUNCH="1", TMUX="/private/tmp/tmux-501/default,123,0", TMUX_PANE="%0",
+               PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    result = subprocess.run(["bash", "scripts/play-local.sh", "codex"], cwd=REPO, env=env,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["TMUX=unset", "TMUX_PANE=unset"]
