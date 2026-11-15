@@ -92,8 +92,19 @@ if [[ -f "$PID_FILE" ]]; then
   kill -9 "$(cat "$PID_FILE")" 2>/dev/null || true
   rm -f "$PID_FILE"
 fi
-pkill -9 -f "dnd-display-app\.py" 2>/dev/null || true
-sleep 0.3
+# Only this checkout's display: a test copy must never stop the live one.
+pkill -9 -f "$DISPLAY_DIR/dnd-display-app\.py" 2>/dev/null || true
+HOLDER=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  sleep 0.3
+  command -v lsof >/dev/null || break
+  HOLDER=$(lsof -nP -t -iTCP:5001 -sTCP:LISTEN 2>/dev/null | head -1)
+  [[ -z "$HOLDER" ]] && break
+done
+if [[ -n "$HOLDER" ]]; then
+  echo "Port 5001 is held by another program (pid $HOLDER), probably a display from another checkout. Stop it first." >&2
+  exit 1
+fi
 
 # ── Dependency check (first run) ──────────────────────────────────────────────
 # Homebrew and most distro pythons refuse a bare `pip3 install` (PEP 668), so

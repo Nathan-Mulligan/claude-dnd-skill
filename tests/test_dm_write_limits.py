@@ -477,3 +477,10 @@ def test_tls_files_live_in_the_data_root_not_the_runtime_dir():
     assert Path(setup_tls.KEY_FILE) == root / "tls" / "key.pem"
     script = (DISPLAY / "start-display.sh").read_text(encoding="utf-8")
     assert '--directory "$TLS_DIR/public"' in script and '--directory "$RT"' not in script
+
+
+def test_display_start_stops_only_its_own_checkouts_display():
+    script = (DISPLAY / "start-display.sh").read_text(encoding="utf-8")
+    assert 'pkill -9 -f "$DISPLAY_DIR/dnd-display-app\\.py"' in script
+    assert 'pkill -9 -f "dnd-display-app\\.py"' not in script
+    assert "lsof -nP -t -iTCP:5001 -sTCP:LISTEN" in script and "exit 1" in script
