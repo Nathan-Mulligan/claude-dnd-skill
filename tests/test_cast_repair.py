@@ -25,21 +25,21 @@ MALE, FEMALE = tts.LOCAL_VOICES_MALE, tts.LOCAL_VOICES_FEMALE
 # The shape of the campaign that prompted this: three on bf_emma (one a PC),
 # two on af_bella, two on am_onyx.
 CLASHING = {
-    "elbane iii": "bm_lewis",
-    "mara venn": "bf_alice",
-    "tovin pell": "bm_george",
-    "hessa marr": "af_bella",
-    "nella reed": "bf_emma",
-    "bera holt": "af_bella",
-    "jessa pike": "bf_emma",
-    "orla fen": "af_sky",
-    "dera voss": "af_heart",
-    "meren vale": "bf_emma",
+    "corin ashby": "bm_lewis",
+    "ilsa brook": "bf_alice",
+    "garrick hale": "bm_george",
+    "odile fenn": "af_bella",
+    "wren talley": "bf_emma",
+    "agnes shaw": "af_bella",
+    "lissa crane": "bf_emma",
+    "hilde moss": "af_sky",
+    "tamsin cole": "af_heart",
+    "rosa whitlow": "bf_emma",
     "man at the barrier": "am_onyx",
     "disarmed bandit": "am_onyx",
-    "edrin shaw": "am_fenrir",
+    "aldo kerr": "am_fenrir",
 }
-PARTY = ["Elbane III", "Nella Reed"]
+PARTY = ["Corin Ashby", "Wren Talley"]
 
 
 def _repair(raw=None, party=PARTY, narrator="bm_fable"):
@@ -56,7 +56,7 @@ def test_every_speaker_ends_up_with_a_different_voice():
 def test_only_the_clashing_npcs_change():
     cast, src, changes, _ = _repair()
     changed = {name for name, _, _ in changes}
-    assert changed == {"bera holt", "jessa pike", "meren vale", "disarmed bandit"}
+    assert changed == {"agnes shaw", "lissa crane", "rosa whitlow", "disarmed bandit"}
     for name, voice in CLASHING.items():
         if name not in changed:
             assert cast[name] == voice, name
@@ -64,10 +64,10 @@ def test_only_the_clashing_npcs_change():
 
 
 def test_player_characters_keep_their_voice_even_when_cast_later():
-    raw = {"jessa pike": "bf_emma", "nella reed": "bf_emma"}
+    raw = {"lissa crane": "bf_emma", "wren talley": "bf_emma"}
     cast, _, changes, _ = _repair(raw)
-    assert cast["nella reed"] == "bf_emma"
-    assert [c[0] for c in changes] == ["jessa pike"]
+    assert cast["wren talley"] == "bf_emma"
+    assert [c[0] for c in changes] == ["lissa crane"]
 
 
 def test_an_npc_on_the_narrator_voice_is_moved():
@@ -94,15 +94,15 @@ def test_no_blend_borrows_the_narrator_or_a_player_character():
 
 
 def test_a_cast_without_clashes_is_left_alone():
-    _, _, changes, _ = _repair({"mara venn": "bf_alice", "tovin pell": "bm_george"})
+    _, _, changes, _ = _repair({"ilsa brook": "bf_alice", "garrick hale": "bm_george"})
     assert changes == []
 
 
 def test_the_command_only_writes_with_write_and_keeps_a_backup(tmp_path, capsys):
-    camp = tmp_path / "Enderal"
+    camp = tmp_path / "Fenmoor"
     (camp / "characters").mkdir(parents=True)
-    (camp / "characters" / "nella-reed.md").write_text("# Nella Reed\n", encoding="utf-8")
-    (camp / "characters" / "elbane-iii.md").write_text("# Elbane III\n", encoding="utf-8")
+    (camp / "characters" / "wren-talley.md").write_text("# Wren Talley\n", encoding="utf-8")
+    (camp / "characters" / "corin-ashby.md").write_text("# Corin Ashby\n", encoding="utf-8")
     (camp / "state.md").write_text("## Session Flags\ntts_voice: bm_fable\n", encoding="utf-8")
     original = json.dumps(CLASHING, indent=2)
     (camp / "cast.json").write_text(original, encoding="utf-8")
@@ -115,7 +115,7 @@ def test_the_command_only_writes_with_write_and_keeps_a_backup(tmp_path, capsys)
     saved = json.loads((camp / "cast.json").read_text(encoding="utf-8"))
     voices = cast_voices.voices(saved)
     assert len(set(voices.values())) == len(voices)
-    assert voices["nella reed"] == "bf_emma"
+    assert voices["wren talley"] == "bf_emma"
     assert len(list(camp.glob("cast.json.before-repair-*"))) == 1
 
     assert cast_voices.main(["repair", str(camp), "--write"]) == 0
@@ -123,9 +123,9 @@ def test_the_command_only_writes_with_write_and_keeps_a_backup(tmp_path, capsys)
 
 
 def test_a_player_blend_is_not_handed_out_spelled_the_other_way():
-    raw = {"nella reed": "bf_emma+bf_alice", "a": "af_heart", "b": "af_sky", "c": "af_bella",
-           "d": "bf_alice", "jessa pike": "af_heart"}
-    cast, _, changes, _ = _repair(raw, party=["Nella Reed"])
+    raw = {"wren talley": "bf_emma+bf_alice", "a": "af_heart", "b": "af_sky", "c": "af_bella",
+           "d": "bf_alice", "lissa crane": "af_heart"}
+    cast, _, changes, _ = _repair(raw, party=["Wren Talley"])
     canon = ["+".join(sorted(v.split("+"))) for v in cast.values()]
     assert len(set(canon)) == len(canon)
     assert not any({"bf_emma", "bf_alice"} & set(new.split("+")) for _, _, new in changes if "+" in new)

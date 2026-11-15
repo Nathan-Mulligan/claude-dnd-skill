@@ -51,20 +51,20 @@ def _run(sender, argv, body, urlopen=None):
 TURN = """@player Everybody
 We take the satchel and ask who gets it.
 @narration
-Edrin presses the satchel into Nella's hands.
-@npc Edrin Shaw voice=bm_lewis
+Aldo presses the satchel into Wren's hands.
+@npc Aldo Kerr voice=bm_lewis
 "The auditor. Nobody else."
 @narration
 Behind him the horse stamps; the light is going.
 @tutor
-Brackenford is half a day east.
+Ashbridge is half a day east.
 """
 
 
 def test_one_call_sends_every_block_in_order_with_its_own_style(sender):
     chunks = [p for endpoint, p in _run(sender, [], TURN) if endpoint == "chunk"]
     assert [(c.get("player"), c.get("npc"), bool(c.get("tutor"))) for c in chunks] == [
-        ("Everybody", None, False), (None, None, False), (None, "Edrin Shaw", False),
+        ("Everybody", None, False), (None, None, False), (None, "Aldo Kerr", False),
         (None, None, False), (None, None, True)]
     assert chunks[0]["text"] == "We take the satchel and ask who gets it."
     assert chunks[2]["text"] == '"The auditor. Nobody else."'
@@ -73,24 +73,24 @@ def test_one_call_sends_every_block_in_order_with_its_own_style(sender):
 
 
 def test_text_before_the_first_marker_is_narration(sender):
-    chunks = _run(sender, [], "The rain thickens.\n@npc Hessa\n\"Twenty silver.\"\n")
-    assert [c.get("npc") for _, c in chunks] == [None, "Hessa"]
+    chunks = _run(sender, [], "The rain thickens.\n@npc Odile\n\"Twenty silver.\"\n")
+    assert [c.get("npc") for _, c in chunks] == [None, "Odile"]
     assert chunks[0][1]["text"] == "The rain thickens."
 
 
 def test_scene_cue_rides_on_the_first_narration_block_not_the_player_echo(sender):
     from scene_engine import SceneContext
-    scene = SceneContext.parse({"key": "brackenford", "label": "Brackenford", "description": "toll gate at dusk"})
+    scene = SceneContext.parse({"key": "ashbridge", "label": "Ashbridge", "description": "toll gate at dusk"})
     derived = mock.Mock(setting="town", mood="tense", scene=scene)
     with mock.patch.object(sender, "_derive_scene", return_value=(derived, False)):
-        chunks = _run(sender, ["--scene", "Brackenford: the toll gate at dusk"], TURN)
+        chunks = _run(sender, ["--scene", "Ashbridge: the toll gate at dusk"], TURN)
     assert "music" not in chunks[0][1]
     assert chunks[1][1]["music"]["event"] == "scene"
     assert sum("music" in c for _, c in chunks) == 1
 
 
 def test_stat_flags_still_go_once_after_the_blocks(sender):
-    posted = _run(sender, ["--stat-hp", "Nella Reed:9:12"], TURN)
+    posted = _run(sender, ["--stat-hp", "Wren Talley:9:12"], TURN)
     assert [endpoint for endpoint, _ in posted] == ["chunk"] * 5 + ["stats"]
 
 
@@ -102,7 +102,7 @@ def test_a_marker_needs_the_whole_line(sender):
 
 def test_an_unknown_voice_on_a_marker_is_refused_before_anything_is_sent(sender, capsys):
     with pytest.raises(SystemExit):
-        _run(sender, [], "@npc Hessa voice=not a voice\nHello.\n")
+        _run(sender, [], "@npc Odile voice=not a voice\nHello.\n")
     assert "voice" in capsys.readouterr().err
 
 
@@ -112,8 +112,8 @@ def test_a_turn_that_ends_on_a_bare_question_still_warns(sender, capsys):
 
 
 def test_content_flags_keep_their_single_block_behaviour(sender):
-    chunks = _run(sender, ["--npc", "Hessa"], "@player Everybody\nstill hers\n")
-    assert len(chunks) == 1 and chunks[0][1]["npc"] == "Hessa"
+    chunks = _run(sender, ["--npc", "Odile"], "@player Everybody\nstill hers\n")
+    assert len(chunks) == 1 and chunks[0][1]["npc"] == "Odile"
     assert chunks[0][1]["text"].startswith("@player")
 
 
@@ -124,17 +124,17 @@ class _Response(io.BytesIO):
 
 def test_dice_request_with_narration_sends_the_stake_first_then_waits_for_the_roll(sender, capsys):
     order = []
-    replies = iter([_Response({"request_id": "abc", "pending": ["Nella"]}),
-                    _Response({"complete": True, "pending": [], "results": ["Nella rolls 1d20+3: [14] +3 = 17"]})])
+    replies = iter([_Response({"request_id": "abc", "pending": ["Wren"]}),
+                    _Response({"complete": True, "pending": [], "results": ["Wren rolls 1d20+3: [14] +3 = 17"]})])
 
     def urlopen(request, *a, **k):
         order.append("dice-request")
         return next(replies)
 
     posted = []
-    with mock.patch.object(sys, "argv", ["send.py", "--dice-request", "--character", "Nella", "--modifier", "3",
+    with mock.patch.object(sys, "argv", ["send.py", "--dice-request", "--character", "Wren", "--modifier", "3",
                                          "--dc", "13", "--wait"]), \
-         mock.patch.object(sys, "stdin", io.StringIO("@player Nella\nI haggle.\n@narration\nDC 13; fail and the price holds.\n")), \
+         mock.patch.object(sys, "stdin", io.StringIO("@player Wren\nI haggle.\n@narration\nDC 13; fail and the price holds.\n")), \
          mock.patch.object(sender, "_post", side_effect=lambda url, data, token: posted.append(json.loads(data))
                            or order.append("chunk") or True), \
          mock.patch.object(sender.urllib.request, "urlopen", side_effect=urlopen), \
@@ -142,7 +142,7 @@ def test_dice_request_with_narration_sends_the_stake_first_then_waits_for_the_ro
         sender.main()
     assert order[:3] == ["chunk", "chunk", "dice-request"]
     assert posted[1]["text"] == "DC 13; fail and the price holds."
-    assert "Nella rolls 1d20+3: [14] +3 = 17" in capsys.readouterr().out
+    assert "Wren rolls 1d20+3: [14] +3 = 17" in capsys.readouterr().out
 
 
 @pytest.mark.skipif(os.name == "nt", reason="select() on pipes is POSIX only")
@@ -163,13 +163,13 @@ def test_dice_request_alone_never_hangs_on_an_open_empty_stdin(sender):
 
 def test_a_bad_marker_is_refused_before_the_display_switches_campaign(sender, capsys):
     with mock.patch.object(sender, "_ensure_active_campaign") as ensure, pytest.raises(SystemExit):
-        _run(sender, [], "@npc Hessa voice=not a voice\nHello.\n")
+        _run(sender, [], "@npc Odile voice=not a voice\nHello.\n")
     assert not ensure.called
 
 
 def test_an_unnamed_marker_with_text_after_it_stays_text(sender):
-    chunks = _run(sender, [], "@dice Nella rolls 1d20+3 = 17\n")
-    assert len(chunks) == 1 and chunks[0][1]["text"] == "@dice Nella rolls 1d20+3 = 17" and "dice" not in chunks[0][1]
+    chunks = _run(sender, [], "@dice Wren rolls 1d20+3 = 17\n")
+    assert len(chunks) == 1 and chunks[0][1]["text"] == "@dice Wren rolls 1d20+3 = 17" and "dice" not in chunks[0][1]
 
 
 def test_a_failed_narration_post_keeps_the_scene_cue_for_the_next_narration(sender):
@@ -184,7 +184,7 @@ def test_a_failed_narration_post_keeps_the_scene_cue_for_the_next_narration(send
 
     with mock.patch.object(sender, "_derive_scene", return_value=(derived, False)), \
          mock.patch.object(sys, "argv", ["send.py", "--scene", "The ford: flooded at dusk"]), \
-         mock.patch.object(sys, "stdin", io.StringIO("Water rises.\n@npc Edrin\n\"Back!\"\n@narration\nThe rope holds.\n")), \
+         mock.patch.object(sys, "stdin", io.StringIO("Water rises.\n@npc Aldo\n\"Back!\"\n@narration\nThe rope holds.\n")), \
          mock.patch.object(sender, "_post", side_effect=post), \
          mock.patch.dict(os.environ, {"DND_ACTIVE_CAMPAIGN": ""}):
         sender.main()

@@ -38,7 +38,7 @@ def cast_key(cast: dict, name: str) -> str:
     """Return the cast entry a speaker name resolves to.
 
     Mirrors `_castKey` in templates/index.html: an exact match, else the one
-    entry whose first word is the name ("Nella" finds "nella reed").
+    entry whose first word is the name ("Wren" finds "wren talley").
     """
     raw = str(name or "").strip().lower()
     if raw in cast:
@@ -265,7 +265,7 @@ def main(argv=None) -> int:
 
     ap = argparse.ArgumentParser(description="Give clashing NPC voices in a campaign's cast.json new, distinct ones.")
     ap.add_argument("command", choices=["repair"])
-    ap.add_argument("campaign", help="the campaign folder, e.g. ~/.claude/dnd/campaigns/Enderal")
+    ap.add_argument("campaign", help="the campaign folder, e.g. ~/.claude/dnd/campaigns/Fenmoor")
     ap.add_argument("--write", action="store_true", help="save the changes (a backup is kept); without it, only show them")
     args = ap.parse_args(argv)
 

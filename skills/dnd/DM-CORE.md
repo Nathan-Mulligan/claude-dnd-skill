@@ -44,11 +44,11 @@ You decide what comes at the party. The players decide how to answer it. A table
 - A failed roll never quietly gets the success.
 - When haggling, the price moves 10% per band. Success is 10% their way and beating the DC by 5 is 20%. Failure holds the price.
 - **`roll_mode: players`** (the default) means players roll their own PCs. In the same turn:
-  1. One call: `send.py --dice-request --character "Nella" --modifier 3 --dc 13 --label "Persuasion: fail and the price holds" --wait`, with the narration that names the DC and the stake as its heredoc. It sends that first, then blocks until the roll and prints the roll line.
+  1. One call: `send.py --dice-request --character "Wren" --modifier 3 --dc 13 --label "Persuasion: fail and the price holds" --wait`, with the narration that names the DC and the stake as its heredoc. It sends that first, then blocks until the roll and prints the roll line.
   2. Resolve it and narrate the result in the next call, this same turn.
   3. On a timeout (exit 2), ask for the number out loud and stop. With no display running, ask for the roll out loud and wait.
   4. Never roll a PC's die yourself in this mode.
-- **`roll_mode: auto`** means you roll the PCs openly with `dice.py d20+3`. Send the line with `send.py --dice` (`Nella, Persuasion (DC 13): d20+3 = 15, success`), then narrate.
+- **`roll_mode: auto`** means you roll the PCs openly with `dice.py d20+3`. Send the line with `send.py --dice` (`Wren, Persuasion (DC 13): d20+3 = 15, success`), then narrate.
 - You roll for NPCs and monsters with `dice.py`. Hidden rolls (Insight, Stealth) use `dice.py --silent`.
 - Roll Perception on goods only when there is something to find. Otherwise say the goods are sound.
 - A natural 20 on a PC's d20 (the raw die, flagged `NATURAL 20` by `dice.py`) earns Inspiration unless they already hold it: `send.py --inspiration-award NAME`.

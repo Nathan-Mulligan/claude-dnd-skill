@@ -46,10 +46,10 @@ Usage:
 
     # The whole party from its sheet files: identity, HP, AC, XP, abilities, slots, attacks,
     # spells, features and inventory. Use at load and after any sheet change:
-    python3 push_stats.py --party Enderal [--replace-players]
+    python3 push_stats.py --party Fenmoor [--replace-players]
 
     # Features and inventory only, merged into a --json payload:
-    python3 push_stats.py --from-sheets Enderal
+    python3 push_stats.py --from-sheets Fenmoor
     # Item and coin changes: scripts/inventory.py, which pushes for you.
 
     # Faction standings (party-wide):

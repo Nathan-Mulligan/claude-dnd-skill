@@ -17,7 +17,7 @@
 - **In-world date:** 16 Leaffall 1247
 - **Season:** autumn  **Weather:** cold drizzle
 - **Threat arc stage:** 1 — Now
-- **Faction states:** Road Wardens maintain the toll and road; Millers' Compact buys grain and funds repairs, strained by shortages.
+- **Faction states:** Toll Reeves maintain the toll and road; Bakers' Guild buys grain and funds repairs, strained by shortages.
 
 ## Active Quests
 - Pay the 3 sp wagon and mule rental to its owner at the next market.
@@ -28,14 +28,14 @@
 
 ## Next Hooks
 - Brinewick: Tamsin Cole needs barrel hoops from the Ashbridge smith before her salt shipment and offers 2 sp a crate carried, paid on delivery. A reason to head back with cargo.
-- Road back: a Warden courier with a lame horse asks the couple to carry a sealed satchel to the Ashbridge tollhouse. It holds the auditor's arrival notice (beat 1b).
+- Road back: a Reeve courier with a lame horse asks the couple to carry a sealed satchel to the Ashbridge tollhouse. It holds the auditor's arrival notice (beat 1b).
 - Ashbridge: Ilsa quietly asks Corin, as a trader who reads figures, to look over a copy of the toll ledger. The figures don't match the posted notice.
 
 ## Faction Moves
-- 16 Leaffall: the Road Wardens have sent an auditor toward Ashbridge to check the toll accounts. The Millers' Compact is buying salt and grain ahead of the first frost and grumbling openly about the toll.
+- 16 Leaffall: the Toll Reeves have sent an auditor toward Ashbridge to check the toll accounts. The Bakers' Guild is buying salt and grain ahead of the first frost and grumbling openly about the toll.
 
 ## Clocks
-- 18 Leaffall 1247: the Wardens' auditor reaches the Ashbridge tollhouse and starts on the toll accounts (seen by: a rider in Warden grey passing them on the Brinewick road; carters gossiping)
+- 18 Leaffall 1247: the Reeves' auditor reaches the Ashbridge tollhouse and starts on the toll accounts (seen by: a rider in Reeve grey passing them on the Brinewick road; carters gossiping)
 - 21 Leaffall 1247: the old Ashbridge bridge closes to loaded wagons for repairs (seen by: a notice posted in Brinewick market; carters turning back)
 
 ## Recent Events
@@ -67,7 +67,7 @@ acts:
   - id: 1b
     label: Broken Ledgers
     what_changes: The disruption proves to have interests beyond one gate
-    world_pressure: Bram Tully, the Ashbridge toll clerk, panics as the Wardens' auditor arrives on 18 Leaffall; the skimmed takings and his gambling debt start to unravel, and both Ilsa and the Compact want the couple's help or silence.
+    world_pressure: Bram Tully, the Ashbridge toll clerk, panics as the Reeves' auditor arrives on 18 Leaffall; the skimmed takings and his gambling debt start to unravel, and both Ilsa and the Guild want the couple's help or silence.
     status: current
 - act: 2
   title: Debts and Duties

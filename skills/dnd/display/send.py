@@ -37,25 +37,25 @@ Usage:
     DNDEND
 
     # Scene change, bundled with the narration that enters it
-    python3 send.py --scene "Saltmere, Meren's bakery: haggling over flour by the ovens" << 'DNDEND'
+    python3 send.py --scene "Brinewick, Rosa's bakery: haggling over flour by the ovens" << 'DNDEND'
     Warm bread and woodsmoke fill the little shop.
     DNDEND
 
     # A whole turn in one call: a line holding only @player NAME, @npc NAME [voice=ID],
     # @dice, @tutor, @action NAME or @narration starts a block; text before the first marker
     # is narration. Scene, mood, music and stat flags apply to the whole call.
-    python3 send.py --scene "Brackenford: the toll gate at dusk" << 'DNDEND'
+    python3 send.py --scene "Ashbridge: the toll gate at dusk" << 'DNDEND'
     @player Everybody
     We hand over the satchel.
     @narration
     The clerk breaks the seal.
-    @npc Hessa Varn voice=bf_alice
+    @npc Odile Varn voice=bf_alice
     "Twenty silver, or the wagon stays."
     DNDEND
 
     # A roll in the same call: the narration naming the DC goes first, then the request
-    python3 send.py --dice-request --character Nella --modifier 3 --dc 13 --label "Persuasion" --wait << 'DNDEND'
-    Hessa folds her arms. DC 13; fail and the price holds.
+    python3 send.py --dice-request --character Wren --modifier 3 --dc 13 --label "Persuasion" --wait << 'DNDEND'
+    Odile folds her arms. DC 13; fail and the price holds.
     DNDEND
 
     # Short inline string
@@ -382,7 +382,7 @@ def parse_blocks(text: str) -> "list[dict]":
             current["lines"].append(line)
             continue
         kind, rest = _BLOCK_KINDS[marker.group(1)], (marker.group(2) or "").strip()
-        if rest and marker.group(1) not in _NAMED_BLOCKS:  # "@dice Nella rolls 17" is text, not a marker
+        if rest and marker.group(1) not in _NAMED_BLOCKS:  # "@dice Wren rolls 17" is text, not a marker
             current["lines"].append(line)
             continue
         blocks.append(current)
@@ -394,7 +394,7 @@ def parse_blocks(text: str) -> "list[dict]":
                 if not _VOICE_ID.fullmatch(voice):
                     raise ValueError(f"@npc {rest}: voice takes an id such as bf_alice, not {voice!r}")
         if kind in _NAMED_BLOCKS and not rest:
-            raise ValueError(f"@{marker.group(1)} needs a name, for example @{marker.group(1)} Nella")
+            raise ValueError(f"@{marker.group(1)} needs a name, for example @{marker.group(1)} Wren")
         current = {"kind": kind, "name": rest or None, "voice": voice, "lines": []}
     blocks.append(current)
     out = []

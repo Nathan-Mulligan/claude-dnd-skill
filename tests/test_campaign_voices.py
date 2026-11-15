@@ -31,20 +31,20 @@ def display(tmp_path, monkeypatch):
 
 def test_voice_choice_survives_reload_and_does_not_change_other_campaign(display):
     module, client = display
-    assert client.post('/cast', json={'name': 'Nella Reed', 'voice': 'bf_emma'}).status_code == 200
-    assert client.get('/cast').json == {'nella reed': 'bf_emma'}
+    assert client.post('/cast', json={'name': 'Wren Talley', 'voice': 'bf_emma'}).status_code == 200
+    assert client.get('/cast').json == {'wren talley': 'bf_emma'}
     Path(module.CAMP_FILE).write_text('two', encoding='utf-8')
     assert client.get('/cast').json == {}
-    assert client.post('/cast', json={'name': 'Nella Reed', 'voice': 'bm_george'}).status_code == 200
+    assert client.post('/cast', json={'name': 'Wren Talley', 'voice': 'bm_george'}).status_code == 200
     Path(module.CAMP_FILE).write_text('one', encoding='utf-8')
-    assert client.get('/cast').json == {'nella reed': 'bf_emma'}
-    assert json.loads(module._cast_file().read_text(encoding='utf-8')) == {'nella reed': 'bf_emma'}
+    assert client.get('/cast').json == {'wren talley': 'bf_emma'}
+    assert json.loads(module._cast_file().read_text(encoding='utf-8')) == {'wren talley': 'bf_emma'}
 
 
 def test_voice_save_failure_is_reported(display, monkeypatch):
     module, client = display
     monkeypatch.setattr(module.os, 'replace', mock.Mock(side_effect=OSError('disk full')))
-    assert client.post('/cast', json={'name': 'Nella', 'voice': 'bf_emma'}).status_code == 500
+    assert client.post('/cast', json={'name': 'Wren', 'voice': 'bf_emma'}).status_code == 500
 
 
 def test_local_preview_rejects_paid_backend(display, monkeypatch):
@@ -106,12 +106,12 @@ def test_short_speaker_name_keeps_the_full_character_assignment():
     source = (DISPLAY / 'templates/index.html').read_text(encoding='utf-8')
     code = source[source.index('function _castKey('):source.index('function _voiceForBlock(')]
     result = subprocess.run([node, '-'], text=True, encoding='utf-8', capture_output=True, check=True, input='''
-const _CAST = {'nella reed':'bf_emma', 'ann':'af_bella'};
+const _CAST = {'wren talley':'bf_emma', 'ann':'af_bella'};
 function _narratorVoice() { return 'bm_fable'; }
 ''' + code + '''
-console.log(JSON.stringify([_castKey('Nella'), _voiceForName('Nella Reed'), _voiceForName('Joanna')]));
+console.log(JSON.stringify([_castKey('Wren'), _voiceForName('Wren Talley'), _voiceForName('Joanna')]));
 ''')
-    assert json.loads(result.stdout) == ['nella reed', 'bf_emma', 'bm_fable']
+    assert json.loads(result.stdout) == ['wren talley', 'bf_emma', 'bm_fable']
 
 
 # ── Automatic voices for new speakers (issue #84) ──────────────────────────
@@ -184,10 +184,10 @@ def test_recent_speakers_voices_are_avoided(cast_display):
 
 def test_fallback_never_overwrites_a_hand_pick(cast_display):
     module, client, sent = cast_display
-    client.post('/cast', json={'name': 'Nella Reed', 'voice': 'bf_emma'})
-    _npc(client, 'Nella Reed')
-    _npc(client, 'Nella')       # short name finds the full entry
-    assert client.get('/cast').json == {'nella reed': 'bf_emma'}
+    client.post('/cast', json={'name': 'Wren Talley', 'voice': 'bf_emma'})
+    _npc(client, 'Wren Talley')
+    _npc(client, 'Wren')       # short name finds the full entry
+    assert client.get('/cast').json == {'wren talley': 'bf_emma'}
 
 
 def test_dm_voice_is_saved_and_can_replace_an_automatic_pick(cast_display):
@@ -200,8 +200,8 @@ def test_dm_voice_is_saved_and_can_replace_an_automatic_pick(cast_display):
     _npc(client, 'Oren', npc_voice='am_onyx')
     assert client.get('/cast').json['oren'] == 'am_onyx'
     # An unknown voice id falls back to an automatic pick.
-    _npc(client, 'Pell', npc_voice='zz_nobody')
-    assert client.get('/cast').json['pell'] in KOKORO
+    _npc(client, 'Tull', npc_voice='zz_nobody')
+    assert client.get('/cast').json['tull'] in KOKORO
 
 
 def test_voice_from_the_other_backend_is_replaced_by_a_matching_pick(cast_display, monkeypatch):
@@ -215,15 +215,15 @@ def test_voice_from_the_other_backend_is_replaced_by_a_matching_pick(cast_displa
 
 def test_dm_voice_never_replaces_a_hand_pick(cast_display):
     module, client, sent = cast_display
-    client.post('/cast', json={'name': 'Nella Reed', 'voice': 'bf_emma'})
-    _npc(client, 'Nella', npc_voice='af_sky')
-    assert client.get('/cast').json == {'nella reed': 'bf_emma'}
-    r = client.post('/cast', json={'name': 'Nella', 'voice': 'af_sky', 'source': 'dm'})
+    client.post('/cast', json={'name': 'Wren Talley', 'voice': 'bf_emma'})
+    _npc(client, 'Wren', npc_voice='af_sky')
+    assert client.get('/cast').json == {'wren talley': 'bf_emma'}
+    r = client.post('/cast', json={'name': 'Wren', 'voice': 'af_sky', 'source': 'dm'})
     assert r.status_code == 409 and r.json['voice'] == 'bf_emma'
     # The DM naming the same voice leaves it a hand pick.
-    assert client.post('/cast', json={'name': 'Nella', 'voice': 'bf_emma', 'source': 'dm'}).status_code == 200
-    assert client.post('/cast', json={'name': 'Nella', 'voice': 'af_sky', 'source': 'dm'}).status_code == 409
-    assert client.get('/cast').json == {'nella reed': 'bf_emma'}
+    assert client.post('/cast', json={'name': 'Wren', 'voice': 'bf_emma', 'source': 'dm'}).status_code == 200
+    assert client.post('/cast', json={'name': 'Wren', 'voice': 'af_sky', 'source': 'dm'}).status_code == 409
+    assert client.get('/cast').json == {'wren talley': 'bf_emma'}
     # The menu itself may always change it, and that makes an auto pick manual.
     _npc(client, 'Oren')
     client.post('/cast', json={'name': 'oren', 'voice': 'am_fenrir'})
@@ -235,11 +235,11 @@ def test_older_cast_files_keep_their_comment_and_entries(cast_display):
     module, client, sent = cast_display
     path = module._cast_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({'_comment': 'keep me', 'Meren Vale': 'bf_emma'}), encoding='utf-8')
-    _npc(client, 'Jessa Pike')
+    path.write_text(json.dumps({'_comment': 'keep me', 'Rosa Whitlow': 'bf_emma'}), encoding='utf-8')
+    _npc(client, 'Lissa Crane')
     raw = json.loads(path.read_text(encoding='utf-8'))
-    assert raw['_comment'] == 'keep me' and raw['meren vale'] == 'bf_emma'
-    assert raw['jessa pike'] not in ('bf_emma', 'bm_fable')
+    assert raw['_comment'] == 'keep me' and raw['rosa whitlow'] == 'bf_emma'
+    assert raw['lissa crane'] not in ('bf_emma', 'bm_fable')
 
 
 def test_cast_save_failure_does_not_drop_the_line(cast_display, monkeypatch):

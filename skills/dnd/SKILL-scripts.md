@@ -113,16 +113,16 @@ The ledger owns each character's items and coins (`characters/<sheet>.inventory.
 
 ```bash
 I="python3 ${CLAUDE_SKILL_DIR}/scripts/inventory.py"
-$I show    --campaign $CAMP [--character Nella]          # every character without --character
-$I buy     --campaign $CAMP --character Nella "Lantern" --price "5 gp" [--qty 1]
-$I sell    --campaign $CAMP --character Elbane "Blanket" --price "24 sp" [--qty 4]
-$I spend   --campaign $CAMP --character Elbane "3 sp"     # tolls, rent, bribes: makes change
-$I earn    --campaign $CAMP --character Elbane "26 sp"
-$I add     --campaign $CAMP --character Nella "Iron key" [--qty 1] [--category gear] [--notes "..."]
-$I remove  --campaign $CAMP --character Nella "Torch" [--qty 1 | --all]
-$I equip   --campaign $CAMP --character Nella "Shield"     # unequip to take off
+$I show    --campaign $CAMP [--character Wren]          # every character without --character
+$I buy     --campaign $CAMP --character Wren "Lantern" --price "5 gp" [--qty 1]
+$I sell    --campaign $CAMP --character Corin "Blanket" --price "24 sp" [--qty 4]
+$I spend   --campaign $CAMP --character Corin "3 sp"     # tolls, rent, bribes: makes change
+$I earn    --campaign $CAMP --character Corin "26 sp"
+$I add     --campaign $CAMP --character Wren "Iron key" [--qty 1] [--category gear] [--notes "..."]
+$I remove  --campaign $CAMP --character Wren "Torch" [--qty 1 | --all]
+$I equip   --campaign $CAMP --character Wren "Shield"     # unequip to take off
 $I cargo   --campaign $CAMP add|remove|show "Sack of salt" [--qty 3] [--notes "..."]
-$I migrate --campaign $CAMP --character Nella [--write]    # prose section → ledger; dry run first
+$I migrate --campaign $CAMP --character Wren [--write]    # prose section → ledger; dry run first
 $I sync    --campaign $CAMP                                # regenerate sections and push
 ```
 
@@ -451,13 +451,13 @@ Nothing to run: `send.py` keeps both after each send reaches the display. A bloc
 
     ## Session 7 · 2026-11-14
 
-    ### 21:04 · Brackenford toll gate · 18 Duskfall 1247
+    ### 21:04 · Ashbridge toll gate · 18 Duskfall 1247
 
     **Everybody:** We hand over the satchel.
 
     **DM:** The clerk breaks the seal.
 
-    **Hessa Varn:** "Twenty silver, or the wagon stays."
+    **Odile Varn:** "Twenty silver, or the wagon stays."
 
 - A `## Session N · <date>` section starts after the portal's Save & close, or after three hours without a send. N is one more than the newest `## Session N` in `session-log.md`, `session-log-archive.md` or `state.md`. At Save & close the portal's notes helper (`display/session_summary.py`) writes `## Session N` in `session-log.md` from every section numbered N, so the next session's number follows on.
 - One `###` entry per send: the real time, the place (the last `--scene` place, else `state.md`'s Location) and the in-world date.
@@ -502,8 +502,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos adjust --campaign $CAMP --pc
 
 # Improvised campaigns only (Standard 16): a new NPC's temperament, and what each travel day brings.
 # npc with --campaign and --name is seeded from the name (same name, same person) and saves to npcs.md.
-python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --campaign $CAMP --name "Bera Holt" --trader
-python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc note --campaign $CAMP --name "Bera Holt" "Sold 4 blankets at 18. Thinks they drive a hard bargain."
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --campaign $CAMP --name "Agnes Shaw" --trader
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc note --campaign $CAMP --name "Agnes Shaw" "Sold 4 blankets at 18. Thinks they drive a hard bargain."
 # road prints a skip notice for prebuilt (structured) campaigns. calendar.py advance runs it for you.
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py road --campaign $CAMP --days 3
 
@@ -543,7 +543,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py status  --campaign <name>
 # The current beat's change has landed: mark it complete, move to the next beat and act
 python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py advance --campaign <name> [--beat 1b]
 # The beat no longer fits where the party is: give it a new pressure, change or steering
-python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b --pressure "Piers panics as the auditor arrives on 18 Duskfall" [--what-changes "..."] [--steering "..."]
+python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b --pressure "Bram panics as the auditor arrives on 18 Duskfall" [--what-changes "..."] [--steering "..."]
 ```
 
 `advance` clears `steering_notes`, so write fresh steering for the new beat with `revise --steering`. For a structured campaign, `advance` ticks the chapter's next key beat off `outstanding_beats`; moving to a new chapter still means reading `arc.md`. `revise` refuses completed beats and logs each change in `revision_log`. Both rewrite only the YAML block under `## Campaign Arc` (comments inside it are dropped) and leave the rest of `state.md` as it was.
@@ -639,7 +639,7 @@ Open the browser tab and Chromecast it *before* running `/dm:dnd load` so the br
 **Scene cue.** Send one when the party arrives somewhere new, or when a place's mood truly changes. Bundle it with the first narration there:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --scene "Saltmere, Meren's bakery: haggling over flour by the ovens" << 'DNDEND'
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --scene "Brinewick, Rosa's bakery: haggling over flour by the ovens" << 'DNDEND'
 Warm bread and woodsmoke fill the little shop.
 DNDEND
 ```
@@ -648,7 +648,7 @@ Write the place, a colon, then what the party sees happening. Add `--mood calm|c
 
 - **Key:** taken from the place alone, so the same place always gets the same key. A cue for the place already on screen changes nothing and prints `scene unchanged`, unless `--mood` or the world era differs.
 - **Setting:** keyword mapping of the place to one of the 18 broad settings (`inn` to tavern, `bakery` to city, `cavern` to cave). If the place has no keyword, the activity words are tried, then the current setting, then `city`.
-- **Place theme:** a place named in the world notes takes its saved path and mood. Two formats are read: `Town: [{"name":"Town","mood":"tense"}]. Gate: child {"name":"Gate"}` lines, and `Scene theme: Region (warm) → Place (curious)` lines. A named place with extra words (`Saltmere docks`) becomes a child of that place. An unknown place becomes a child of the current outer region.
+- **Place theme:** a place named in the world notes takes its saved path and mood. Two formats are read: `Town: [{"name":"Town","mood":"tense"}]. Gate: child {"name":"Gate"}` lines, and `Scene theme: Region (warm) → Place (curious)` lines. A named place with extra words (`Brinewick docks`) becomes a child of that place. An unknown place becomes a child of the current outer region.
 - **Era:** an `Era:` or `Established era:` line in the world notes, else a `Setting type:` naming medieval, renaissance, ancient, modern or futuristic, else the current scene's era, else medieval.
 - **Mood:** `--mood`, else the nearest saved place mood, else the setting's usual tone.
 - **Prompts:** the music and the background illustration are both written by `display/scene_engine.py` from that one scene.

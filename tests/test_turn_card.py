@@ -37,14 +37,14 @@ def edit_state(folder, old, new):
     path.write_text(text.replace(old, new), encoding="utf-8")
 
 
-def test_enderal_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoor):
+def test_fenmoor_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoor):
     text = card(fenmoor)
     assert text.startswith("[[Turn card, hidden from players: ") and text.endswith("]] ")
     assert "roll mode" not in text
     assert "\n" not in text
     assert "Where: Brinewick, Rosa Whitlow’s bakery, 16 Leaffall 1247, morning" in text
     assert 'Beat 1b "Broken Ledgers": Bring the couple back toward Ashbridge' in text
-    assert "Tamsin Cole needs barrel hoops" in text and "Warden courier with a lame horse" in text
+    assert "Tamsin Cole needs barrel hoops" in text and "Reeve courier with a lame horse" in text
     assert "Ilsa quietly asks Corin" not in text
     assert "auditor reaches the Ashbridge tollhouse" in text and "[in 2 days]" in text
     assert "bridge closes to loaded wagons" not in text
