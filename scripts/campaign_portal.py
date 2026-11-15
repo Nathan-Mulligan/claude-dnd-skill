@@ -84,6 +84,10 @@ DM_CHOICES = {
 ALLOWED_PROVIDERS = set(DM_CHOICES)
 CLI_COMMAND_PREFIXES = set("/!#&")
 CODEX_ENABLED = os.environ.get("DND_PORTAL_ENABLE_CODEX", "1") == "1"
+# A Qwen DM runs without a sandbox (#137), so the portal offers it only when this is set.
+QWEN_ENABLED = os.environ.get("DND_PORTAL_ENABLE_QWEN", "0") == "1"
+QWEN_OFF_MESSAGE = ("Qwen is switched off: the portal can't yet limit what a Qwen DM can change on this Mac. "
+                    "Choose Codex or Claude.")
 SESSION_LOCK = threading.RLock()
 HANDOFF_TIMEOUT = 180
 CLOSE_TIMEOUT = 600
@@ -530,11 +534,17 @@ def prepare_display(name: str, reset: bool = True) -> None:
         raise ValueError("Display did not select the requested campaign")
 
 
+def offered_choices() -> dict[str, DmChoice]:
+    return {key: choice for key, choice in DM_CHOICES.items() if choice.launcher != "qwen" or QWEN_ENABLED}
+
+
 def selection_error(provider: str, mode: str, name: str, description: str) -> str | None:
     if provider not in ALLOWED_PROVIDERS or mode not in {"new", "resume"}:
         return "Choose a model and New or Resume."
     if DM_CHOICES[provider].launcher == "codex" and not CODEX_ENABLED:
-        return "Codex is disabled on this M5. Choose Qwen or remove the DND_PORTAL_ENABLE_CODEX=0 override."
+        return "Codex is disabled on this M5. Choose Claude or remove the DND_PORTAL_ENABLE_CODEX=0 override."
+    if provider not in offered_choices():
+        return QWEN_OFF_MESSAGE
     if not NAME_RE.fullmatch(name) or name in {".", ".."}:
         return "Campaign name must use letters, numbers, dots, dashes or underscores."
     try:
@@ -1069,9 +1079,13 @@ def create_app() -> Flask:
 
     @app.get("/")
     def home():
+        choices = offered_choices()
+        launchers = {choice.launcher for choice in choices.values()}
         return render_template("campaign_portal.html", session_header=SESSION_HEADER, session_storage=SESSION_STORAGE,
-                               dm_choices=DM_CHOICES, launcher_labels=LAUNCHER_LABELS,
-                               efforts=CODEX_EFFORTS, default_effort=DEFAULT_EFFORT, helpers=HELPER_CHOICES)
+                               dm_choices=choices,
+                               launcher_labels={key: label for key, label in LAUNCHER_LABELS.items() if key in launchers},
+                               qwen_hidden=not QWEN_ENABLED, efforts=CODEX_EFFORTS, default_effort=DEFAULT_EFFORT,
+                               helpers=HELPER_CHOICES)
 
     @app.get("/icon.png")
     def icon():

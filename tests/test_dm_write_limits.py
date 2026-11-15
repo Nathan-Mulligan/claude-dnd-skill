@@ -99,6 +99,7 @@ def data_root(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
     monkeypatch.setattr(portal, "RUNTIME", tmp_path / ".runtime")
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime" / "portal-session.json")
+    monkeypatch.setattr(portal, "QWEN_ENABLED", True)
     return tmp_path
 
 

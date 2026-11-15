@@ -36,6 +36,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "DATA_ROOT", tmp_path)
     monkeypatch.setattr(portal, "RUNTIME", tmp_path / ".runtime")
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime" / "portal-session.json")
+    monkeypatch.setattr(portal, "QWEN_ENABLED", True)
     monkeypatch.setattr(portal, "prepare_display", lambda name, **kwargs: None)
     monkeypatch.setattr(portal, "notify_party_consumed", lambda *args: None)
     monkeypatch.setattr(portal.lore_sync, "rt", lambda name: str(tmp_path / ".runtime" / name))
@@ -587,6 +588,36 @@ def test_page_lists_every_dm_choice(client):
         assert f'value="{key}" data-launcher="{choice.launcher}"' in page
     assert page.index('value="codex-sol" data-launcher') < page.index('value="codex" data-launcher')
     assert '<option value="qwen" data-label="Ollama">' in page
+
+
+def test_qwen_is_off_by_default_and_the_page_says_why(client, monkeypatch):
+    monkeypatch.setattr(portal, "QWEN_ENABLED", False)
+    monkeypatch.setattr(portal, "run", lambda *args, **kwargs: pytest.fail("must not start anything"))
+    page = client[0].get("/", base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    assert 'data-launcher="qwen"' not in page and 'data-label="Ollama"' not in page
+    assert 'id="qwen-off"' in page and "switched off" in page
+    assert 'value="codex" data-launcher="codex"' in page and 'value="claude" data-launcher="claude"' in page
+    for route in ("/api/start", "/api/switch"):
+        response = api(client, route, method="post", data={"provider": "qwen", "mode": "new", "name": "x"})
+        assert response.status_code == 409
+        assert response.json["message"] == portal.QWEN_OFF_MESSAGE
+
+
+def test_qwen_note_is_hidden_when_qwen_is_on(client):
+    page = client[0].get("/", base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    assert 'value="qwen" data-launcher="qwen"' in page and 'id="qwen-off"' not in page
+
+
+@pytest.mark.parametrize(("value", "enabled"), [(None, False), ("0", False), ("1", True)])
+def test_only_the_env_var_turns_qwen_on(monkeypatch, value, enabled):
+    if value is None:
+        monkeypatch.delenv("DND_PORTAL_ENABLE_QWEN", raising=False)
+    else:
+        monkeypatch.setenv("DND_PORTAL_ENABLE_QWEN", value)
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+    assert fresh.QWEN_ENABLED is enabled
+    assert ("qwen" in fresh.offered_choices()) is enabled
 
 
 # ── DM effort and sidebar notes helper ───────────────────────────────────────

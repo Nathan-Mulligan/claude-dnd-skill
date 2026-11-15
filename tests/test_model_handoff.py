@@ -25,6 +25,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(portal, "META_FILE", tmp_path / ".runtime/portal-session.json")
     monkeypatch.setattr(portal, "_handoff", {"status": "idle", "message": ""})
     monkeypatch.setattr(portal, "CODEX_ENABLED", True)
+    monkeypatch.setattr(portal, "QWEN_ENABLED", True)
     monkeypatch.setattr(portal, "_replied", set())
     portal.RUNTIME.mkdir()
     old = tmp_path / "campaigns/old"
@@ -907,3 +908,27 @@ def test_the_helper_summary_is_written_before_the_dm_stops(setup, monkeypatch):
     assert portal.handoff_state()["status"] == "complete", portal.handoff_state()
     assert ("write",) in events and not alive["value"]
     assert (old / "session-log.md").read_text(encoding="utf-8") == "Summary by the helper\n"
+
+
+def test_a_running_qwen_dm_can_still_be_saved_and_closed_with_qwen_off(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    monkeypatch.setattr(portal, "QWEN_ENABLED", False)
+    token = "4" * 32
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_and_acknowledge(old, token))
+    monkeypatch.setattr(portal, "start_session", lambda *args, **kwargs: pytest.fail("Must not start another DM"))
+    portal.perform_handoff("qwen", "resume", "old", "", previous, "$7", token, close=True)
+    assert portal.handoff_state()["status"] == "complete"
+    assert ("tmux", "kill-session", "-t", "$7") in calls
+
+
+def test_a_running_qwen_dm_can_be_switched_to_codex_with_qwen_off(setup, monkeypatch):
+    old, previous, alive, calls, _ = setup
+    monkeypatch.setattr(portal, "QWEN_ENABLED", False)
+    monkeypatch.setattr(portal, "provider_error", lambda provider: None)
+    token = "5" * 32
+    started = []
+    monkeypatch.setattr(portal, "send_checkpoint_request", lambda prompt: save_and_acknowledge(old, token))
+    monkeypatch.setattr(portal, "start_session", lambda *args, **kwargs: started.append(args[:3]) or (True, "Started"))
+    portal.perform_handoff("codex", "resume", "old", "", previous, "$7", token)
+    assert portal.handoff_state()["status"] == "complete"
+    assert started == [("codex", "resume", "old")]
