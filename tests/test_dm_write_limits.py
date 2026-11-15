@@ -483,3 +483,4 @@ def test_display_start_stops_only_its_own_checkouts_display():
     script = (DISPLAY / "start-display.sh").read_text(encoding="utf-8")
     assert 'pkill -9 -f "$DISPLAY_DIR/dnd-display-app\\.py"' in script
     assert 'pkill -9 -f "dnd-display-app\\.py"' not in script
+    assert "lsof -nP -t -iTCP:5001 -sTCP:LISTEN" in script and "exit 1" in script
