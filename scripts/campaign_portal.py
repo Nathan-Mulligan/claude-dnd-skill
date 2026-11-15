@@ -11,6 +11,7 @@ import os
 import re
 import secrets
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -40,6 +41,15 @@ DATA_ROOT = Path(os.environ.get("DND_CAMPAIGN_ROOT", str(Path.home() / ".claude/
 RUNTIME = DATA_ROOT / ".runtime"
 META_FILE = RUNTIME / "portal-session.json"
 SESSION = os.environ.get("DND_PORTAL_TMUX_SESSION", "dnd-campaign-portal")
+# The DM's own tmux server listens only in this folder (#161). The default server's socket is in /tmp,
+# which a sandboxed DM can write, and that server runs outside the sandbox.
+TMUX_DIR = Path.home() / ".local/state/dnd/tmux"
+SHARED_TEMP = (Path("/tmp"), Path("/private/tmp"), Path(tempfile.gettempdir()))
+TMUX_VARIABLES = ("TMUX", "TMUX_PANE")
+LEGACY_SERVER = ("-L", "default")
+LEGACY_EXIT_WAIT = 5
+# A DM started before #161, driven on the server it runs on until its process exits: (server, pane pid).
+_legacy: tuple[tuple[str, ...], int] | None = None
 PORT = int(os.environ.get("DND_PORTAL_PORT", "5002"))
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Only Safari, signed in through a link the portal opens itself, may use the /api/ routes (#139). The key
@@ -133,10 +143,75 @@ def set_handoff(status: str, message: str, **details) -> None:
 
 
 
-def run(*args: str, timeout: int = 15) -> subprocess.CompletedProcess[str]:
-    env = os.environ.copy()
+def run(*args: str, timeout: int = 15, stdin: str | None = None,
+        server: tuple[str, ...] | None = None) -> subprocess.CompletedProcess[str]:
+    """Run a command with no TMUX variables. A tmux command goes to the DM's own server (tmux_server())."""
+    env = {key: value for key, value in os.environ.items() if key not in TMUX_VARIABLES}
     env["PATH"] = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{env.get('PATH', '')}"
-    return subprocess.run(args, cwd=REPO, env=env, capture_output=True, text=True, timeout=timeout)
+    if args[:1] == ("tmux",):
+        try:
+            args = ("tmux", *(server or tmux_server()), *args[1:])
+        except (OSError, ValueError) as error:
+            return subprocess.CompletedProcess(args, 1, "", f"Unsafe tmux folder: {error}")
+    return subprocess.run(args, cwd=REPO, env=env, capture_output=True, text=True, timeout=timeout, input=stdin)
+
+
+def tmux_socket() -> Path:
+    """The DM's private tmux socket, in a 0700 folder of this user's that a sandboxed DM can't write."""
+    folder = TMUX_DIR.resolve()
+    if any(folder.is_relative_to(root.resolve()) for root in (DATA_ROOT, *SHARED_TEMP)):
+        raise ValueError(f"{TMUX_DIR} is inside a folder the DM can write")
+    socket = folder / SESSION
+    if len(os.fsencode(socket)) > 100:  # a Unix socket path holds 104 bytes on macOS
+        raise ValueError(f"{socket} is too long for a socket")
+    TMUX_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = TMUX_DIR.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+        raise ValueError(f"{TMUX_DIR} must be a folder of this user's, not a link")
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        TMUX_DIR.chmod(0o700)
+    return socket
+
+
+def tmux_server() -> tuple[str, ...]:
+    return _legacy[0] if _legacy else ("-S", str(tmux_socket()))
+
+
+def legacy_servers() -> list[tuple[str, ...]]:
+    """Where the portal ran tmux before #161: the server this portal was started inside, else the default."""
+    inherited = os.environ.get("TMUX", "").split(",")[0]
+    return ([("-S", inherited)] if inherited else []) + [LEGACY_SERVER]
+
+
+def adopt_legacy_session() -> None:
+    """Keep driving a DM started before #161 where it runs, so it can still be saved and stopped.
+
+    Only the session named SESSION is ever used there. Every DM started after it exits gets the private socket.
+    """
+    global _legacy
+    if running():
+        return
+    for server in legacy_servers():
+        try:
+            found = run("tmux", "display-message", "-p", "-t", f"={SESSION}:", "#{pane_pid}", server=server)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        pid = found.stdout.strip()
+        if found.returncode == 0 and pid.isdigit():
+            _legacy = (server, int(pid))
+            print("The DM started before this update runs on a shared tmux server. Save & reload or Save & close "
+                  "it once; the next DM starts on the portal's private tmux socket.", flush=True)
+            return
+
+
+def process_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def paste_into_dm(text: str) -> bool:
@@ -146,12 +221,10 @@ def paste_into_dm(text: str) -> bool:
     """
     target = f"{SESSION}:0.0"
     buffer = f"dnd-input-{secrets.token_hex(8)}"
-    handle, path = tempfile.mkstemp(prefix="dnd-input-", suffix=".txt")
     loaded = pasted = False
     try:
-        with os.fdopen(handle, "w", encoding="utf-8") as file:
-            file.write(text)
-        loaded = run("tmux", "load-buffer", "-b", buffer, path).returncode == 0
+        # Through stdin: a file in the temp folder could be rewritten by the DM before tmux reads it.
+        loaded = run("tmux", "load-buffer", "-b", buffer, "-", stdin=text).returncode == 0
         pasted = loaded and run("tmux", "paste-buffer", "-p", "-d", "-b", buffer, "-t", target).returncode == 0
         return pasted
     finally:
@@ -160,7 +233,6 @@ def paste_into_dm(text: str) -> bool:
                 run("tmux", "delete-buffer", "-b", buffer)
             except (OSError, subprocess.SubprocessError):
                 pass
-        Path(path).unlink(missing_ok=True)
 
 
 def press_enter() -> bool:
@@ -175,10 +247,23 @@ def submit_to_dm(text: str) -> bool:
 
 
 def running() -> bool:
+    global _legacy
     try:
-        return run("tmux", "has-session", "-t", f"={SESSION}").returncode == 0
+        result = run("tmux", "has-session", "-t", f"={SESSION}")
     except FileNotFoundError:
         return False
+    if result.returncode == 0 or _legacy is None:
+        return result.returncode == 0
+    # tmux can't reach the old DM. Only its process ending proves it stopped: the shared socket sits in /tmp,
+    # where the DM itself could delete it, and a second DM must never start beside the first.
+    deadline = time.monotonic() + LEGACY_EXIT_WAIT
+    while process_alive(_legacy[1]):
+        if time.monotonic() > deadline:
+            return True
+        time.sleep(0.1)
+    _legacy = None
+    print("The DM from before the update has stopped; new DMs start on the private tmux socket.", flush=True)
+    return running()
 
 
 def read_meta() -> dict:
@@ -578,7 +663,7 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
     error = selection_error(provider, mode, name, description)
     if error:
         return False, error
-    if running():
+    if running() or _legacy:
         return False, "A model session is already running. Finish it before changing models or campaigns."
     input_started_at = None
     previous = read_meta()
@@ -611,11 +696,7 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
             prepare_display(name, reset=mode == "new")
         except (OSError, ValueError):
             return False, "Could not prepare a clean display for this campaign. No model session was started."
-        path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
-        venv = [f"DND_VENV={os.environ['DND_VENV']}"] if os.environ.get("DND_VENV") else []
-        command = shlex.join(["env", f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", *venv,
-                               f"DND_ACTIVE_CAMPAIGN={name}", "DND_PORTAL_LAUNCH=1",
-                               *model_args(provider, mode, name, description, onboarding, effort)])
+        command = dm_command(name, model_args(provider, mode, name, description, onboarding, effort))
         result = run("tmux", "new-session", "-d", "-s", SESSION, "-c", str(REPO), command)
         if result.returncode:
             return False, "Could not start the model session."
@@ -630,6 +711,15 @@ def start_session(provider: str, mode: str, name: str, description: str, onboard
     if mode == "new" and onboarding is not None:
         return True, "Your DM is creating the campaign and characters from your answers. The story will appear here."
     return True, "Model session started. Answer its setup questions below."
+
+
+def dm_command(name: str, argv: list[str]) -> str:
+    """The shell command the DM's tmux pane runs. tmux names its own server in TMUX; the DM never sees it."""
+    path = f"{Path.home() / '.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH', '')}"
+    venv = [f"DND_VENV={os.environ['DND_VENV']}"] if os.environ.get("DND_VENV") else []
+    unset = [flag for variable in TMUX_VARIABLES for flag in ("-u", variable)]
+    return shlex.join(["env", *unset, f"PATH={path}", f"DND_CAMPAIGN_ROOT={DATA_ROOT}", *venv,
+                       f"DND_ACTIVE_CAMPAIGN={name}", "DND_PORTAL_LAUNCH=1", *argv])
 
 
 def campaign_path(name: str) -> Path:
@@ -1245,8 +1335,13 @@ if __name__ == "__main__":
             raise SystemExit(f"Checkpoint not acknowledged: {error}")
         print("Campaign checkpoint verified and acknowledged.")
         raise SystemExit(0)
-    threading.Thread(target=party_input_loop, daemon=True, name="dnd-party-input").start()
     app = create_app()
+    try:
+        tmux_socket()
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"The DM's tmux folder is unsafe: {error}")
+    adopt_legacy_session()  # before the input loop, which would otherwise tell the display the DM stopped
+    threading.Thread(target=party_input_loop, daemon=True, name="dnd-party-input").start()
     server = make_server("127.0.0.1", PORT, app, threaded=True)
     hand_out_login(app.config["NEW_LOGIN_LINK"]())
     server.serve_forever()

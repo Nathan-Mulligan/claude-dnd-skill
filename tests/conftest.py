@@ -5,6 +5,8 @@ import tempfile
 import sys
 from pathlib import Path
 
+import pytest
+
 
 # Fixtures run after collection; application imports can read/write state earlier.
 _campaign_sandbox = tempfile.TemporaryDirectory(prefix="dnd-pytest-campaigns-")
@@ -20,3 +22,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/dnd/scripts
 import paths
 
 paths._DEFAULT_ROOT = Path(_campaign_sandbox.name) / "legacy"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_dm_tmux_server(request, monkeypatch):
+    """Keep every test away from the real DM's tmux socket. In the temp folder the portal refuses to run
+    tmux at all, so only a test that clears portal.SHARED_TEMP itself can reach a (private) server."""
+    portal = getattr(request.module, "portal", None)
+    if portal is not None and hasattr(portal, "TMUX_DIR"):
+        monkeypatch.setattr(portal, "TMUX_DIR", Path(_campaign_sandbox.name) / "tmux")

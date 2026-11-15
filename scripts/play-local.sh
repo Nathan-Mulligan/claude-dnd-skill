@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# tmux names the server the DM runs on in these; the DM must not find it (#161).
+unset TMUX TMUX_PANE
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
