@@ -37,18 +37,18 @@ def edit_state(folder, old, new):
     path.write_text(text.replace(old, new), encoding="utf-8")
 
 
-def test_enderal_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoor):
+def test_fenmoor_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoor):
     text = card(fenmoor)
     assert text.startswith("[[Turn card, hidden from players: ") and text.endswith("]] ")
     assert "roll mode" not in text
     assert "\n" not in text
     assert "Where: Brinewick, Rosa Whitlow’s bakery, 16 Leaffall 1247, morning" in text
     assert 'Beat 1b "Broken Ledgers": Bring the couple back toward Ashbridge' in text
-    assert "Tamsin Cole needs barrel hoops" in text and "Warden courier with a lame horse" in text
+    assert "Tamsin Cole needs barrel hoops" in text and "Reeve courier with a lame horse" in text
     assert "Ilsa quietly asks Corin" not in text
     assert "auditor reaches the Ashbridge tollhouse" in text and "[in 2 days]" in text
     assert "bridge closes to loaded wagons" not in text
-    assert "Trade policy (apply it without asking): aim for a 20% margin" in text
+    assert "Trade policy (" in text and "aim for a 20% margin" in text
     assert "People here: Rosa Whitlow (Brinewick baker whose shop is by the market well)" in text
     assert "Ilsa Brook" not in text
     assert "rolls: players roll" in text
@@ -195,3 +195,86 @@ def test_every_card_asks_for_narration_first_and_a_one_word_close(fenmoor):
     assert "one send.py call with every block" in rule
     assert "bookkeeping in the next call" in rule
     assert "reply done" in rule
+
+
+def test_the_trade_policy_shapes_a_trade_but_never_says_yes_for_the_party(fenmoor):
+    line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Trade policy"))
+    assert "without asking" not in line
+    assert "never agrees a price, fee or deal for them" in line
+    assert "aim for a 20% margin" in line
+
+
+def test_every_card_keeps_the_party_s_coin_and_word_theirs(fenmoor):
+    rule = next(p for p in card(fenmoor).split(" | ") if p.startswith("Rule: Never decide for the player characters"))
+    for words in ("spend their coin", "hand over their things", "toll", "bribe"):
+        assert words in rule
+
+
+def test_a_debt_or_offer_left_open_in_the_state_is_put_back_to_the_party(fenmoor):
+    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate",
+               "- Garrick offered 2 sp to haul his flour back, not yet accepted. Rosa sold them bread.\n"
+               "- Ilsa is at the Ashbridge west gate")
+    line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party"))
+    assert "never pay, accept or hand over for them unasked" in line
+    assert "The 3 sp wagon and mule rental is still owed to its owner at the next market" in line
+    assert "Garrick offered 2 sp to haul his flour back, not yet accepted" in line
+    assert "salt debt is paid in full" not in line and "Rosa sold them bread" not in line
+
+
+def test_nothing_waiting_means_no_waiting_line(fenmoor):
+    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
+    edit_state(fenmoor, "; the wagon rental remains due", "")
+    assert "Waiting on the party" not in card(fenmoor)
+
+
+@pytest.mark.parametrize("settled", [
+    "Garrick offered 2 sp to haul his flour back, and the party accepted.",
+    "The 2 sp Garrick was owed was paid in full.",
+    "Garrick offered 2 sp to haul his flour back; they declined.",
+])
+def test_a_settled_debt_or_offer_is_not_put_back_to_the_party(fenmoor, settled):
+    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
+    edit_state(fenmoor, "; the wagon rental remains due", "")
+    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate", f"- {settled}\n- Ilsa is at the Ashbridge west gate")
+    assert "Waiting on the party" not in card(fenmoor)
+
+
+def test_the_waiting_line_lets_this_turn_s_answer_settle_it(fenmoor):
+    line = next(p for p in card(fenmoor, "We pay the 3 sp wagon rental now.").split(" | ")
+                if p.startswith("Waiting on the party"))
+    assert "unless this input answers it" in line
+
+
+def _only(fenmoor, sentence):
+    edit_state(fenmoor, " The 3 sp wagon and mule rental is still owed to its owner at the next market.", "")
+    edit_state(fenmoor, "; the wagon rental remains due", "")
+    edit_state(fenmoor, "- Ilsa is at the Ashbridge west gate", f"- {sentence}\n- Ilsa is at the Ashbridge west gate")
+    return next((p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party")), "")
+
+
+@pytest.mark.parametrize("sentence", [
+    "Garrick offered 2 sp to haul his flour back, but the offer has not been accepted.",
+    "The rental is unpaid and has not been settled.",
+    "Odile's salt debt is paid; the wagon rental remains due.",
+    "The 2 sp gate toll is due.",
+    "Garrick offers 2 sp to haul his flour; the party has not answered.",
+    "The 3 sp rental remains due; the salt debt is paid.",
+    "The 3 sp rental is owed and must be paid tomorrow.",
+    "The agreed 3 sp fee is still owed.",
+    "Garrick offered 2 sp; the offer has not yet actually been accepted.",
+])
+def test_an_open_payment_or_offer_is_waiting_however_it_is_worded(fenmoor, sentence):
+    assert sentence.rstrip(".") in _only(fenmoor, sentence)
+
+
+@pytest.mark.parametrize("sentence", [
+    "Garrick offered 2 sp; the party agreed to haul the flour.",
+    "Rosa offered condolences for their loss.",
+    "No wages are owed to Wren.",
+    "The auditor is due tomorrow.",
+    "The party has 2 gp and the courier is due tomorrow.",
+    "Rosa offers help with the work.",
+    "No wages are still owed to Wren.",
+])
+def test_an_agreed_deal_or_a_non_payment_is_not_waiting(fenmoor, sentence):
+    assert _only(fenmoor, sentence) == ""

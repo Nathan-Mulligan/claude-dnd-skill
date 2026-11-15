@@ -113,16 +113,16 @@ The ledger owns each character's items and coins (`characters/<sheet>.inventory.
 
 ```bash
 I="python3 ${CLAUDE_SKILL_DIR}/scripts/inventory.py"
-$I show    --campaign $CAMP [--character Nella]          # every character without --character
-$I buy     --campaign $CAMP --character Nella "Lantern" --price "5 gp" [--qty 1]
-$I sell    --campaign $CAMP --character Elbane "Blanket" --price "24 sp" [--qty 4]
-$I spend   --campaign $CAMP --character Elbane "3 sp"     # tolls, rent, bribes: makes change
-$I earn    --campaign $CAMP --character Elbane "26 sp"
-$I add     --campaign $CAMP --character Nella "Iron key" [--qty 1] [--category gear] [--notes "..."]
-$I remove  --campaign $CAMP --character Nella "Torch" [--qty 1 | --all]
-$I equip   --campaign $CAMP --character Nella "Shield"     # unequip to take off
+$I show    --campaign $CAMP [--character Wren]          # every character without --character
+$I buy     --campaign $CAMP --character Wren "Lantern" --price "5 gp" [--qty 1]
+$I sell    --campaign $CAMP --character Corin "Blanket" --price "24 sp" [--qty 4]
+$I spend   --campaign $CAMP --character Corin "3 sp"     # a toll, rent or bribe a player agreed to: makes change
+$I earn    --campaign $CAMP --character Corin "26 sp"
+$I add     --campaign $CAMP --character Wren "Iron key" [--qty 1] [--category gear] [--notes "..."]
+$I remove  --campaign $CAMP --character Wren "Torch" [--qty 1 | --all]
+$I equip   --campaign $CAMP --character Wren "Shield"     # unequip to take off
 $I cargo   --campaign $CAMP add|remove|show "Sack of salt" [--qty 3] [--notes "..."]
-$I migrate --campaign $CAMP --character Nella [--write]    # prose section → ledger; dry run first
+$I migrate --campaign $CAMP --character Wren [--write]    # prose section → ledger; dry run first
 $I sync    --campaign $CAMP                                # regenerate sections and push
 ```
 
@@ -376,11 +376,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP events
 ```
   +3 days → Moonday, 18 Duskfall 1247 — morning (hour 8)
 On the road: one roll per travel day (improvised campaign). Not travelling? Ignore these, and use --no-road for rests, waiting in town or downtime.
-Day 1 of 3 (16 Duskfall 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Investigating costs time; ignoring it may cost later.
-Day 2 of 3 (17 Duskfall 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it one vivid line and move on.
-Day 3 of 3 (18 Duskfall 1247): danger. Wolves circling the camp at dusk, bold with hunger. Telegraph the threat, and let talk, flight or a fight all work.
-    Encounter budget (medium for 2 characters of level 1): about 100 XP. Roughly 1 × CR 1/4 (wolf), 2 × CR 1/8 (bandit) or 4 × CR 0 (jackal).
+Present each event and stop there: the party decides how to meet it. Never pay, pick a route or spend time for them.
+Day 1 of 3 (16 Duskfall 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Two or three lines: investigating costs time, ignoring it may cost later, and the party decides.
+Day 2 of 3 (17 Duskfall 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it a line or two of colour and carry on.
+Day 3 of 3 (18 Duskfall 1247): story. A clock is ticking (due 20 Duskfall 1247): the bridge closes to loaded wagons. Show it on the road: carters turning back. The story catches up with them: play it as a scene with a concrete event, and end on the party's choice.
 ```
+
+A danger day adds a line with the encounter budget for the party.
 
 ---
 
@@ -451,13 +453,13 @@ Nothing to run: `send.py` keeps both after each send reaches the display. A bloc
 
     ## Session 7 · 2026-11-14
 
-    ### 21:04 · Brackenford toll gate · 18 Duskfall 1247
+    ### 21:04 · Ashbridge toll gate · 18 Duskfall 1247
 
     **Everybody:** We hand over the satchel.
 
     **DM:** The clerk breaks the seal.
 
-    **Hessa Varn:** "Twenty silver, or the wagon stays."
+    **Odile Varn:** "Twenty silver, or the wagon stays."
 
 - A `## Session N · <date>` section starts after the portal's Save & close, or after three hours without a send. N is one more than the newest `## Session N` in `session-log.md`, `session-log-archive.md` or `state.md`. At Save & close the portal's notes helper (`display/session_summary.py`) writes `## Session N` in `session-log.md` from every section numbered N, so the next session's number follows on.
 - One `###` entry per send: the real time, the place (the last `--scene` place, else `state.md`'s Location) and the in-world date.
@@ -473,6 +475,16 @@ Nothing to run: `send.py` keeps both after each send reaches the display. A bloc
 The scripts only ever add a line the entry lacks. They never change or remove one, so personality, motives and anything else the DM wrote stand. `oracle.py` and `send.py` share one lock on `npcs.md`.
 
 ---
+
+## Writes outside the campaign — `display/owner_writes.py`
+
+A DM started by the portal can write only its campaign folder and the runtime folder. Three steps write elsewhere, so when the sandbox refuses them the script asks the display (which runs outside the sandbox) to do it, for the campaign the display is showing only:
+
+- `python3 ${CLAUDE_SKILL_DIR}/display/owner_writes.py roster --campaign <name>` copies the campaign's `characters/*.md` to the global roster, `<data root>/characters/`. Run by hand, it copies them itself.
+- `name_registry.py add` and `retire` record the name through the display.
+- `build_supplemental.py --character <sheet>` or `--campaign <name>`: the display fetches the campaign's non-SRD spells and features and saves them.
+
+The display logs each request it carried out or refused in `<runtime>/owner-writes.log`. `npc_rename.py` keeps its backup inside the campaign, in `.rename-backups/<time>/`.
 
 ## Where Play Stopped — `scripts/stop_point.py`
 
@@ -502,8 +514,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos adjust --campaign $CAMP --pc
 
 # Improvised campaigns only (Standard 16): a new NPC's temperament, and what each travel day brings.
 # npc with --campaign and --name is seeded from the name (same name, same person) and saves to npcs.md.
-python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --campaign $CAMP --name "Bera Holt" --trader
-python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc note --campaign $CAMP --name "Bera Holt" "Sold 4 blankets at 18. Thinks they drive a hard bargain."
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --campaign $CAMP --name "Agnes Shaw" --trader
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc note --campaign $CAMP --name "Agnes Shaw" "Sold 4 blankets at 18. Thinks they drive a hard bargain."
 # road prints a skip notice for prebuilt (structured) campaigns. calendar.py advance runs it for you.
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py road --campaign $CAMP --days 3
 
@@ -522,18 +534,20 @@ Likelihoods: `sure-thing`, `likely`, `50/50`, `unlikely`, `no-way`. Verdict suff
 
 **`npc`.** Rolls a temperament tier (about 60% ordinary, 30% colourful, 6% memorable, 4% troubled), a current want (about half ask something of the party, marked "an ask") and, with `--trader`, a trading style. With `--campaign` and `--name` it writes `- **Temperament:**`, `- **Wants now:**` and `- **Trades:**` lines into that NPC's entry in `npcs.md` (a `###` heading starting with the name), adding the entry if it is missing; running it again rewrites the same values. `npc note` appends `- Party note (<in-world date>): <line>` to the end of the entry: one line after a scene, on how it went and what the NPC now thinks of the party.
 
-**`road`.** One roll per travel day: quiet, traveller, obstacle, discovery, danger or story, each with several examples. With `--campaign` it reads `state.md`:
-- `pacing` in `## Session Flags` weights the table: `adventure` has about half the quiet days and over three times the story days of `mixed`; `downtime` has more quiet days and travellers, and less danger.
-- Story days use `## Next Hooks` bullets and `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) when present; about half of traveller days bring a clock's news or a hook.
+**`road`.** One roll per travel day: quiet, traveller, obstacle, discovery, danger or story, each with several examples. Most days are quiet or tied to the story; obstacles, discoveries and dangers (hazards) are rare. It prints one rule first: present each event and stop, and never pay, pick a route or spend time for the party. With `--campaign` it reads `state.md`:
+- `pacing` in `## Session Flags` weights the table. In a 2-day journey with no clock close, `adventure` gives about 36% quiet days, 41% tied to the story and 24% unrelated (hazards or a passing traveller); `mixed` about 52% quiet, 27% story and 20% unrelated; `downtime` the most quiet days and the least story.
+- Story days use the current arc beat's `world_pressure`, `## Next Hooks`, `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) and `## Active Quests` (the errand). About half of traveller days bring a clock's news, a hook or the errand.
+- One hazard a journey at most. A journey is the run of road days on consecutive calendar days, so it carries on across `advance 1 day` calls and ends when a day passes without travel.
+- Racing a clock (one due within 3 days of the travel day, by `calendar.json`): no danger or discovery; an obstacle comes only with the clock's stakes attached, travellers bring news tied to the story, and story days show that clock twice as often.
 - `road_log.json` in the campaign folder keeps the last 10 days, so an example, hook or clock is not reused while it is in the log (a hook used on a story day is not repeated by a traveller either), and the same eventful kind never comes twice in a row.
 - Danger days add an encounter budget for the party (size and average level from `party_stats.json`, else `characters/*.md`), at the tier set by the `difficulty` dial (`standard` = medium).
-- `road_next.json` holds a day the turn card's journey prep has already rolled (see Turn prep below), kept under the in-world date it was rolled on. The next road roll on that date, from `calendar.py advance` or `oracle.py road`, uses it as day 1 and deletes it once the log holds it. It is dropped and rolled fresh once the date has moved on, or when the hook or clock it was built on has left `state.md`. Preparing and using it share a lock (`road_next.lock`) with `calendar.py advance`, so the two never cross.
+- `road_next.json` holds a day the turn card's journey prep has already rolled (see Turn prep below), kept under the in-world date it was rolled on. It is rolled as the journey's next day, so the one-hazard cap and a racing clock apply to it too. The next road roll on that date, from `calendar.py advance` or `oracle.py road`, uses it as day 1 and deletes it once the log holds it. It is dropped and rolled fresh once the date has moved on, or when the hook, clock, errand or beat it was built on (or the clock an obstacle raises the stakes of) has left `state.md`. Preparing and using it share a lock (`road_next.lock`) with `calendar.py advance`, so the two never cross.
 
 ---
 
 ## Turn card and arc — `scripts/arc.py`
 
-**The turn card.** In portal play every party reply arrives with one block in front of it: `[[Turn card, hidden from players: … ]]`. The portal builds it from the campaign files (`scripts/turn_card.py` at the repository root), so it is as current as `state.md`. It holds, when the files have them: where and when the party is; the current arc beat and its `steering_notes` (or a structured campaign's chapter and next key beat); the top two `## Next Hooks`; any `## Clocks` entry due within two in-world days or overdue; the `Trade policy:` pinned fact; the people present, from `npcs.md`; the table's narration length and campaign roll mode; and three standing rules. Per-character overrides from the display's Rolls toggle follow the card as `[[<Character> roll mode: auto|players]]`, as `check_input.py` prints them; the portal does not run `check_input.py`, so this is how they arrive. Read it, act on it, and never show it to the players. Keep `## Next Hooks`, `## Clocks`, the trade policy and the arc current, because the card is only as good as `state.md`.
+**The turn card.** In portal play every party reply arrives with one block in front of it: `[[Turn card, hidden from players: … ]]`. The portal builds it from the campaign files (`scripts/turn_card.py` at the repository root), so it is as current as `state.md`. It holds, when the files have them: where and when the party is; the current arc beat and its `steering_notes` (or a structured campaign's chapter and next key beat); the top two `## Next Hooks`; any `## Clocks` entry due within two in-world days or overdue; the `Trade policy:` pinned fact; up to two sentences from `## Live State Flags` or `## Current Situation` that leave a payment or deal open, as `Waiting on the party` (the players answer those, never the DM); the people present, from `npcs.md`; the table's narration length and campaign roll mode; and three standing rules. Per-character overrides from the display's Rolls toggle follow the card as `[[<Character> roll mode: auto|players]]`, as `check_input.py` prints them; the portal does not run `check_input.py`, so this is how they arrive. Read it, act on it, and never show it to the players. Keep `## Next Hooks`, `## Clocks`, the trade policy and the arc current, because the card is only as good as `state.md`.
 
 When the story has sat on one beat for too long (`steer_after: N` in Session Flags, otherwise 4, 6 or 10 turns for `spotlight: dm_led`, `balanced` or `player_led`; `steer_after: 0` turns it off), the beat line becomes **DM steering, mandatory this turn**. The first nudge says what to bring into the scene now. The second nudge for the same beat asks whether the beat has already landed: if it has, run `arc.py advance`; if not, run `arc.py revise` with a pressure that fits where the party is. Turns during active combat, dice-only replies and out-of-character notes (`OOC`, `((…))`, `//`) do not count. The count restarts when the beat, its pressure or the steering notes change.
 
@@ -543,7 +557,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py status  --campaign <name>
 # The current beat's change has landed: mark it complete, move to the next beat and act
 python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py advance --campaign <name> [--beat 1b]
 # The beat no longer fits where the party is: give it a new pressure, change or steering
-python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b --pressure "Piers panics as the auditor arrives on 18 Duskfall" [--what-changes "..."] [--steering "..."]
+python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b --pressure "Bram panics as the auditor arrives on 18 Duskfall" [--what-changes "..."] [--steering "..."]
 ```
 
 `advance` clears `steering_notes`, so write fresh steering for the new beat with `revise --steering`. For a structured campaign, `advance` ticks the chapter's next key beat off `outstanding_beats`; moving to a new chapter still means reading `arc.md`. `revise` refuses completed beats and logs each change in `revision_log`. Both rewrite only the YAML block under `## Campaign Arc` (comments inside it are dropped) and leave the rest of `state.md` as it was.
@@ -639,7 +653,7 @@ Open the browser tab and Chromecast it *before* running `/dm:dnd load` so the br
 **Scene cue.** Send one when the party arrives somewhere new, or when a place's mood truly changes. Bundle it with the first narration there:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --scene "Saltmere, Meren's bakery: haggling over flour by the ovens" << 'DNDEND'
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --scene "Brinewick, Rosa's bakery: haggling over flour by the ovens" << 'DNDEND'
 Warm bread and woodsmoke fill the little shop.
 DNDEND
 ```
@@ -648,7 +662,7 @@ Write the place, a colon, then what the party sees happening. Add `--mood calm|c
 
 - **Key:** taken from the place alone, so the same place always gets the same key. A cue for the place already on screen changes nothing and prints `scene unchanged`, unless `--mood` or the world era differs.
 - **Setting:** keyword mapping of the place to one of the 18 broad settings (`inn` to tavern, `bakery` to city, `cavern` to cave). If the place has no keyword, the activity words are tried, then the current setting, then `city`.
-- **Place theme:** a place named in the world notes takes its saved path and mood. Two formats are read: `Town: [{"name":"Town","mood":"tense"}]. Gate: child {"name":"Gate"}` lines, and `Scene theme: Region (warm) → Place (curious)` lines. A named place with extra words (`Saltmere docks`) becomes a child of that place. An unknown place becomes a child of the current outer region.
+- **Place theme:** a place named in the world notes takes its saved path and mood. Two formats are read: `Town: [{"name":"Town","mood":"tense"}]. Gate: child {"name":"Gate"}` lines, and `Scene theme: Region (warm) → Place (curious)` lines. A named place with extra words (`Brinewick docks`) becomes a child of that place. An unknown place becomes a child of the current outer region.
 - **Era:** an `Era:` or `Established era:` line in the world notes, else a `Setting type:` naming medieval, renaissance, ancient, modern or futuristic, else the current scene's era, else medieval.
 - **Mood:** `--mood`, else the nearest saved place mood, else the setting's usual tone.
 - **Prompts:** the music and the background illustration are both written by `display/scene_engine.py` from that one scene.

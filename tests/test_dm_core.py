@@ -44,6 +44,14 @@ def test_dm_core_carries_the_play_rules(needle):
     assert needle in _read(CORE)
 
 
+def test_dm_core_plays_road_days_for_the_story():
+    core = _read(CORE)
+    travel = core[core.index("## 7."):core.index("## 8.")]
+    for words in ("tied to the story", "a story day is a scene", "a line or two", "at most one a journey",
+                  "raises its stakes", "settle it and carry on", "stop for their choice"):
+        assert words in travel, words
+
+
 def test_agents_md_sends_a_portal_dm_to_dm_core_in_chunks():
     text = _read(REPO / "AGENTS.md")
     assert "skills/dnd/DM-CORE.md" in text
@@ -148,7 +156,7 @@ def _send(sender, argv, body):
 
 
 @pytest.mark.parametrize("ending", [
-    "Elbane, Nella, what would you like to do?",
+    "Corin, Wren, what would you like to do?",
     "Where would you like to go first?",
     "Where to next?",
     "What do you do?",
@@ -159,16 +167,16 @@ def _send(sender, argv, body):
 ])
 def test_narration_ending_on_a_bare_question_warns_but_still_sends(tmp_path, capsys, ending):
     sender = _sender(tmp_path)
-    sent = _send(sender, [], f"The wagon creaks to a stop outside Saltmere.\n\n{ending}\n")
+    sent = _send(sender, [], f"The wagon creaks to a stop outside Brinewick.\n\n{ending}\n")
     assert sent, "the warning must never block the send"
     err = capsys.readouterr().err
     assert "something in motion" in err
 
 
 @pytest.mark.parametrize("argv,body", [
-    ([], "Hessa slams the ledger shut. \"Twenty silver by dusk, or the wagon stays.\""),
+    ([], "Odile slams the ledger shut. \"Twenty silver by dusk, or the wagon stays.\""),
     ([], "The bell on the bridge starts ringing. Where do you two go from here, with the gate closing?"),
-    (["--npc", "Tovin"], "Where to next?"),
+    (["--npc", "Garrick"], "Where to next?"),
     (["--opener"], "Where to next?"),
 ])
 def test_pressure_endings_and_other_blocks_do_not_warn(tmp_path, capsys, argv, body):
@@ -185,16 +193,16 @@ class _Response(io.BytesIO):
 def test_dice_request_wait_prints_the_roll_so_the_dm_resolves_in_the_same_turn(tmp_path, capsys):
     sender = _sender(tmp_path)
     replies = iter([
-        _Response({"request_id": "abc", "pending": ["Nella"]}),
+        _Response({"request_id": "abc", "pending": ["Wren"]}),
         _Response({"complete": True, "pending": [],
-                   "results": ["Nella rolls 1d20+3: [14] +3 = 17 — Persuasion"]}),
+                   "results": ["Wren rolls 1d20+3: [14] +3 = 17 — Persuasion"]}),
     ])
-    with mock.patch.object(sys, "argv", ["send.py", "--dice-request", "--character", "Nella",
+    with mock.patch.object(sys, "argv", ["send.py", "--dice-request", "--character", "Wren",
                                          "--modifier", "3", "--dc", "13", "--wait"]), \
          mock.patch.object(sender.urllib.request, "urlopen", side_effect=lambda *a, **k: next(replies)), \
          mock.patch.dict(os.environ, {"DND_ACTIVE_CAMPAIGN": ""}):
         sender.main()
-    assert "Nella rolls 1d20+3: [14] +3 = 17" in capsys.readouterr().out
+    assert "Wren rolls 1d20+3: [14] +3 = 17" in capsys.readouterr().out
 
 
 def test_display_reports_the_rolled_result_for_a_finished_request(tmp_path):
@@ -208,8 +216,8 @@ def test_display_reports_the_rolled_result_for_a_finished_request(tmp_path):
     app._token_ok = lambda: True
     client = app.app.test_client()
 
-    request_id = client.post("/dice-request", json={"character": "Nella", "modifier": 3, "dc": 13}).json["request_id"]
-    roll = client.post("/player-input/dice", json={"character": "Nella", "spec": "1d20", "modifier": 3,
+    request_id = client.post("/dice-request", json={"character": "Wren", "modifier": 3, "dc": 13}).json["request_id"]
+    roll = client.post("/player-input/dice", json={"character": "Wren", "spec": "1d20", "modifier": 3,
                                                     "label": "Persuasion", "request_id": request_id}).json
     status = client.get(f"/dice-request/{request_id}").json
 
@@ -251,3 +259,28 @@ def test_skill_files_keep_the_sidebar_lists_in_state_md_not_in_pushes():
     assert "- **Short name** (active|threat|resolved|failed)" in load
     assert "- **Faction**: Standing" in load
     assert "--factions" not in load.split("push_stats.py --party", 1)[1].split("```", 1)[0]
+
+
+def _section(text: str, heading: str) -> str:
+    start = text.index(heading)
+    end = text.find("\n## ", start + len(heading))
+    return text[start:end if end != -1 else None]
+
+
+def test_the_dm_never_spends_or_agrees_for_the_players():
+    rule = _section(_read(CORE), "## 2. Never play the player characters")
+    for words in ("spend their coin", "give away", "accept a deal", "toll", "fare", "bribe", "Pinned Facts", "stop"):
+        assert words in rule, words
+
+
+def test_trade_puts_every_deal_and_bribe_back_to_the_players():
+    trade = _section(_read(CORE), "## 5. Trade")
+    for words in ("say yes to every deal", "only asked the price", "bribe", "a player agreed", "standing orders"):
+        assert words in trade, words
+    assert "spend only what a player agreed to pay" in _section(_read(CORE), "## 16. Exact flags")
+
+
+@pytest.mark.parametrize("path", [CORE, SKILL / "SKILL.md", SKILL / "SKILL-scripts.md", SKILL / "templates" / "state.md"])
+def test_no_file_tells_the_dm_to_apply_the_trade_policy_without_asking(path):
+    for line in _read(path).splitlines():
+        assert not ("rade policy" in line and "without asking" in line), line

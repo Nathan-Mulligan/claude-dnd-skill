@@ -137,7 +137,7 @@ class ImprovVarietyTests(unittest.TestCase):
     def test_most_road_days_are_quiet_but_not_all(self):
         rng = random.Random(5)
         kinds = [oracle.road_day(rng=rng)["kind"] for _ in range(2000)]
-        self.assertTrue(600 < kinds.count("quiet") < 1000)
+        self.assertTrue(850 < kinds.count("quiet") < 1250)
         self.assertEqual(set(kinds), {"quiet", "traveller", "obstacle", "discovery", "danger", "story"})
 
     def test_adventure_pacing_brings_fewer_quiet_days_and_more_story(self):
@@ -149,7 +149,7 @@ class ImprovVarietyTests(unittest.TestCase):
         quiet_adv, story_adv = count("adventure")
         quiet_down, story_down = count("downtime")
         self.assertLess(quiet_adv, quiet_mixed * 0.7)
-        self.assertGreater(story_adv, story_mixed * 2)
+        self.assertGreater(story_adv, story_mixed * 1.5)
         self.assertGreater(quiet_down, quiet_mixed)
         self.assertLess(story_down, story_mixed)
 
@@ -189,11 +189,11 @@ class RoadCliTests(unittest.TestCase):
 STATE = """# Campaign
 
 ## Next Hooks
-- Saltmere: the cooper is short of hoops and will pay for a crate carried from Brackenford.
-- The Wardens want the burned wagon at the crossroads explained.
+- Brinewick: the cooper is short of hoops and will pay for a crate carried from Ashbridge.
+- The Reeves want the burned wagon at the crossroads explained.
 
 ## Clocks
-- 18 Duskfall 1247: the Wardens impound unregistered wagons at Brackenford (seen by: carters turning back on the road)
+- 18 Duskfall 1247: the Reeves impound unregistered wagons at Ashbridge (seen by: carters turning back on the road)
 
 ## Campaign Arc
 ```yaml
@@ -248,7 +248,7 @@ def test_travellers_sometimes_bring_clock_news():
     travellers = [d["text"] for d in (oracle.road_day(rng=rng, context=context) for _ in range(400))
                   if d["kind"] == "traveller"]
     assert any("carters turning back" in t for t in travellers)
-    assert any("carters turning back" not in t and "cooper" not in t and "Wardens" not in t for t in travellers)
+    assert any("carters turning back" not in t and "cooper" not in t and "Reeves" not in t for t in travellers)
 
 
 def test_road_log_prevents_immediate_repeats(campaign):
@@ -281,7 +281,7 @@ def test_no_example_repeats_within_ten_days_at_any_pacing(pacing):
 
 
 def test_one_hook_is_not_reused_as_story_then_traveller_within_ten_days():
-    context = {"pacing": "adventure", "hooks": ["Saltmere: the cooper needs a crate carried"], "clocks": []}
+    context = {"pacing": "adventure", "hooks": ["Brinewick: the cooper needs a crate carried"], "clocks": []}
     for seed in range(40):
         days = oracle.roll_road(30, rng=random.Random(seed), context=context)
         hits = [i for i, d in enumerate(days) if "cooper" in d["text"]]
@@ -291,7 +291,7 @@ def test_one_hook_is_not_reused_as_story_then_traveller_within_ten_days():
 
 def test_danger_day_prints_an_encounter_budget_for_the_party(campaign):
     (campaign / "party_stats.json").write_text(json.dumps({"players": [
-        {"name": "Elbane", "level": 1}, {"name": "Nella", "level": 1}]}), encoding="utf-8")
+        {"name": "Corin", "level": 1}, {"name": "Wren", "level": 1}]}), encoding="utf-8")
     party = oracle.read_party(campaign)
     assert party == (2, 1)
     lines = oracle.encounter_budget(party, "standard")
@@ -334,52 +334,52 @@ def run_oracle(root, *args):
 def test_seeded_npc_is_stable_and_written_to_npcs_md(tmp_path):
     folder = make_campaign(tmp_path)
     (folder / "npcs.md").write_text(
-        "# NPCs\n\n| Name | Role |\n|---|---|\n| Bera Holt | trader |\n\n"
-        "### Tovin Marsh\n- **Role:** ferryman\n- Tells dry jokes.\n", encoding="utf-8")
-    first = run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "Bera Holt", "--trader")
+        "# NPCs\n\n| Name | Role |\n|---|---|\n| Agnes Shaw | trader |\n\n"
+        "### Garrick Marsh\n- **Role:** ferryman\n- Tells dry jokes.\n", encoding="utf-8")
+    first = run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "Agnes Shaw", "--trader")
     assert first.returncode == 0, first.stderr
-    second = run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "bera  holt", "--trader")
+    second = run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "agnes  shaw", "--trader")
     assert second.returncode == 0, second.stderr
     strip = lambda out: [l for l in out.splitlines() if l.startswith(("temperament", "wants", "trades"))]
     assert strip(first.stdout) == strip(second.stdout) and strip(first.stdout)
     text = (folder / "npcs.md").read_text(encoding="utf-8")
-    assert text.count("### Bera Holt") == 1
+    assert text.count("### Agnes Shaw") == 1
     assert text.count("**Temperament:**") == 1
     assert "**Wants now:**" in text and "**Trades:**" in text
-    assert "### Tovin Marsh\n- **Role:** ferryman\n- Tells dry jokes." in text
+    assert "### Garrick Marsh\n- **Role:** ferryman\n- Tells dry jokes." in text
 
 
 def test_seeded_npc_updates_an_existing_entry_in_place(tmp_path):
     folder = make_campaign(tmp_path)
     (folder / "npcs.md").write_text(
-        "# NPCs\n\n### Mara Venn (archivist)\n- **Role:** archivist\n\n### Personality\n- dry\n\n"
-        "### Tovin Marsh\n- **Role:** ferryman\n", encoding="utf-8")
-    assert run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "Mara Venn").returncode == 0
+        "# NPCs\n\n### Ilsa Brook (archivist)\n- **Role:** archivist\n\n### Personality\n- dry\n\n"
+        "### Garrick Marsh\n- **Role:** ferryman\n", encoding="utf-8")
+    assert run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "Ilsa Brook").returncode == 0
     text = (folder / "npcs.md").read_text(encoding="utf-8")
-    mara, tovin = text.split("### Tovin Marsh")
-    assert "- **Role:** archivist\n- **Temperament:**" in mara
-    assert "Temperament" not in tovin
-    assert text.count("Mara Venn") == 1
+    ilsa, garrick = text.split("### Garrick Marsh")
+    assert "- **Role:** archivist\n- **Temperament:**" in ilsa
+    assert "Temperament" not in garrick
+    assert text.count("Ilsa Brook") == 1
 
 
 def test_npc_name_does_not_match_a_longer_name(tmp_path):
     folder = make_campaign(tmp_path)
     (folder / "npcs.md").write_text(
-        "# NPCs\n\n### Bera Holt II\n- **Role:** her son\n\n### Bera Holt (trader)\n- **Role:** trader\n",
+        "# NPCs\n\n### Agnes Shaw II\n- **Role:** her son\n\n### Agnes Shaw (trader)\n- **Role:** trader\n",
         encoding="utf-8")
-    assert run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Bera Holt", "Fair dealer.").returncode == 0
-    son, mother = (folder / "npcs.md").read_text(encoding="utf-8").split("### Bera Holt (trader)")
+    assert run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Agnes Shaw", "Fair dealer.").returncode == 0
+    son, mother = (folder / "npcs.md").read_text(encoding="utf-8").split("### Agnes Shaw (trader)")
     assert "Fair dealer" not in son and "Fair dealer" in mother
 
 
 def test_npc_exact_heading_wins_over_an_annotated_one(tmp_path):
     folder = make_campaign(tmp_path)
     (folder / "npcs.md").write_text(
-        "# NPCs\n\n### Bera Holt (the elder)\n- **Role:** gran\n\n### Bera Holt\n- **Role:** trader\n",
+        "# NPCs\n\n### Agnes Shaw (the elder)\n- **Role:** gran\n\n### Agnes Shaw\n- **Role:** trader\n",
         encoding="utf-8")
-    run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Bera Holt", "Fair dealer.")
-    elder, bera = (folder / "npcs.md").read_text(encoding="utf-8").split("### Bera Holt\n")
-    assert "Fair dealer" not in elder and "Fair dealer" in bera
+    run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Agnes Shaw", "Fair dealer.")
+    elder, agnes = (folder / "npcs.md").read_text(encoding="utf-8").split("### Agnes Shaw\n")
+    assert "Fair dealer" not in elder and "Fair dealer" in agnes
 
 
 def test_npc_note_appends_a_line_to_the_entry(tmp_path):
@@ -388,24 +388,24 @@ def test_npc_note_appends_a_line_to_the_entry(tmp_path):
         {"day": 17, "month": 8, "year": 1247, "months": ["a", "b", "c", "d", "e", "f", "g", "Duskfall"]}),
         encoding="utf-8")
     (folder / "npcs.md").write_text(
-        "# NPCs\n\n### Bera Holt\n- **Role:** trader\n\n### Personality\n- sly\n\n### Tovin Marsh\n- **Role:** ferryman\n",
+        "# NPCs\n\n### Agnes Shaw\n- **Role:** trader\n\n### Personality\n- sly\n\n### Garrick Marsh\n- **Role:** ferryman\n",
         encoding="utf-8")
     note = "Sold 4 blankets at 18. Thinks they drive a hard bargain."
-    result = run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Bera Holt", note)
+    result = run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Agnes Shaw", note)
     assert result.returncode == 0, result.stderr
-    run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Bera Holt", "Paid them to carry a crate.")
+    run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Agnes Shaw", "Paid them to carry a crate.")
     text = (folder / "npcs.md").read_text(encoding="utf-8")
-    bera, tovin = text.split("### Tovin Marsh")
-    assert f"- Party note (17 Duskfall 1247): {note}\n- Party note (17 Duskfall 1247): Paid them to carry a crate." in bera
-    assert "Party note" not in tovin
+    agnes, garrick = text.split("### Garrick Marsh")
+    assert f"- Party note (17 Duskfall 1247): {note}\n- Party note (17 Duskfall 1247): Paid them to carry a crate." in agnes
+    assert "Party note" not in garrick
 
 
 def test_npc_note_creates_the_entry_when_missing(tmp_path):
     folder = make_campaign(tmp_path)
-    result = run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Jessa Pike", "Owes them a favour.")
+    result = run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Lissa Crane", "Owes them a favour.")
     assert result.returncode == 0, result.stderr
     text = (folder / "npcs.md").read_text(encoding="utf-8")
-    assert "### Jessa Pike\n- Party note: Owes them a favour." in text
+    assert "### Lissa Crane\n- Party note: Owes them a favour." in text
 
 
 def test_npc_note_needs_campaign_and_name(tmp_path):

@@ -12,7 +12,7 @@ import sidebar_sync  # noqa: E402
 
 STATE = """# Campaign: Test
 ## World State
-- **Faction states:** SECRET-WORLD Road Wardens skim the toll.
+- **Faction states:** SECRET-WORLD Toll Reeves skim the toll.
 ## Active Quests
 - **Wagon rental** (active): pay the 3 sp rental to its owner at the next market.
 - [resolved] Deliver the parcel to the cooperage.
@@ -20,15 +20,15 @@ STATE = """# Campaign: Test
   - NESTED-NOTE a nested note is not a quest
 *(trading quests go here)*
 ## Faction Standings
-- **Road Wardens**: Suspicious — they doubled the toll and won't say why.
-- Millers' Compact: Friendly
+- **Toll Reeves**: Suspicious — they doubled the toll and won't say why.
+- Bakers' Guild: Friendly
 ## Next Hooks
 - SECRET-HOOK: a courier carries the auditor's notice.
 ## Faction Moves
-- SECRET-MOVE: the Wardens sent an auditor.
+- SECRET-MOVE: the Reeves sent an auditor.
 ## Live State Flags
 **Faction stances**:
-- SECRET-FLAG Road Wardens: hostile
+- SECRET-FLAG Toll Reeves: hostile
 ## DM Notes (hidden from players)
 - SECRET-NOTE
 """
@@ -47,8 +47,8 @@ def test_quests_come_from_active_quests_with_name_status_and_detail():
 
 def test_factions_come_from_faction_standings():
     assert sidebar_sync.lists(STATE)["factions"] == [
-        {"name": "Road Wardens", "standing": "Suspicious", "detail": "they doubled the toll and won't say why."},
-        {"name": "Millers' Compact", "standing": "Friendly"},
+        {"name": "Toll Reeves", "standing": "Suspicious", "detail": "they doubled the toll and won't say why."},
+        {"name": "Bakers' Guild", "standing": "Friendly"},
     ]
 
 
@@ -64,8 +64,8 @@ def test_quest_line_forms(line, item):
 @pytest.mark.parametrize("line, item", [
     ("**Pale Court** — Hostile; they want the ring", {"name": "Pale Court", "standing": "Hostile",
                                                      "detail": "they want the ring"}),
-    ("Road Wardens: Neutral (wary of us)", {"name": "Road Wardens", "standing": "Neutral", "detail": "wary of us"}),
-    ("Road Wardens keep the toll", None),
+    ("Toll Reeves: Neutral (wary of us)", {"name": "Toll Reeves", "standing": "Neutral", "detail": "wary of us"}),
+    ("Toll Reeves keep the toll", None),
 ])
 def test_faction_line_forms(line, item):
     assert sidebar_sync.faction(line) == item
@@ -127,7 +127,7 @@ def test_hostile_lines_parse_in_linear_time():
     import time
     pad = " " * 200_000
     text = ("## Active Quests\n- " + pad + "\n- x" + pad + "(\n- **A**" + pad + "\n" + "##" + pad + "\n"
-            "## Faction Standings\n- Wardens: Neutral" + pad + "x" + pad + "(\n- **B**:" + pad + "\n")
+            "## Faction Standings\n- Reeves: Neutral" + pad + "x" + pad + "(\n- **B**:" + pad + "\n")
     started = time.monotonic()
     sidebar_sync.lists(text)
     assert time.monotonic() - started < 1
@@ -179,12 +179,12 @@ def test_a_quest_change_in_state_md_reaches_the_sidebar_without_a_push(display):
 
 def test_a_dm_push_that_disagrees_with_state_md_is_put_right(display):
     module, client, state, _, _ = display
-    state.write_text("## Active Quests\n- Find a cargo.\n## Faction Standings\n- Wardens: Neutral\n",
+    state.write_text("## Active Quests\n- Find a cargo.\n## Faction Standings\n- Reeves: Neutral\n",
                      encoding="utf-8")
     client.post("/stats", json={"quests": [{"name": "Old quest", "status": "active"}]})
     assert module._sync_sidebar_from_state() is True
     assert [q["name"] for q in module._current_stats["quests"]] == ["Find a cargo."]
-    assert module._current_stats["factions"] == [{"name": "Wardens", "standing": "Neutral"}]
+    assert module._current_stats["factions"] == [{"name": "Reeves", "standing": "Neutral"}]
 
 
 def test_without_the_sections_the_dm_pushed_lists_stand(display):

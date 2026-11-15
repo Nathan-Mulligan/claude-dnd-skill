@@ -6,10 +6,10 @@ here; it runs in a few milliseconds inside the DM's narration call.
 turn-log.md (in the campaign folder; this module is its only writer)
     # Turn log
     ## Session 7 · 2026-11-14              a new section after a gap of SESSION_GAP_S or more
-    ### 21:04 · Brackenford toll gate · 18 Duskfall 1247   one entry per send: time, place, in-world date
+    ### 21:04 · Ashbridge toll gate · 18 Duskfall 1247   one entry per send: time, place, in-world date
     **Everybody:** We hand over the satchel.               one paragraph per block, word for word
     **DM:** The clerk breaks the seal.
-    **Hessa Varn:** "Twenty silver, or the wagon stays."
+    **Odile Varn:** "Twenty silver, or the wagon stays."
   A new section also starts after Save & close (the portal calls `end_session`).
   Speakers: DM (narration), DM hint (tutor), Dice, XP, Inspiration, Milestone, else the
   player, action or NPC name. The session number is one more than the newest `## Session N`
@@ -43,7 +43,7 @@ from runtime_paths import rt  # noqa: E402  (also puts scripts/ on sys.path)
 
 import npc_entries  # noqa: E402
 import npc_describe  # noqa: E402
-from paths import campaign_dir  # noqa: E402
+from paths import campaign_dir, chosen_campaign  # noqa: E402
 
 LOG_NAME = "turn-log.md"
 LOG_HEADER = ("# Turn log\n\nWritten by send.py: what the table was shown, word for word, one entry per send. "
@@ -73,8 +73,9 @@ _LOCATION = re.compile(r"^[ \t]*[-*][ \t]*\*\*Location:\*\*[ \t]*(\S.*?)[ \t]*$"
 
 
 def campaign_folder() -> "Path | None":
-    """The campaign this send belongs to: DND_ACTIVE_CAMPAIGN, else the one the display shows."""
-    name = os.environ.get("DND_ACTIVE_CAMPAIGN", "").strip()
+    """The campaign this send belongs to: the owner's choice (#139), else DND_ACTIVE_CAMPAIGN, else the one
+    the display shows."""
+    name = chosen_campaign() or os.environ.get("DND_ACTIVE_CAMPAIGN", "").strip()
     if not name:
         try:
             name = Path(rt(".campaign")).read_text(encoding="utf-8").strip()

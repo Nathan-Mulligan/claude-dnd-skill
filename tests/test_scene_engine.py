@@ -20,7 +20,7 @@ SPEC = importlib.util.spec_from_file_location("dnd_send_scene", DISPLAY / "send.
 send = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(send)
 
-ENDERAL = """# Fenmoor — World
+FENMOOR = """# Fenmoor — World
 ## World Foundations
 Era: medieval. Medium magic: uncommon trained practitioners.
 
@@ -44,7 +44,7 @@ MACHINES = """# World: Clockwork
 
 
 def test_same_place_gives_the_same_key_whatever_is_happening():
-    world = WorldNotes.parse(ENDERAL)
+    world = WorldNotes.parse(FENMOOR)
     first = derive("Brinewick, Rosa's Bakery: haggling over flour by the ovens", world=world)
     second = derive("Rosa’s bakery in Brinewick: the ovens cool at dusk", world=world)
     assert first.scene.key == second.scene.key == "brinewick.rosas-bakery"
@@ -68,7 +68,7 @@ def test_keys_stay_valid_for_long_or_non_latin_places():
     ("The wizard tower: books float past", "arcane"),
     ("Deck of the Grey Gull: rain on the sails", "ocean"),
     ("The salt marsh: reeds hiss in the wind", "swamp"),
-    ("Abbey of Saint Ena: monks at prayer", "temple"),
+    ("Abbey of Saint Oda: monks at prayer", "temple"),
 ])
 def test_setting_is_mapped_from_the_place(cue, setting):
     assert derive(cue).setting == setting
@@ -80,7 +80,7 @@ def test_unknown_setting_keeps_the_current_one_or_defaults_to_city():
 
 
 @pytest.mark.parametrize("notes,era", [
-    (ENDERAL, "medieval"),
+    (FENMOOR, "medieval"),
     (MACHINES, "medieval"),
     ("## Campaign Tone & Genre\n- **Tone:** dark\n- **Setting type:** futuristic\n", "futuristic"),
     ("Era: Victorian steampunk. Airships everywhere.\n", "Victorian steampunk"),
@@ -100,7 +100,7 @@ def test_world_era_wins_and_missing_era_inherits_the_current_scene():
 
 
 def test_known_places_take_their_saved_theme_path_and_mood():
-    cue = derive("Brinewick, Rosa's Bakery: flour dust in the air", world=WorldNotes.parse(ENDERAL))
+    cue = derive("Brinewick, Rosa's Bakery: flour dust in the air", world=WorldNotes.parse(FENMOOR))
     assert cue.scene.theme == (PlaceTheme("Brinewick", "curious"), PlaceTheme("Rosa’s Bakery", "warm"))
     assert cue.mood == "warm"
     glade = derive("Sunlit Glade: butterflies over the stream", world=WorldNotes.parse(MACHINES))
@@ -112,7 +112,7 @@ def test_known_places_take_their_saved_theme_path_and_mood():
 
 
 def test_unsaved_places_nest_under_a_named_or_current_region():
-    world = WorldNotes.parse(ENDERAL)
+    world = WorldNotes.parse(FENMOOR)
     docks = derive("Brinewick docks: gulls over the brine sheds", world=world)
     assert docks.scene.theme == (PlaceTheme("Brinewick", "curious"), PlaceTheme("Brinewick docks"))
     assert docks.mood == "curious"
@@ -124,7 +124,7 @@ def test_unsaved_places_nest_under_a_named_or_current_region():
 
 
 def test_mood_is_explicit_then_place_then_setting_default():
-    world = WorldNotes.parse(ENDERAL)
+    world = WorldNotes.parse(FENMOOR)
     assert derive("Ashbridge mill: wheels turn", "ominous", world=world).mood == "ominous"
     assert derive("Ashbridge mill: wheels turn", world=world).mood == "warm"
     assert derive("The Prancing Pony inn: songs").mood == "warm"
@@ -132,7 +132,7 @@ def test_mood_is_explicit_then_place_then_setting_default():
 
 
 def test_same_place_cue_is_a_no_op_unless_the_mood_or_era_changes():
-    world = WorldNotes.parse(ENDERAL)
+    world = WorldNotes.parse(FENMOOR)
     cue = derive("Brinewick, Rosa's Bakery: buying bread", world=world)
     current = {"setting": cue.setting, "mood": "warm", **cue.scene.to_dict()}
     again = derive("Rosa's Bakery in Brinewick: the baker laughs", world=world, current=current)
@@ -152,7 +152,7 @@ def test_invalid_cues_are_rejected(cue):
 
 
 def test_world_notes_load_reads_world_md_and_tolerates_missing_files(tmp_path):
-    (tmp_path / "world.md").write_text(ENDERAL, encoding="utf-8")
+    (tmp_path / "world.md").write_text(FENMOOR, encoding="utf-8")
     assert WorldNotes.load(tmp_path).era == "medieval"
     assert WorldNotes.load(tmp_path / "missing") == WorldNotes()
 
@@ -163,7 +163,7 @@ def test_music_and_backgrounds_draw_from_the_shared_engine(tmp_path):
     assert backgrounds.prompt_for is scene_engine.image_prompt
     assert music.SETTINGS is backgrounds.SETTINGS is scene_engine.SETTINGS
 
-    cue = derive("Brinewick, Rosa's Bakery: flour dust", world=WorldNotes.parse(ENDERAL))
+    cue = derive("Brinewick, Rosa's Bakery: flour dust", world=WorldNotes.parse(FENMOOR))
     director = music.MusicDirector(tmp_path / "music", None, None, renderer=lambda job: None, autostart=False)
     state = director.transition("scene", "derived", **cue.music_fields())
     assert state["scene"] == cue.scene.to_dict() and state["mood"] == "warm" and state["setting"] == "city"
@@ -192,7 +192,7 @@ def _run_send(monkeypatch, argv, health, text="The bell over the door rings."):
 def test_send_scene_derives_the_full_cue_from_health_and_world_notes(tmp_path, monkeypatch, capsys):
     campaign = tmp_path / "campaigns" / "fenmoor"
     campaign.mkdir(parents=True)
-    (campaign / "world.md").write_text(ENDERAL, encoding="utf-8")
+    (campaign / "world.md").write_text(FENMOOR, encoding="utf-8")
     health = {"campaign": "fenmoor", "data_root": str(tmp_path),
               "scene": {"setting": "city", "mood": "tense", "key": "ashbridge.west-gate", "label": "West Gate",
                         "description": "x", "theme": [{"name": "Ashbridge", "mood": "tense"}]}}

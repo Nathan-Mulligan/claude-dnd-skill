@@ -82,7 +82,7 @@ def test_campaign_switch_tells_displays_its_dice_input(display):
 
 
 def _roll(client, **body):
-    body.setdefault('character', 'Elbane')
+    body.setdefault('character', 'Corin')
     return client.post('/player-input/dice', json=body)
 
 
@@ -93,7 +93,7 @@ def test_real_roll_adds_the_modifier_and_says_it_was_rolled_at_the_table(display
     data = reply.json
     assert data['rolls'] == [14] and data['kept'] == [14] and data['total'] == 17
     assert data['manual'] is True
-    assert data['text'] == 'Elbane rolls 1d20+3: [14] +3 = 17 — Stealth (rolled at the table)'
+    assert data['text'] == 'Corin rolls 1d20+3: [14] +3 = 17 — Stealth (rolled at the table)'
     assert {'text': data['text'], 'dice': True} in sent
 
 
@@ -105,14 +105,14 @@ def test_real_roll_with_advantage_takes_both_dice(display, adv, faces, kept, tot
     _, client, _, _ = display
     data = _roll(client, spec='1d20', modifier=2, advantage=adv, faces=faces).json
     assert data['both'] == faces and data['kept'] == [kept] and data['total'] == total
-    assert data['text'] == f'Elbane rolls 1d20+2: [7, 15] → keep {kept} ({adv}) +2 = {total} (rolled at the table)'
+    assert data['text'] == f'Corin rolls 1d20+2: [7, 15] → keep {kept} ({adv}) +2 = {total} (rolled at the table)'
 
 
 def test_real_roll_of_two_dice_sums_each_face(display):
     _, client, _, _ = display
     data = _roll(client, spec='2d6', faces=[3, 5]).json
     assert data['rolls'] == [3, 5] and data['subtotal'] == 8 and data['total'] == 8
-    assert data['text'] == 'Elbane rolls 2d6: [3, 5] = 8 (rolled at the table)'
+    assert data['text'] == 'Corin rolls 2d6: [3, 5] = 8 (rolled at the table)'
 
 
 @pytest.mark.parametrize('spec, adv, faces', [
@@ -132,7 +132,7 @@ def test_real_roll_of_two_dice_sums_each_face(display):
 ])
 def test_real_roll_rejects_faces_the_dice_cannot_show(display, spec, adv, faces):
     module, client, sent, _ = display
-    request_id = client.post('/dice-request', json={'character': 'Elbane', 'spec': spec, 'advantage': adv}).json['request_id']
+    request_id = client.post('/dice-request', json={'character': 'Corin', 'spec': spec, 'advantage': adv}).json['request_id']
     sent.clear()
     reply = _roll(client, spec=spec, advantage=adv, faces=faces, request_id=request_id)
     assert reply.status_code == 400
@@ -143,11 +143,11 @@ def test_real_roll_rejects_faces_the_dice_cannot_show(display, spec, adv, faces)
 def test_real_roll_releases_the_dm_wait_with_the_same_line(display):
     _, client, _, _ = display
     request_id = client.post('/dice-request', json={
-        'characters': ['Elbane', 'Nella'], 'spec': '1d20', 'modifier': 4, 'dc': 13, 'label': 'Persuasion',
+        'characters': ['Corin', 'Wren'], 'spec': '1d20', 'modifier': 4, 'dc': 13, 'label': 'Persuasion',
     }).json['request_id']
     first = _roll(client, spec='1d20', modifier=4, label='Persuasion', faces=[9], request_id=request_id).json
-    assert client.get(f'/dice-request/{request_id}').json['pending'] == ['Nella']
-    second = _roll(client, character='Nella', spec='1d20', modifier=4, label='Persuasion', request_id=request_id).json
+    assert client.get(f'/dice-request/{request_id}').json['pending'] == ['Wren']
+    second = _roll(client, character='Wren', spec='1d20', modifier=4, label='Persuasion', request_id=request_id).json
     status = client.get(f'/dice-request/{request_id}').json
     assert status['complete'] is True
     assert status['results'] == [first['text'], second['text']]
@@ -161,7 +161,7 @@ def test_click_to_roll_is_unchanged(display):
     assert len(data['rolls']) == 2 and all(1 <= r <= 6 for r in data['rolls'])
     assert data['total'] == sum(data['rolls']) + 1
     assert 'manual' not in data
-    assert data['text'] == f"Elbane rolls 2d6+1: [{data['rolls'][0]}, {data['rolls'][1]}] +1 = {data['total']}"
+    assert data['text'] == f"Corin rolls 2d6+1: [{data['rolls'][0]}, {data['rolls'][1]}] +1 = {data['total']}"
 
 
 NODE = shutil.which('node')
@@ -184,7 +184,7 @@ console.log(JSON.stringify([
 def test_a_reconnecting_screen_learns_the_dice_input(display):
     module, client, _, _ = display
     client.post('/dice-input', json={'mode': 'real'})
-    with module.app.test_request_context('/stream?character=Nella'):
+    with module.app.test_request_context('/stream?character=Wren'):
         response = module.stream()
         queue = module._clients[-1]
         first = []

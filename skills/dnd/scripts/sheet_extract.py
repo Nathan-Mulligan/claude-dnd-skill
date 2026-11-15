@@ -12,7 +12,7 @@ it the same way every time:
   * inventory comes from the character's ledger when there is one
     (see inventory.py), otherwise from the section's prose lines.
 
-    python3 sheet_extract.py --campaign Enderal [--character elbane-iii]
+    python3 sheet_extract.py --campaign Fenmoor [--character corin-ashby]
 """
 
 from __future__ import annotations
