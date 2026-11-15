@@ -5595,7 +5595,7 @@ function _renderInspirationBlockNow(name, reason) {
   const title = document.createElement('div');
   title.className = 'inspiration-title';
   title.innerHTML = `<img src="/icons/focus.png" style="width:22px;height:22px;vertical-align:middle;opacity:0.85;margin-right:10px;filter:drop-shadow(0 0 6px rgba(220,190,60,0.6))">` +
-    `${name}` +
+    `${_escHtml(name)}` +
     `<img src="/icons/focus.png" style="width:22px;height:22px;vertical-align:middle;opacity:0.85;margin-left:10px;filter:drop-shadow(0 0 6px rgba(220,190,60,0.6))">`;
   const sub = document.createElement('div');
   sub.className = 'inspiration-sub';
@@ -5628,8 +5628,8 @@ function _renderMilestoneBlockNow(name, label, reason, isReplay) {
   const header = document.createElement('div');
   header.className = 'milestone-header';
   header.innerHTML = `<span class="milestone-icon">✦</span>` +
-                     `<span class="milestone-name">${name}</span>` +
-                     `<span class="milestone-label">${label}</span>`;
+                     `<span class="milestone-name">${_escHtml(name)}</span>` +
+                     `<span class="milestone-label">${_escHtml(label)}</span>`;
   block.appendChild(header);
   if (reason) {
     const detail = document.createElement('div');
@@ -5917,8 +5917,8 @@ function _buildPlayerCard(p, solo) {
   const line1 = [];
   if (p.race)    line1.push(p.race);
   if (baseClass) line1.push(baseClass + (p.level ? ' ' + p.level : ''));
-  identEl.innerHTML = (line1.join(' · ') || '—') +
-    (subLine ? `<br><span style="opacity:0.7">${subLine}</span>` : '');
+  identEl.innerHTML = _escHtml(line1.join(' · ') || '—') +
+    (subLine ? `<br><span style="opacity:0.7">${_escHtml(subLine)}</span>` : '');
   card.appendChild(identEl);
 
   // HP
@@ -5926,7 +5926,7 @@ function _buildPlayerCard(p, solo) {
   const hpRow = document.createElement('div');
   hpRow.className = 'sb-hp-row';
   hpRow.innerHTML = `<img src="/icons/enemy.png" class="sb-row-icon" alt=""><span class="sb-label">HP</span>
-    <span class="sb-hp-nums">${hp.current ?? '—'} / ${hp.max ?? '—'}</span>`;
+    <span class="sb-hp-nums">${_escHtml(hp.current ?? '—')} / ${_escHtml(hp.max ?? '—')}</span>`;
   card.appendChild(hpRow);
 
   const hpTrack = document.createElement('div');
@@ -5954,7 +5954,7 @@ function _buildPlayerCard(p, solo) {
     const xpRow = document.createElement('div');
     xpRow.className = 'sb-xp-row';
     xpRow.innerHTML = `<img src="/icons/ability.png" class="sb-row-icon" alt=""><span class="sb-label">XP</span>
-      <span class="sb-xp-nums">${xp.current} / ${xp.next ?? '?'}</span>`;
+      <span class="sb-xp-nums">${_escHtml(xp.current)} / ${_escHtml(xp.next ?? '?')}</span>`;
     card.appendChild(xpRow);
     const xpTrack = document.createElement('div');
     xpTrack.className = 'sb-bar-track';
@@ -5969,12 +5969,12 @@ function _buildPlayerCard(p, solo) {
 
   // Quick combat stats
   const quickLines = [];
-  if (p.ac        != null) quickLines.push(`AC <span class="val">${p.ac}</span>`);
-  if (p.initiative != null) quickLines.push(`Init <span class="val">${p.initiative}</span>`);
-  if (p.speed     != null) quickLines.push(`Spd <span class="val">${p.speed}</span>`);
+  if (p.ac        != null) quickLines.push(`AC <span class="val">${_escHtml(p.ac)}</span>`);
+  if (p.initiative != null) quickLines.push(`Init <span class="val">${_escHtml(p.initiative)}</span>`);
+  if (p.speed     != null) quickLines.push(`Spd <span class="val">${_escHtml(p.speed)}</span>`);
   if (p.hit_dice) {
     const hd = p.hit_dice;
-    quickLines.push(`HD <span class="val">${hd.remaining ?? '?'}/${hd.max ?? '?'} ${hd.die || ''}</span>`);
+    quickLines.push(`HD <span class="val">${_escHtml(hd.remaining ?? '?')}/${_escHtml(hd.max ?? '?')} ${_escHtml(hd.die || '')}</span>`);
   }
   if (quickLines.length) {
     const qs = document.createElement('div');
@@ -6322,7 +6322,7 @@ function openSheet(name) {
   stripData.forEach(([label, val]) => {
     const cell = document.createElement('div');
     cell.className = 'sm-stat-cell';
-    cell.innerHTML = `<span class="sm-stat-label">${label}</span><span class="sm-stat-val">${val}</span>`;
+    cell.innerHTML = `<span class="sm-stat-label">${label}</span><span class="sm-stat-val">${_escHtml(val)}</span>`;
     strip.appendChild(cell);
   });
   content.appendChild(strip);
@@ -6366,8 +6366,8 @@ function openSheet(name) {
       const cell = document.createElement('div');
       cell.className = 'sm-ab-cell';
       cell.innerHTML = `<div class="sm-ab-name">${key.toUpperCase()}</div>
-        <div class="sm-ab-score">${d.score ?? '—'}</div>
-        <div class="sm-ab-mod">${d.mod ?? '—'}</div>`;
+        <div class="sm-ab-score">${_escHtml(d.score ?? '—')}</div>
+        <div class="sm-ab-mod">${_escHtml(d.mod ?? '—')}</div>`;
       grid.appendChild(cell);
     });
     content.appendChild(grid);
@@ -6402,8 +6402,8 @@ function openSheet(name) {
       if (a.name) { nameCell.dataset.srdName = a.name; nameCell.dataset.srdCategory = 'item'; }
       tr.appendChild(nameCell);
       tr.insertAdjacentHTML('beforeend',
-        `<td>${a.bonus||'—'}</td><td>${a.damage||'—'}</td>
-         <td>${a.type||'—'}</td><td class="atk-notes">${a.notes||''}</td>`);
+        `<td>${_escHtml(a.bonus||'—')}</td><td>${_escHtml(a.damage||'—')}</td>
+         <td>${_escHtml(a.type||'—')}</td><td class="atk-notes">${_escHtml(a.notes||'')}</td>`);
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -6610,7 +6610,7 @@ function openSrdModal(name, category, level) {
         const refUrl   = data.reference_url || data.wikidot_url || '';
         const refLabel = data.reference_label || 'View on D&D 5e Wiki';
         const linkHtml = refUrl
-          ? `<br><a href="${_esc(refUrl)}" target="_blank" rel="noopener" style="color:#c9a84c;font-size:var(--type-label);opacity:0.85;text-decoration:none;">${_esc(refLabel)} ↗</a>`
+          ? `<br><a href="${_escHtml(refUrl)}" target="_blank" rel="noopener" style="color:#c9a84c;font-size:var(--type-label);opacity:0.85;text-decoration:none;">${_escHtml(refLabel)} ↗</a>`
           : `<br><span style="font-size:var(--type-label);opacity:0.6">May be from a supplement (Xanathar's, Tasha's, etc.)</span>`;
         // Near-miss "did you mean?" chips — tap one to re-run the lookup on the
         // closest matching name. Recovers a mistyped spell/condition/monster
@@ -6618,11 +6618,11 @@ function openSrdModal(name, category, level) {
         let didYouMean = '';
         if (Array.isArray(data.suggestions) && data.suggestions.length) {
           const chips = data.suggestions.map(s =>
-            `<button class="srd-suggest-chip" data-srd-name="${_esc(s.name)}" data-srd-category="${_esc(s.category || '')}">${_esc(s.name)}</button>`
+            `<button class="srd-suggest-chip" data-srd-name="${_escHtml(s.name)}" data-srd-category="${_escHtml(s.category || '')}">${_escHtml(s.name)}</button>`
           ).join('');
           didYouMean = `<div class="srd-did-you-mean"><span class="srd-dym-label">Did you mean</span>${chips}</div>`;
         }
-        body.innerHTML = `<div id="srd-not-found">"${_esc(name)}" is not in the local dataset.${linkHtml}</div>${didYouMean}`;
+        body.innerHTML = `<div id="srd-not-found">"${_escHtml(name)}" is not in the local dataset.${linkHtml}</div>${didYouMean}`;
         body.querySelectorAll('.srd-suggest-chip').forEach(chip => {
           chip.addEventListener('click', () => {
             openSrdModal(chip.dataset.srdName, chip.dataset.srdCategory || '', level);
@@ -6638,15 +6638,15 @@ function openSrdModal(name, category, level) {
       lines.forEach(line => {
         if (line.startsWith('## ')) {
           // Title line
-          html += `<div class="srd-title">${_esc(line.replace(/^## /, ''))}</div>`;
+          html += `<div class="srd-title">${_escHtml(line.replace(/^## /, ''))}</div>`;
         } else if (line === '') {
           if (inDesc) html += '\n';
         } else if (!inDesc && line.match(/^[A-Z][a-z].*:/)) {
           // Key-value meta line
-          html += `<div class="srd-meta">${_esc(line)}</div>`;
+          html += `<div class="srd-meta">${_escHtml(line)}</div>`;
         } else {
           if (!inDesc) { html += '<div class="srd-desc">'; inDesc = true; }
-          html += _esc(line) + '\n';
+          html += _escHtml(line) + '\n';
         }
       });
       if (inDesc) html += '</div>';
@@ -6655,10 +6655,6 @@ function openSrdModal(name, category, level) {
     .catch(() => {
       body.innerHTML = '<div id="srd-not-found">Lookup unavailable — is the display running?</div>';
     });
-}
-
-function _esc(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function closeSrdModal() {
@@ -6954,7 +6950,7 @@ function updateStats(stats) {
         el.className = 'sb-turn-item sb-turn-has-icon' + (name === merged.current ? ' sb-turn-current' : '');
         const isPC = name in _playerData;
         const iconSrc = isPC ? '/icons/helmet.png' : '/icons/enemy.png';
-        el.innerHTML = `<img src="${iconSrc}" class="sb-turn-icon" alt="">${name}`;
+        el.innerHTML = `<img src="${iconSrc}" class="sb-turn-icon" alt="">${_escHtml(name)}`;
         list.appendChild(el);
       });
     }
@@ -8407,7 +8403,7 @@ function _renderStagedQueue(data) {
     const label = needMore
       ? `${readyCount}/${threshold} ready`
       : _queuedLabel();
-    const checks = notReady.map(c => `<span class="queue-check" style="opacity:0.5">${c}</span>`).join('');
+    const checks = notReady.map(c => `<span class="queue-check" style="opacity:0.5">${_escHtml(c)}</span>`).join('');
     _waitingEl.innerHTML = `<span class="queue-label">${label}</span>${checks}`;
   } else {
     _waitingEl.style.display = 'none';
@@ -8497,7 +8493,7 @@ function _renderQueueStatus(chars) {
     _waitingEl.innerHTML = '';
     return;
   }
-  const checks = chars.map(c => `<span class="queue-check">✓ ${c}</span>`).join('');
+  const checks = chars.map(c => `<span class="queue-check">✓ ${_escHtml(c)}</span>`).join('');
   _waitingEl.innerHTML = `<span class="queue-label">⏳ ${_queuedLabel()}</span>${checks}`;
   _waitingEl.style.display = 'block';
 }
