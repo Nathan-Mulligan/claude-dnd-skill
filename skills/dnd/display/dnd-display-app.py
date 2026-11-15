@@ -63,6 +63,7 @@ import script_ranges
 
 from paths import find_campaign as _find_campaign
 from paths import campaigns_dir as _campaigns_dir
+from paths import agreed_campaign as _agreed_campaign, chosen_campaign as _chosen_campaign
 from utf8io import read_text as _read_text
 
 # Audio module — degrades silently if numpy not installed
@@ -87,6 +88,21 @@ except Exception:
     _tts = None   # type: ignore
 
 
+import sidebar_sync  # noqa: E402 — loaded at start, like the helpers (helper_jobs.py)
+
+HELP_LOCK     = rt(".help-lock")
+CAMP_FILE     = rt(".campaign")
+
+
+def _active_campaign_name() -> Optional[str]:
+    """The campaign this display selected, unless the owner chose another one (#139).
+
+    The DM can write CAMP_FILE (even a FIFO there), so it is read safely and a name must never lead
+    out of the campaigns folder.
+    """
+    return _agreed_campaign(sidebar_sync.read_state(CAMP_FILE, limit=256))
+
+
 def _apply_campaign_sfx_languages() -> None:
     """Read sfx_languages from the active campaign's state.md Session Flags.
 
@@ -97,7 +113,7 @@ def _apply_campaign_sfx_languages() -> None:
     if _audio is None:
         return
     try:
-        camp = open(rt(".campaign"), encoding="utf-8").read().strip()
+        camp = _active_campaign_name()
         if not camp:
             return
         state_md = _find_campaign(camp) / "state.md"
@@ -117,8 +133,6 @@ def _apply_campaign_sfx_languages() -> None:
 
 _apply_campaign_sfx_languages()
 
-HELP_LOCK     = rt(".help-lock")
-CAMP_FILE     = rt(".campaign")
 STATS_FILE    = rt("stats.json")
 TOKEN_FILE    = rt(".token")
 INPUT_FILE    = rt("player_input.json")
@@ -1006,7 +1020,7 @@ def _get_tail_file() -> "str | None":
     much harder to diagnose. The new contract: campaign-specific or nothing.
     """
     try:
-        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
+        camp = _active_campaign_name()
         if camp:
             return str(_find_campaign(camp) / "session_tail.json")
     except Exception:
@@ -1069,10 +1083,7 @@ def _load_tail() -> None:
               file=sys.stderr)
         return
 
-    try:
-        current_camp = open(CAMP_FILE, encoding="utf-8").read().strip()
-    except Exception:
-        current_camp = ""
+    current_camp = _active_campaign_name() or ""
 
     candidate: list = []
     for item in data[-30:]:
@@ -1097,11 +1108,7 @@ def _load_tail() -> None:
 
 
 def _set_campaign(name: str) -> None:
-    try:
-        with open(CAMP_FILE, encoding="utf-8") as f:
-            previous = f.read().strip()
-    except OSError:
-        previous = ""
+    previous = _active_campaign_name() or ""
     if previous != name:
         if "_music" in globals():
             _music.reset()
@@ -1131,11 +1138,7 @@ def _load_log() -> None:
     try:
         with open(LOG_FILE, encoding="utf-8") as f:
             data = json.load(f)
-        try:
-            with open(CAMP_FILE, encoding="utf-8") as f:
-                campaign = f.read().strip()
-        except OSError:
-            campaign = ""
+        campaign = _active_campaign_name() or ""
         with _text_log_lock:
             _text_log.clear()
             for item in data[:]:
@@ -1160,15 +1163,6 @@ _current_stats: dict = {}
 _stats_owner: Optional[str] = None  # campaign whose party _current_stats holds; None after /clear
 _stats_lock = threading.Lock()
 _persist_lock = threading.Lock()  # keeps snapshot order and write order the same
-
-
-def _active_campaign_name() -> Optional[str]:
-    try:
-        name = open(CAMP_FILE, encoding="utf-8").read().strip()
-    except OSError:
-        return None
-    # The DM can write CAMP_FILE; a name must never lead out of the campaigns folder.
-    return name if name and name not in {".", ".."} and not re.search(r"[/\\]", name) else None
 
 
 def _party_file(campaign: str) -> Optional[Path]:
@@ -1456,10 +1450,7 @@ def health():
 
     The scene descriptor lets the active DM reuse its current scene identity.
     """
-    try:
-        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
-    except Exception:
-        camp = ""
+    camp = _active_campaign_name() or ""
     tail_path = _get_tail_file()
     try:
         tail_size = os.path.getsize(tail_path) if tail_path and os.path.exists(tail_path) else 0
@@ -1651,12 +1642,9 @@ def chunk():
         log_entry["tutor"] = True
 
     # Stamp campaign on tail entries to prevent bleed when switching campaigns
-    try:
-        _camp_stamp = open(CAMP_FILE, encoding="utf-8").read().strip()
-        if _camp_stamp:
-            log_entry["_camp"] = _camp_stamp
-    except Exception:
-        pass
+    _camp_stamp = _active_campaign_name()
+    if _camp_stamp:
+        log_entry["_camp"] = _camp_stamp
 
     # A speaking NPC gets a saved voice before its line reaches the page, so
     # the cast broadcast lands first and the line is read in that voice.
@@ -1691,6 +1679,10 @@ def stats():
     data = request.get_json(silent=True) or {}
     if not data:
         return "", 204
+    chosen = _chosen_campaign()
+    if chosen and "campaign" in data and str(data["campaign"] or "").strip() != chosen:
+        # The DM can call this route; only the owner's choice may make the display write a campaign.
+        return f"The display shows only {chosen}, the campaign chosen in the portal.", 409
     if str(data.get("campaign") or "").strip():
         _select_party(str(data["campaign"]).strip())
     elif data.get("players") and not data.get("replace_players"):
@@ -1964,16 +1956,13 @@ def stats():
     return "", 204
 
 
-import sidebar_sync  # noqa: E402 — loaded at start, like the helpers (helper_jobs.py)
-
 SIDEBAR_SYNC_S = 2.0
 
 
 def _sync_sidebar_from_state() -> bool:
     """Show the active campaign's state.md quests and factions in the sidebar when they differ (#147)."""
-    # The DM can write the runtime folder: a FIFO or a huge file here must not stall this thread.
-    campaign = (sidebar_sync.read_state(CAMP_FILE, limit=256) or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", campaign):
+    campaign = _active_campaign_name()
+    if not campaign:
         return False
     found = sidebar_sync.lists(sidebar_sync.read_state(_campaigns_dir() / campaign / "state.md") or "")
     if not found:
@@ -2414,10 +2403,7 @@ def _cast_voice_pool(narrator: str) -> list:
 
 def _recent_npc_names(limit: int = 12) -> list:
     """Lower-case names of the NPCs heard most recently in this campaign."""
-    try:
-        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
-    except OSError:
-        camp = ""
+    camp = _active_campaign_name() or ""
     with _tail_lock:
         entries = list(_tail_buffer)
     names = []
@@ -2695,9 +2681,8 @@ def help_request():
         return "Already running", 409
 
     # Read active campaign name
-    try:
-        campaign = open(CAMP_FILE, encoding="utf-8").read().strip()
-    except FileNotFoundError:
+    campaign = _active_campaign_name()
+    if not campaign:
         os.unlink(HELP_LOCK)
         return "No active campaign", 400
 
@@ -2828,12 +2813,9 @@ def player_dice():
 
     payload   = {"text": text, "dice": True}
     log_entry = {"text": text, "dice": True}
-    try:
-        _camp_stamp = open(CAMP_FILE, encoding="utf-8").read().strip()
-        if _camp_stamp:
-            log_entry["_camp"] = _camp_stamp
-    except Exception:
-        pass
+    _camp_stamp = _active_campaign_name()
+    if _camp_stamp:
+        log_entry["_camp"] = _camp_stamp
 
     with _text_log_lock:
         _text_log.append(log_entry)
@@ -3016,10 +2998,7 @@ def get_character_sheet(character):
     if not safe:
         return "Bad character name", 400
 
-    try:
-        camp = open(CAMP_FILE, encoding="utf-8").read().strip()
-    except Exception:
-        camp = ""
+    camp = _active_campaign_name() or ""
     # Sanitise the campaign name with the same allowlist + length cap as the
     # character argument. CAMP_FILE is writable by anyone inside the LAN+token
     # trust boundary (via push_stats.py --set-campaign), so a malicious value
@@ -3485,7 +3464,7 @@ if __name__ == "__main__":
         _audio.set_broadcast(_broadcast)
 
     import helper_jobs
-    helper_jobs.start()
+    helper_jobs.start(_active_campaign_name)
 
     host = "0.0.0.0" if _LAN_MODE else "localhost"
     # TLS — only enabled when --tls is explicitly passed; HTTP is the default.

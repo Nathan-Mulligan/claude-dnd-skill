@@ -48,7 +48,7 @@ def test_fenmoor_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoo
     assert "lend the cousins his fast skiff" not in text
     assert "eel barges try the night crossing" in text and "[in 2 days]" in text
     assert "fever house burns its last lamp oil" not in text
-    assert "Trade policy (apply it without asking): aim for a 25% margin" in text
+    assert "Trade policy (" in text and "aim for a 25% margin" in text
     assert "People here: Effie Cobb (Reedhythe candle-maker whose shop faces the fish quay)" in text
     assert "Maud Pellow" not in text
     assert "rolls: players roll" in text
@@ -195,3 +195,86 @@ def test_every_card_asks_for_narration_first_and_a_one_word_close(fenmoor):
     assert "one send.py call with every block" in rule
     assert "bookkeeping in the next call" in rule
     assert "reply done" in rule
+
+
+def test_the_trade_policy_shapes_a_trade_but_never_says_yes_for_the_party(fenmoor):
+    line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Trade policy"))
+    assert "without asking" not in line
+    assert "never agrees a price, fee or deal for them" in line
+    assert "aim for a 25% margin" in line
+
+
+def test_every_card_keeps_the_party_s_coin_and_word_theirs(fenmoor):
+    rule = next(p for p in card(fenmoor).split(" | ") if p.startswith("Rule: Never decide for the player characters"))
+    for words in ("spend their coin", "hand over their things", "toll", "bribe"):
+        assert words in rule
+
+
+def test_a_debt_or_offer_left_open_in_the_state_is_put_back_to_the_party(fenmoor):
+    edit_state(fenmoor, "- Maud is at the Gullmere beacon",
+               "- Ned offered 2 sp to tow his skiff back, not yet accepted. Effie sold them tea.\n"
+               "- Maud is at the Gullmere beacon")
+    line = next(p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party"))
+    assert "never pay, accept or hand over for them unasked" in line
+    assert "The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves" in line
+    assert "Ned offered 2 sp to tow his skiff back, not yet accepted" in line
+    assert "share of the eel money was paid in full" not in line and "Effie sold them tea" not in line
+
+
+def test_nothing_waiting_means_no_waiting_line(fenmoor):
+    edit_state(fenmoor, " The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.", "")
+    edit_state(fenmoor, " The mooring fee remains due.", "")
+    assert "Waiting on the party" not in card(fenmoor)
+
+
+@pytest.mark.parametrize("settled", [
+    "Ned offered 2 sp to tow his skiff back, and the party accepted.",
+    "The 2 sp Ned was owed was paid in full.",
+    "Ned offered 2 sp to tow his skiff back; they declined.",
+])
+def test_a_settled_debt_or_offer_is_not_put_back_to_the_party(fenmoor, settled):
+    edit_state(fenmoor, " The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.", "")
+    edit_state(fenmoor, " The mooring fee remains due.", "")
+    edit_state(fenmoor, "- Maud is at the Gullmere beacon", f"- {settled}\n- Maud is at the Gullmere beacon")
+    assert "Waiting on the party" not in card(fenmoor)
+
+
+def test_the_waiting_line_lets_this_turn_s_answer_settle_it(fenmoor):
+    line = next(p for p in card(fenmoor, "We pay the 2 sp mooring fee now.").split(" | ")
+                if p.startswith("Waiting on the party"))
+    assert "unless this input answers it" in line
+
+
+def _only(fenmoor, sentence):
+    edit_state(fenmoor, " The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.", "")
+    edit_state(fenmoor, " The mooring fee remains due.", "")
+    edit_state(fenmoor, "- Maud is at the Gullmere beacon", f"- {sentence}\n- Maud is at the Gullmere beacon")
+    return next((p for p in card(fenmoor).split(" | ") if p.startswith("Waiting on the party")), "")
+
+
+@pytest.mark.parametrize("sentence", [
+    "Ned offered 2 sp to tow his skiff back, but the offer has not been accepted.",
+    "The mooring fee is unpaid and has not been settled.",
+    "Ned's eel money is paid; the mooring fee remains due.",
+    "The 2 sp quay fee is due.",
+    "Ned offers 2 sp to tow his skiff; the party has not answered.",
+    "The 2 sp mooring fee remains due; the eel money is paid.",
+    "The 2 sp mooring fee is owed and must be paid tomorrow.",
+    "The agreed 2 sp fee is still owed.",
+    "Ned offered 2 sp; the offer has not yet actually been accepted.",
+])
+def test_an_open_payment_or_offer_is_waiting_however_it_is_worded(fenmoor, sentence):
+    assert sentence.rstrip(".") in _only(fenmoor, sentence)
+
+
+@pytest.mark.parametrize("sentence", [
+    "Ned offered 2 sp; the party agreed to tow the skiff.",
+    "Effie offered condolences for their loss.",
+    "No wages are owed to Wren.",
+    "The night barge is due tomorrow.",
+    "The party has 2 gp and the courier is due tomorrow.",
+    "Effie offers help with the work.",
+    "No wages are still owed to Wren.",
+])
+def test_an_agreed_deal_or_a_non_payment_is_not_waiting(fenmoor, sentence):
+    assert _only(fenmoor, sentence) == ""

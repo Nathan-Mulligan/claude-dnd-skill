@@ -13,6 +13,9 @@ session-log-archive.md is left untouched by default (historical accuracy)
 unless --include-archive is passed. A one-line audit note is added to the
 archive top noting the rename.
 
+The backup is a copy of the campaign in its own .rename-backups/ folder, so a
+portal DM, which may write only its campaign, can rename too (#138).
+
 Usage:
     python3 npc_rename.py --campaign C --old "Old Name" --new "New Name"
     python3 npc_rename.py --campaign C --old "Old Name" --random
@@ -332,10 +335,14 @@ def _read_session_count(camp_dir: pathlib.Path) -> int:
     return int(m.group(1)) if m else 0
 
 
+BACKUPS = ".rename-backups"
+
+
 def _backup(camp_dir: pathlib.Path) -> pathlib.Path:
-    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = camp_dir.with_name(f"{camp_dir.name}.backup-rename-{ts}")
-    shutil.copytree(camp_dir, target)
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    target = camp_dir / BACKUPS / ts
+    shutil.copytree(camp_dir, target, symlinks=True,
+                    ignore=lambda folder, names: [BACKUPS] if pathlib.Path(folder) == camp_dir else [])
     return target
 
 
@@ -465,9 +472,14 @@ def main() -> int:
             global_old = characters_dir() / f"{slug(args.old)}.md"
             global_new = characters_dir() / f"{slug(new_name)}.md"
             if global_old.exists():
-                shutil.copy(new_pc, global_new)
-                global_old.unlink()
-                print(f"    global roster updated")
+                try:
+                    shutil.copy(new_pc, global_new)
+                    global_old.unlink()
+                    print(f"    global roster updated")
+                except PermissionError:
+                    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "display"))
+                    import owner_writes
+                    owner_writes.request("roster", {"campaign": args.campaign, "replaces": global_old.name})
 
     # Archive audit note (only if NOT including archive in rename)
     if not args.include_archive:
@@ -482,7 +494,7 @@ def main() -> int:
     print(f"    name_registry: '{args.old}' retired, '{new_name}' added")
 
     print(f"\n  done. {total_replacements} text replacements + graph + registry updates.")
-    print(f"  To revert: rm -rf '{camp_dir}' && mv '{backup}' '{camp_dir}'")
+    print(f"  To revert: copy everything in '{backup}' back into '{camp_dir}'.")
     return 0
 
 

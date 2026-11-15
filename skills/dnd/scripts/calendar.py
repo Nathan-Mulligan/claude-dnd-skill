@@ -235,6 +235,7 @@ def _print_road(campaign: str, start: dict, days: int) -> None:
         _advance_hours(cal, 24)
         labels.append(_short_date(cal))
     print(ROAD_HEADER)
+    print(oracle.ROAD_RULE)
     rolled = oracle.campaign_road(folder, days, start=oracle.calendar_day(start))
     for number, (day, label) in enumerate(zip(rolled, labels), 1):
         print(oracle.format_road_day(day, number, days, label))

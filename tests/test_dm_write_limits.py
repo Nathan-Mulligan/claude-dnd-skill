@@ -420,9 +420,11 @@ def test_portal_reply_can_never_be_a_cli_command(data_root, monkeypatch, text):
     client = app.test_client()
     base = "http://127.0.0.1:5002"
     import re
-    token = re.search(r'const token = "([^"]+)";', client.get("/", base_url=base).get_data(as_text=True)).group(1)
-    response = client.post("/api/send", base_url=base, json={"text": text},
-                           headers={"Origin": base, "X-DND-Portal-Token": token})
+    import urllib.parse
+    link = urllib.parse.urlsplit(app.config["NEW_LOGIN_LINK"]())
+    page = client.get(link.path, base_url="http://127.0.0.1:5002").get_data(as_text=True)
+    client.environ_base["HTTP_X_DND_PORTAL_SESSION"] = json.loads(re.search(r'setItem\("dnd-portal-session", ("[^"]+")\)', page).group(1))
+    response = client.post("/api/send", base_url=base, json={"text": text}, headers={"Origin": base})
     assert response.status_code == 400
 
 

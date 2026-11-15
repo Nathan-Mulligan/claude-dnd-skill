@@ -27,8 +27,10 @@ Two distinct roots:
 
 import os
 import pathlib
+import re
 import shutil
 import sys
+import tempfile
 
 # Windows CJK fix: piped stdout defaults to the system codepage (cp936/GBK).
 # Every script imports this module, so UTF-8 is forced once here.
@@ -103,6 +105,61 @@ def runtime_dir() -> pathlib.Path:
     except OSError:
         pass
     return d
+
+
+# ── The owner's campaign choice ───────────────────────────────────────────
+# A sandboxed DM can write the runtime dir, so its `.campaign` can't decide which campaign the
+# display (outside the sandbox) writes to. The portal, or play-local.sh run by the owner, records
+# the choice in the data root, which the DM can read but not write (#139).
+
+CHOSEN_CAMPAIGN = "chosen-campaign"
+_CAMPAIGN_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def campaign_name(value) -> "str | None":
+    """`value` stripped, when it is a campaign name that stays inside the campaigns folder."""
+    name = value.strip() if isinstance(value, str) else ""
+    return name if _CAMPAIGN_NAME.fullmatch(name) and name not in {".", ".."} else None
+
+
+def chosen_campaign_file() -> pathlib.Path:
+    return _root() / CHOSEN_CAMPAIGN
+
+
+def chosen_campaign() -> "str | None":
+    """The campaign the owner chose, or None when nobody has (play without the portal)."""
+    try:
+        with open(chosen_campaign_file(), encoding="utf-8") as stream:
+            return campaign_name(stream.read(256))
+    except OSError:
+        return None
+
+
+def agreed_campaign(selected) -> "str | None":
+    """`selected` (a DM-writable record such as the runtime `.campaign`) unless the owner chose another."""
+    name = campaign_name(selected)
+    chosen = chosen_campaign()
+    return name if chosen is None or name == chosen else None
+
+
+def choose_campaign(name: "str | None") -> None:
+    """Record the owner's choice; None or "" clears it. Raises ValueError for an invalid name."""
+    path = chosen_campaign_file()
+    if not name:
+        path.unlink(missing_ok=True)
+        return
+    if campaign_name(name) != name:
+        raise ValueError(f"invalid campaign name {name!r}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{CHOSEN_CAMPAIGN}.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(name)
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, path)
+    except BaseException:
+        pathlib.Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def campaigns_dir() -> pathlib.Path:
@@ -227,13 +284,20 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "campaign-path":
         print(campaign_dir(sys.argv[2]))
         sys.exit(0)
+    if len(sys.argv) in (2, 3) and sys.argv[1] == "choose-campaign":
+        try:
+            choose_campaign(sys.argv[2] if len(sys.argv) == 3 else None)
+        except (OSError, ValueError) as error:
+            sys.exit(f"paths.py: could not record the chosen campaign: {error}")
+        sys.exit(0)
     print(
         "usage:\n"
         "  python3 paths.py campaign-ruleset <campaign-name>\n"
         "  python3 paths.py srd-path [2014|2024]\n"
         "  python3 paths.py runtime-dir\n"
         "  python3 paths.py campaign-dir <campaign-name>\n"
-        "  python3 paths.py campaign-path <campaign-name>",
+        "  python3 paths.py campaign-path <campaign-name>\n"
+        "  python3 paths.py choose-campaign [<campaign-name>]",
         file=sys.stderr,
     )
     sys.exit(2)

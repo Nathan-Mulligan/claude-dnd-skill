@@ -6,7 +6,7 @@
 - **In-world date/time:** 9 Mistmonth 1312, morning
 - **Party:** Corin Ashby — Halfling Bard 1 | HP 9/9 | AC 13 | Bardic Inspiration 3/3 | spell slots 2/2; Wren Talley — Dwarf Fighter 1 | HP 13/13 | AC 16 | Second Wind 2/2
 - **Party status:** Inside the candle shop, warming up after a cold crossing; the punt is tied up at the fish quay with nothing aboard.
-- **Trade status:** The cousins sold a basket of smoked eel to Effie for 12 sp and bought a coil of tarred line for 4 sp. Corin carries 14 gp 3 sp 6 cp. The eel was paid for in full before they left Gullmere; the tarred line has not been checked for rot.
+- **Trade status:** The cousins sold a basket of smoked eel to Effie for 12 sp and bought a coil of tarred line for 4 sp. Corin carries 14 gp 3 sp 6 cp. The tarred line has not been checked for rot. The mooring fee remains due.
 
 ## Pinned Facts
 - Trade policy: aim for a 25% margin; test goods before paying; Wren does the haggling and Corin keeps the tally.
@@ -35,7 +35,7 @@
 - 9 Mistmonth: the Lamplighters' Guild has posted a notice in Reedhythe that beacon oil is rationed until the spring barge. The Weir Union has voted to run the night crossing anyway.
 
 ## Clocks
-- 11 Mistmonth 1312: the Weir Union's eel barges try the night crossing to Gullmere, beacon or no beacon (seen by: punts loading eel traps at the Reedhythe quay; bargemen arguing about the dark)
+- 11 Mistmonth 1312: the Weir Union's eel barges try the night crossing to Gullmere, beacon or no beacon (seen by: bargemen at the Reedhythe quay arguing about the dark)
 - 14 Mistmonth 1312: the Heron Isle fever house burns its last lamp oil (seen by: a lone rowboat crossing from the Isle at dusk; a chalked plea on the quay post)
 
 ## Recent Events
@@ -46,7 +46,7 @@ None.
 
 ## Live State Flags
 - The punt is empty and tied up at the Reedhythe fish quay.
-- Effie has paid for the eel; nobody owes the cousins money and they owe nobody.
+- Ned's 5 sp share of the eel money was paid in full. The 2 sp mooring fee is still owed to the Reedhythe quay master before the punt leaves.
 - Maud is at the Gullmere beacon; Ned is out on the weirs.
 
 ## Campaign Arc
@@ -103,7 +103,7 @@ outstanding_beats:
 - 2b
 - 3a
 - 3b
-steering_notes: Steer the cousins to Gullmere with a reason (the candle buyer, the stranded barge). Let them smell the bad oil and watch the night crossing go ahead without a light. Clues they can find on their own are the cask brands, the Isle's receipts and Silas's manifest. Nobody here is a villain.
+steering_notes: Steer the cousins to Gullmere with a reason (the candle buyer, the stranded barge). Let them smell the bad oil and see the barges cross without a light. Clues are the cask brands, the Isle's receipts and Silas's manifest. Nobody here is a villain.
 revision_log:
 - '2 Nov 2026: beat 1a done (the punt trade is tied to the dark beacon); 1b now names Silas and the crossing date.'
 ```
@@ -116,7 +116,7 @@ spotlight: dm_led
 pacing: adventure
 
 ## DM Style Notes
-Fog, small kindnesses and hard bargains. Clues sit where the players can find them and every problem has more than one way through. Players roll their own checks in the dice tray; the DM rolls for NPCs in the open. Give each turn one person or one choice, and finish on something that pulls the story forward: a question with a price, someone who needs something, or the weather turning, never just "what would you like to do?". Wave through small purchases unless the deal itself is the beat; travel goes day by day across the mere. Wren's player decides what Wren does.
+Fog, small kindnesses and hard bargains. Clues sit where the players can find them and every problem has more than one way through. Players roll for their characters with the dice tray; the DM rolls for NPCs in the open. Give each turn one person or one choice, and finish on something that pulls the story forward: a question with a price, someone who needs something, or the weather turning, never just "what would you like to do?". Wave through small purchases unless the deal itself is the beat; travel goes day by day across the mere. Wren's player decides what Wren does.
 
 ## DM Notes (hidden from players)
 Silas Crane, the Guild's oil factor, has been sending the clean beacon oil to Juniper Vane's fever house on Heron Isle, where the lamps must burn all night, and refilling the beacon casks with rendered fish oil that smokes and gutters. He believes he is saving lives and has told no one. Maud knows the oil is bad but not why. Clues: the cask brands, Juniper's oil receipts, Silas's manifest.

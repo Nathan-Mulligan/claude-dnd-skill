@@ -346,7 +346,7 @@ Campaign "<name>" created from <source title>.
 ---
 
 ## `/dm:dnd save`
-Write this session's entry in session-log.md: the judgement (Recap, decisions, XP, loot, open threads), not the play-by-play, which `send.py` already keeps word for word in `turn-log.md`. Head it `## Session N` with the number of the newest `## Session` in `turn-log.md` (the portal's save request names it). Update state.md (location, `## Active Quests`, `## Faction Standings`, party HP/resources, recent events) and any characters/*.md that changed. Mirror each updated character to global roster (`~/.claude/dnd/characters/<name>.md`). Then refresh the sidebar from the saved sheets with `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name>`.
+Write this session's entry in session-log.md: the judgement (Recap, decisions, XP, loot, open threads), not the play-by-play, which `send.py` already keeps word for word in `turn-log.md`. Head it `## Session N` with the number of the newest `## Session` in `turn-log.md` (the portal's save request names it). Update state.md (location, `## Active Quests`, `## Faction Standings`, party HP/resources, recent events) and any characters/*.md that changed. Mirror the updated characters to the global roster with `python3 ${CLAUDE_SKILL_DIR}/display/owner_writes.py roster --campaign <campaign>`. Then refresh the sidebar from the saved sheets with `python3 ${CLAUDE_SKILL_DIR}/display/push_stats.py --party <campaign-name>`.
 
 **Inspiration tracking:** On every save, record each PC's Inspiration state in `state.md → ## Current Situation → Party status`. Use explicit text: `Inspiration ✓` if held, omit or `No Inspiration` if not. Inspiration persists across sessions and is NOT cleared by long rests. Example: `Mara: HP 24/24. Inspiration ✓. Theo: HP 24/24.`
 
@@ -565,7 +565,7 @@ Default to `Step by step` if the question is dismissed. Either path lands in the
 6. Assign starting equipment per class + background
 7. Write to `characters/<name>.md` using `templates/character-sheet.md`; set `## Campaign History → Origin campaign`. Then run `inventory.py migrate --campaign <campaign> --character <name> --write` so the ledger owns the equipment and coins from the start.
 8. Add to `state.md` party line
-9. Mirror to global roster: `cp characters/<name>.md ~/.claude/dnd/characters/<name>.md`
+9. Mirror to global roster: `python3 ${CLAUDE_SKILL_DIR}/display/owner_writes.py roster --campaign <campaign>`
 10. Run supplemental builder to fetch any non-SRD spells/features the character uses:
     ```bash
     python3 ${CLAUDE_SKILL_DIR}/scripts/build_supplemental.py --character ~/.claude/dnd/campaigns/<name>/characters/<charname>.md

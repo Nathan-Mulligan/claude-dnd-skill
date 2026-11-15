@@ -116,7 +116,7 @@ I="python3 ${CLAUDE_SKILL_DIR}/scripts/inventory.py"
 $I show    --campaign $CAMP [--character Wren]          # every character without --character
 $I buy     --campaign $CAMP --character Wren "Lantern" --price "5 gp" [--qty 1]
 $I sell    --campaign $CAMP --character Corin "Candle" --price "2 sp" [--qty 6]
-$I spend   --campaign $CAMP --character Corin "3 sp"     # tolls, rent, bribes: makes change
+$I spend   --campaign $CAMP --character Corin "3 sp"     # a toll, rent or bribe a player agreed to: makes change
 $I earn    --campaign $CAMP --character Corin "12 sp"
 $I add     --campaign $CAMP --character Wren "Iron key" [--qty 1] [--category gear] [--notes "..."]
 $I remove  --campaign $CAMP --character Wren "Torch" [--qty 1 | --all]
@@ -376,11 +376,13 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP events
 ```
   +3 days → Moonday, 18 Harvestmoon 1247 — morning (hour 8)
 On the road: one roll per travel day (improvised campaign). Not travelling? Ignore these, and use --no-road for rests, waiting in town or downtime.
-Day 1 of 3 (16 Harvestmoon 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Investigating costs time; ignoring it may cost later.
-Day 2 of 3 (17 Harvestmoon 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it one vivid line and move on.
-Day 3 of 3 (18 Harvestmoon 1247): danger. Wolves circling the camp at dusk, bold with hunger. Telegraph the threat, and let talk, flight or a fight all work.
-    Encounter budget (medium for 2 characters of level 1): about 100 XP. Roughly 1 × CR 1/4 (wolf), 2 × CR 1/8 (bandit) or 4 × CR 0 (jackal).
+Present each event and stop there: the party decides how to meet it. Never pay, pick a route or spend time for them.
+Day 1 of 3 (16 Harvestmoon 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Two or three lines: investigating costs time, ignoring it may cost later, and the party decides.
+Day 2 of 3 (17 Harvestmoon 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it a line or two of colour and carry on.
+Day 3 of 3 (18 Harvestmoon 1247): story. A clock is ticking (due 20 Harvestmoon 1247): the river floods the ford at Millbrook. Show it on the road: farmers driving sheep to high ground. The story catches up with them: play it as a scene with a concrete event, and end on the party's choice.
 ```
+
+A danger day adds a line with the encounter budget for the party.
 
 ---
 
@@ -474,6 +476,16 @@ The scripts only ever add a line the entry lacks. They never change or remove on
 
 ---
 
+## Writes outside the campaign — `display/owner_writes.py`
+
+A DM started by the portal can write only its campaign folder and the runtime folder. Three steps write elsewhere, so when the sandbox refuses them the script asks the display (which runs outside the sandbox) to do it, for the campaign the display is showing only:
+
+- `python3 ${CLAUDE_SKILL_DIR}/display/owner_writes.py roster --campaign <name>` copies the campaign's `characters/*.md` to the global roster, `<data root>/characters/`. Run by hand, it copies them itself.
+- `name_registry.py add` and `retire` record the name through the display.
+- `build_supplemental.py --character <sheet>` or `--campaign <name>`: the display fetches the campaign's non-SRD spells and features and saves them.
+
+The display logs each request it carried out or refused in `<runtime>/owner-writes.log`. `npc_rename.py` keeps its backup inside the campaign, in `.rename-backups/<time>/`.
+
 ## Where Play Stopped — `scripts/stop_point.py`
 
 Writes and shows `<campaign>/session-tail.md`: one line on where play stopped, the open question or pending roll, and the last eight exchanges word for word. Every portal save requires a fresh one, and a resumed DM reads it first. Without one, `show` prints the last eight entries of the display's `session_tail.json`.
@@ -522,18 +534,20 @@ Likelihoods: `sure-thing`, `likely`, `50/50`, `unlikely`, `no-way`. Verdict suff
 
 **`npc`.** Rolls a temperament tier (about 60% ordinary, 30% colourful, 6% memorable, 4% troubled), a current want (about half ask something of the party, marked "an ask") and, with `--trader`, a trading style. With `--campaign` and `--name` it writes `- **Temperament:**`, `- **Wants now:**` and `- **Trades:**` lines into that NPC's entry in `npcs.md` (a `###` heading starting with the name), adding the entry if it is missing; running it again rewrites the same values. `npc note` appends `- Party note (<in-world date>): <line>` to the end of the entry: one line after a scene, on how it went and what the NPC now thinks of the party.
 
-**`road`.** One roll per travel day: quiet, traveller, obstacle, discovery, danger or story, each with several examples. With `--campaign` it reads `state.md`:
-- `pacing` in `## Session Flags` weights the table: `adventure` has about half the quiet days and over three times the story days of `mixed`; `downtime` has more quiet days and travellers, and less danger.
-- Story days use `## Next Hooks` bullets and `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) when present; about half of traveller days bring a clock's news or a hook.
+**`road`.** One roll per travel day: quiet, traveller, obstacle, discovery, danger or story, each with several examples. Most days are quiet or tied to the story; obstacles, discoveries and dangers (hazards) are rare. It prints one rule first: present each event and stop, and never pay, pick a route or spend time for the party. With `--campaign` it reads `state.md`:
+- `pacing` in `## Session Flags` weights the table. In a 2-day journey with no clock close, `adventure` gives about 36% quiet days, 41% tied to the story and 24% unrelated (hazards or a passing traveller); `mixed` about 52% quiet, 27% story and 20% unrelated; `downtime` the most quiet days and the least story.
+- Story days use the current arc beat's `world_pressure`, `## Next Hooks`, `## Clocks` lines (`- <date>: <what> (seen by: <how>)`) and `## Active Quests` (the errand). About half of traveller days bring a clock's news, a hook or the errand.
+- One hazard a journey at most. A journey is the run of road days on consecutive calendar days, so it carries on across `advance 1 day` calls and ends when a day passes without travel.
+- Racing a clock (one due within 3 days of the travel day, by `calendar.json`): no danger or discovery; an obstacle comes only with the clock's stakes attached, travellers bring news tied to the story, and story days show that clock twice as often.
 - `road_log.json` in the campaign folder keeps the last 10 days, so an example, hook or clock is not reused while it is in the log (a hook used on a story day is not repeated by a traveller either), and the same eventful kind never comes twice in a row.
 - Danger days add an encounter budget for the party (size and average level from `party_stats.json`, else `characters/*.md`), at the tier set by the `difficulty` dial (`standard` = medium).
-- `road_next.json` holds a day the turn card's journey prep has already rolled (see Turn prep below), kept under the in-world date it was rolled on. The next road roll on that date, from `calendar.py advance` or `oracle.py road`, uses it as day 1 and deletes it once the log holds it. It is dropped and rolled fresh once the date has moved on, or when the hook or clock it was built on has left `state.md`. Preparing and using it share a lock (`road_next.lock`) with `calendar.py advance`, so the two never cross.
+- `road_next.json` holds a day the turn card's journey prep has already rolled (see Turn prep below), kept under the in-world date it was rolled on. It is rolled as the journey's next day, so the one-hazard cap and a racing clock apply to it too. The next road roll on that date, from `calendar.py advance` or `oracle.py road`, uses it as day 1 and deletes it once the log holds it. It is dropped and rolled fresh once the date has moved on, or when the hook, clock, errand or beat it was built on (or the clock an obstacle raises the stakes of) has left `state.md`. Preparing and using it share a lock (`road_next.lock`) with `calendar.py advance`, so the two never cross.
 
 ---
 
 ## Turn card and arc — `scripts/arc.py`
 
-**The turn card.** In portal play every party reply arrives with one block in front of it: `[[Turn card, hidden from players: … ]]`. The portal builds it from the campaign files (`scripts/turn_card.py` at the repository root), so it is as current as `state.md`. It holds, when the files have them: where and when the party is; the current arc beat and its `steering_notes` (or a structured campaign's chapter and next key beat); the top two `## Next Hooks`; any `## Clocks` entry due within two in-world days or overdue; the `Trade policy:` pinned fact; the people present, from `npcs.md`; the table's narration length and campaign roll mode; and three standing rules. Per-character overrides from the display's Rolls toggle follow the card as `[[<Character> roll mode: auto|players]]`, as `check_input.py` prints them; the portal does not run `check_input.py`, so this is how they arrive. Read it, act on it, and never show it to the players. Keep `## Next Hooks`, `## Clocks`, the trade policy and the arc current, because the card is only as good as `state.md`.
+**The turn card.** In portal play every party reply arrives with one block in front of it: `[[Turn card, hidden from players: … ]]`. The portal builds it from the campaign files (`scripts/turn_card.py` at the repository root), so it is as current as `state.md`. It holds, when the files have them: where and when the party is; the current arc beat and its `steering_notes` (or a structured campaign's chapter and next key beat); the top two `## Next Hooks`; any `## Clocks` entry due within two in-world days or overdue; the `Trade policy:` pinned fact; up to two sentences from `## Live State Flags` or `## Current Situation` that leave a payment or deal open, as `Waiting on the party` (the players answer those, never the DM); the people present, from `npcs.md`; the table's narration length and campaign roll mode; and three standing rules. Per-character overrides from the display's Rolls toggle follow the card as `[[<Character> roll mode: auto|players]]`, as `check_input.py` prints them; the portal does not run `check_input.py`, so this is how they arrive. Read it, act on it, and never show it to the players. Keep `## Next Hooks`, `## Clocks`, the trade policy and the arc current, because the card is only as good as `state.md`.
 
 When the story has sat on one beat for too long (`steer_after: N` in Session Flags, otherwise 4, 6 or 10 turns for `spotlight: dm_led`, `balanced` or `player_led`; `steer_after: 0` turns it off), the beat line becomes **DM steering, mandatory this turn**. The first nudge says what to bring into the scene now. The second nudge for the same beat asks whether the beat has already landed: if it has, run `arc.py advance`; if not, run `arc.py revise` with a pressure that fits where the party is. Turns during active combat, dice-only replies and out-of-character notes (`OOC`, `((…))`, `//`) do not count. The count restarts when the beat, its pressure or the steering notes change.
 
