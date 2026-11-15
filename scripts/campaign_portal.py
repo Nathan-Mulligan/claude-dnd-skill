@@ -78,6 +78,16 @@ CODEX_NO_SCREEN = ("--disable", "computer_use",
                    "-c", 'plugins."unified-computer-use@openai-bundled".enabled=false',
                    "-c", 'mcp_servers.cua_repl={command="true",enabled=false}',
                    "-c", 'mcp_servers.node_repl={command="true",enabled=false}')
+# Commands get the network through Codex's proxy, which lets them reach the display on localhost but no
+# Unix socket. Plain `network_access=true` let them connect to any tmux server, which runs outside the
+# sandbox and would run whatever it was sent (#171).
+CODEX_SANDBOX = ("-c", 'default_permissions="dnd_dm"',
+                 "-c", 'permissions.dnd_dm.extends=":workspace"',
+                 "-c", "permissions.dnd_dm.network.enabled=true",
+                 "-c", 'permissions.dnd_dm.network.mode="full"',
+                 "-c", 'permissions.dnd_dm.network.domains={"localhost"="allow","127.0.0.1"="allow","*"="allow"}',
+                 "-c", "permissions.dnd_dm.network.dangerously_allow_all_unix_sockets=false",
+                 "--enable", "network_proxy")
 # Sidebar-notes helper (display/lore_sync.py); the choice is saved where lore_sync reads it.
 HELPER_CHOICES = {key: label for key, (_, _, label) in lore_sync.HELPERS.items()}
 # Keys are stored in portal-session.json as "provider"; "codex" and "claude" keep their original meaning.
@@ -546,14 +556,14 @@ def initial_prompt(mode: str, name: str, description: str, onboarding: dict | No
 def claude_sandbox() -> str:
     """Per-launch settings that keep a Claude DM's file tools and shell inside its working folders.
 
-    The working folders are the campaign (its cwd) and the runtime dir (--add-dir). Nathan's own
-    Claude settings are never edited.
+    The working folders are the campaign (its cwd) and the runtime dir (--add-dir). Unix sockets stay
+    closed, so the shell can't reach a tmux server (#171). Nathan's own Claude settings are never edited.
     """
     return json.dumps({
         "permissions": {"allow": [f"Read(/{REPO}/**)"], "blockWritesOutsideWorkingDirectories": True},
         "sandbox": {"enabled": True, "failIfUnavailable": True, "autoAllowBashIfSandboxed": True,
                     "allowUnsandboxedCommands": False,
-                    "network": {"allowedDomains": ["*"], "allowLocalBinding": True}},
+                    "network": {"allowedDomains": ["*"], "allowLocalBinding": True, "allowAllUnixSockets": False}},
     })
 
 
@@ -573,8 +583,7 @@ def model_args(provider: str, mode: str, name: str, description: str, onboarding
             raise ValueError("Invalid reasoning effort")
         # Approval "never": an escalation prompt could be answered by the party's next paste and Enter.
         args += [*choice.args, *CODEX_NO_SCREEN, "-c", f'model_reasoning_effort="{effort}"',
-                 "-c", "sandbox_workspace_write.network_access=true",
-                 "-s", "workspace-write", "-a", "never",
+                 *CODEX_SANDBOX, "-a", "never",
                  "--add-dir", str(RUNTIME), prompt]
     elif choice.launcher == "qwen":
         args += ["-i", prompt]
