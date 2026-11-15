@@ -159,16 +159,16 @@ def _send(sender, argv, body):
 ])
 def test_narration_ending_on_a_bare_question_warns_but_still_sends(tmp_path, capsys, ending):
     sender = _sender(tmp_path)
-    sent = _send(sender, [], f"The wagon creaks to a stop outside Brinewick.\n\n{ending}\n")
+    sent = _send(sender, [], f"The punt bumps against the jetty at Gullmere.\n\n{ending}\n")
     assert sent, "the warning must never block the send"
     err = capsys.readouterr().err
     assert "something in motion" in err
 
 
 @pytest.mark.parametrize("argv,body", [
-    ([], "Odile slams the ledger shut. \"Twenty silver by dusk, or the wagon stays.\""),
+    ([], "Maud slams the lamp-room door. \"Bring me clean oil before the barges sail, or stay off my stair.\""),
     ([], "The bell on the bridge starts ringing. Where do you two go from here, with the gate closing?"),
-    (["--npc", "Garrick"], "Where to next?"),
+    (["--npc", "Ned"], "Where to next?"),
     (["--opener"], "Where to next?"),
 ])
 def test_pressure_endings_and_other_blocks_do_not_warn(tmp_path, capsys, argv, body):

@@ -684,7 +684,7 @@ def parse_prose_inventory(section: str) -> dict:
             result["notes"].extend(f"{label}: {n}" for n in notes)
             continue
         if label and _DOCUMENT_LABEL.search(label) and _label_category(label) in (None, "gear") and body:
-            # "**Business documents:** Tamsin's order …": one item, the prose is its note
+            # "**Business documents:** Perrin's pitch order …": one item, the prose is its note
             add_item(result["items"], make_item(label, 1, "gear", notes=body.rstrip(".")))
             continue
         if label:

@@ -35,8 +35,8 @@ CLASHING = {
     "hilde moss": "af_sky",
     "tamsin cole": "af_heart",
     "rosa whitlow": "bf_emma",
-    "man at the barrier": "am_onyx",
-    "disarmed bandit": "am_onyx",
+    "man at the sluice": "am_onyx",
+    "soaked eel-catcher": "am_onyx",
     "aldo kerr": "am_fenrir",
 }
 PARTY = ["Corin Ashby", "Wren Talley"]
@@ -56,7 +56,7 @@ def test_every_speaker_ends_up_with_a_different_voice():
 def test_only_the_clashing_npcs_change():
     cast, src, changes, _ = _repair()
     changed = {name for name, _, _ in changes}
-    assert changed == {"agnes shaw", "lissa crane", "rosa whitlow", "disarmed bandit"}
+    assert changed == {"agnes shaw", "lissa crane", "rosa whitlow", "soaked eel-catcher"}
     for name, voice in CLASHING.items():
         if name not in changed:
             assert cast[name] == voice, name

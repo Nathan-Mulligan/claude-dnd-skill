@@ -43,7 +43,7 @@ def test_advance_round_trip_keeps_the_rest_of_state_untouched():
     original = arc.read(STATE)
     for key in ("theme", "resolution", "arc_number", "revision_log"):
         assert reread[key] == original[key]
-    assert arc.current(reread)["label"] == "Who Pays"
+    assert arc.current(reread)["label"] == "Where the Oil Went"
 
 
 def test_advancing_a_later_beat_keeps_the_current_one():
@@ -63,14 +63,14 @@ def test_advancing_the_last_beat_completes_the_arc():
 
 
 def test_revise_round_trip_changes_only_the_named_fields():
-    data = arc.revise(arc.read(STATE), "1b", pressure="Bram flees with the ledger", steering="Let Ilsa ask for help",
+    data = arc.revise(arc.read(STATE), "1b", pressure="Silas burns the manifest", steering="Let Maud ask for help",
                       today="2026-11-13")
     updated = arc.write(STATE, data)
     assert outside_arc(updated) == outside_arc(STATE)
     beat = arc.current(arc.read(updated))
-    assert beat["world_pressure"] == "Bram flees with the ledger"
-    assert beat["what_changes"] == "The disruption proves to have interests beyond one gate"
-    assert arc.read(updated)["steering_notes"] == "Let Ilsa ask for help"
+    assert beat["world_pressure"] == "Silas burns the manifest"
+    assert beat["what_changes"] == "The dark beacon proves to be someone's choice, not bad luck"
+    assert arc.read(updated)["steering_notes"] == "Let Maud ask for help"
     assert arc.read(updated)["revision_log"][-1] == "2026-11-13: 1b revised (pressure, steering)"
 
 
@@ -110,7 +110,7 @@ def test_cli_status_advance_and_revise(tmp_path):
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(STATE)
     status = run_cli(tmp_path, "status", "--campaign", "Fenmoor")
-    assert status.returncode == 0 and 'beat 1b "Broken Ledgers"' in status.stdout
+    assert status.returncode == 0 and 'beat 1b "Fish Oil and Smoke"' in status.stdout
     assert run_cli(tmp_path, "advance", "--campaign", "Fenmoor").returncode == 0
     assert arc.read(path.read_text(encoding="utf-8"))["current_beat"] == "2a"
     refused = run_cli(tmp_path, "revise", "--campaign", "Fenmoor", "--beat", "1b", "--pressure", "x")

@@ -1,15 +1,15 @@
 {
-  "day": 16,
-  "year": 1247,
+  "day": 9,
+  "year": 1312,
   "months": [
-    "Frostfall",
-    "Deepwinter",
-    "Thawmonth",
-    "Seedtime",
-    "Bloomtide",
-    "Highsun",
-    "Harvestmoon",
-    "Leaffall"
+    "Icemoon",
+    "Snowmelt",
+    "Mudmonth",
+    "Sowing",
+    "Blossom",
+    "Midsummer",
+    "Reaping",
+    "Mistmonth"
   ],
   "month": 8,
   "hour": 8,
@@ -17,11 +17,11 @@
   "day_names": [
     "Sunday",
     "Moonday",
-    "Ironday",
-    "Windday",
-    "Earthday",
-    "Fireday",
-    "Starday"
+    "Tidesday",
+    "Reedday",
+    "Eelday",
+    "Lampday",
+    "Restday"
   ],
   "events": []
 }

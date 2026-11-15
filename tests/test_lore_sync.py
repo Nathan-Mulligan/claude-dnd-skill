@@ -16,19 +16,19 @@ STATE = """# Campaign: Test
 ## Current Situation
 - Party in town.
 ## World State
-- **Faction states:** Toll Reeves keep the toll road.
+- **Faction states:** Lamplighters keep the beacons.
 ## Active Quests
-- Find a return cargo.
+- Find a buyer for the eel.
 ## Open Threads & Rumours
-- The toll doubled; nobody knows why.
+- The beacon went dark; nobody knows why.
 ## Next Hooks
-- SECRET-HOOK: a courier carries the auditor's notice.
+- SECRET-HOOK: the eel-pot holds the oil manifest.
 ## Faction Moves
-- SECRET-MOVE: the Reeves sent an auditor.
+- SECRET-MOVE: the Lamplighters sent a factor.
 ## Clocks
-- SECRET-CLOCK: bridge closes on the 21st.
+- SECRET-CLOCK: the fever house runs dry on the 14th.
 ## Recent Events
-- Sold the flour.
+- Sold the eel.
 ## Campaign Arc
 SECRET-ARC
 """
@@ -36,19 +36,19 @@ SECRET-ARC
 
 def test_public_text_keeps_party_sections_and_drops_dm_secrets():
     text = lore_sync.public_text(STATE)
-    for kept in ("Find a return cargo", "toll doubled", "Sold the flour"):
+    for kept in ("Find a buyer for the eel", "beacon went dark", "Sold the eel"):
         assert kept in text
     assert "SECRET" not in text
-    assert "Toll Reeves keep" not in text  # World State can hold hidden faction activity
+    assert "Lamplighters keep" not in text  # World State can hold hidden faction activity
     assert "Party in town" not in text
 
 
 def test_prompt_never_contains_dm_sections():
     prompt = lore_sync.build_prompt(lore_sync.public_text(STATE),
-                                    [{"name": "Toll Reeves", "standing": "Neutral"}],
+                                    [{"name": "Lamplighters", "standing": "Neutral"}],
                                     [{"name": "Find cargo", "status": "active"}])
     assert "SECRET" not in prompt
-    assert "Toll Reeves (Neutral)" in prompt and "Find cargo (active)" in prompt
+    assert "Lamplighters (Neutral)" in prompt and "Find cargo (active)" in prompt
 
 
 def test_fingerprint_ignores_details_but_tracks_status_and_notes():
@@ -110,7 +110,7 @@ class Live:
         self.tmp, self.posts, self.calls = tmp_path, [], []
         self.campaign, self.fail_post, self.on_model, self.old_server = "Test", False, None, False
         monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
-        self.write_stats(stats or {"factions": [{"name": "Toll Reeves", "standing": "Neutral"}], "quests": []})
+        self.write_stats(stats or {"factions": [{"name": "Lamplighters", "standing": "Neutral"}], "quests": []})
         monkeypatch.setattr(lore_sync, "_request", self.request)
         monkeypatch.setattr(lore_sync, "ask_model", self.model)
         self.choice = ("fake", "fake-model")
@@ -136,7 +136,7 @@ class Live:
         self.calls.append(prompt)
         if self.on_model:
             self.on_model()
-        return {"factions": [{"name": "Toll Reeves", "detail": "Keep the toll road."}], "quests": []}
+        return {"factions": [{"name": "Lamplighters", "detail": "Keep the beacons lit."}], "quests": []}
 
 
 def test_run_skips_model_when_nothing_changed(monkeypatch, tmp_path):
@@ -144,7 +144,7 @@ def test_run_skips_model_when_nothing_changed(monkeypatch, tmp_path):
     assert lore_sync.run(settle_s=0) == "updated"
     path, body = live.posts[-1]
     assert path == "/stats/lore"  # notes only, never whole lists
-    assert body["factions"] == {"Toll Reeves": "Keep the toll road."} and body["campaign"] == "Test"
+    assert body["factions"] == {"Lamplighters": "Keep the beacons lit."} and body["campaign"] == "Test"
     assert lore_sync.run(settle_s=0) == "unchanged"
     assert len(live.calls) == 1 and "SECRET" not in live.calls[0]
 
@@ -194,16 +194,16 @@ def test_notes_are_saved_before_publishing(monkeypatch, tmp_path):
         return real(path, data, timeout)
     monkeypatch.setattr(lore_sync, "_request", request)
     lore_sync.run(settle_s=0)
-    assert seen == [{"Toll Reeves": "Keep the toll road."}]
+    assert seen == [{"Lamplighters": "Keep the beacons lit."}]
 
 
 def test_every_earlier_helper_note_is_sent_as_previous(monkeypatch, tmp_path):
     live = Live(monkeypatch, tmp_path)
     lore_sync.run(settle_s=0)
-    live.write_stats({"factions": [{"name": "Toll Reeves", "standing": "Hostile"}], "quests": []})
+    live.write_stats({"factions": [{"name": "Lamplighters", "standing": "Hostile"}], "quests": []})
     lore_sync.run(settle_s=0)
     _, body = live.posts[-1]
-    assert body["previous"]["factions"]["Toll Reeves"] == ["Keep the toll road."]
+    assert body["previous"]["factions"]["Lamplighters"] == ["Keep the beacons lit."]
 
 
 def test_campaign_switch_during_generation_blocks_publish(monkeypatch, tmp_path):
@@ -218,11 +218,11 @@ def test_push_while_busy_is_replayed(monkeypatch, tmp_path):
 
     def change_during_model():
         if len(live.calls) == 1:
-            live.write_stats({"factions": [{"name": "Toll Reeves", "standing": "Hostile"}], "quests": []})
+            live.write_stats({"factions": [{"name": "Lamplighters", "standing": "Hostile"}], "quests": []})
             assert lore_sync.run(settle_s=0) == "busy"  # second kick while the first holds the lock
     live.on_model = change_during_model
     assert lore_sync.run(settle_s=0) == "updated,updated"
-    assert len(live.calls) == 2 and "Toll Reeves (Hostile)" in live.calls[1]
+    assert len(live.calls) == 2 and "Lamplighters (Hostile)" in live.calls[1]
 
 
 def test_old_display_never_gets_whole_lists_reposted(monkeypatch, tmp_path):
@@ -239,7 +239,7 @@ def test_pending_work_at_pass_limit_is_rescheduled(monkeypatch, tmp_path):
 
     def push_every_pass():
         n = len(live.calls)
-        live.write_stats({"factions": [{"name": "Toll Reeves", "standing": "Hostile" if n % 2 else "Neutral"}], "quests": []})
+        live.write_stats({"factions": [{"name": "Lamplighters", "standing": "Hostile" if n % 2 else "Neutral"}], "quests": []})
         (tmp_path / "lore_sync.pending").touch()
     live.on_model = push_every_pass
     lore_sync.run(settle_s=0, max_passes=2)
@@ -398,7 +398,7 @@ def display(tmp_path, monkeypatch):
     module._stats_owner = "Test"
     module._current_stats["factions"] = [
         {"name": "Guild", "standing": "Hostile"},                       # DM changed it meanwhile
-        {"name": "Reeves", "standing": "Neutral", "detail": "old helper note"},
+        {"name": "Lamplighters", "standing": "Neutral", "detail": "old helper note"},
         {"name": "Court", "standing": "Allied", "detail": "written by the DM"},
     ]
     module._current_stats["quests"] = [{"name": "New quest", "status": "active"}]
@@ -411,12 +411,12 @@ def test_lore_endpoint_sets_notes_without_replacing_lists(display):
         "campaign": "Test",
         "factions": {"Guild": "Guild note", "Court": "helper tries to overwrite"},
         "quests": {},
-        "previous": {"factions": {"Reeves": "old helper note"}},
+        "previous": {"factions": {"Lamplighters": "old helper note"}},
     })
     assert r.status_code == 204
     f = {x["name"]: x for x in module._current_stats["factions"]}
     assert f["Guild"] == {"name": "Guild", "standing": "Hostile", "detail": "Guild note"}
-    assert "detail" not in f["Reeves"]            # stale helper note removed
+    assert "detail" not in f["Lamplighters"]            # stale helper note removed
     assert f["Court"]["detail"] == "written by the DM"  # DM note untouched
     assert module._current_stats["quests"] == [{"name": "New quest", "status": "active"}]
 
@@ -448,17 +448,17 @@ def test_cache_keeps_each_campaign_separately(monkeypatch, tmp_path):
 def test_old_single_campaign_cache_still_reads(monkeypatch, tmp_path):
     monkeypatch.setattr(lore_sync, "rt", lambda name: str(tmp_path / name))
     (tmp_path / "lore_notes.json").write_text(json.dumps(
-        {"campaign": "Fenmoor", "fingerprint": "f", "factions": {"Toll Reeves": "n"}, "quests": {}}), encoding="utf-8")
-    assert lore_sync.load_cache("Fenmoor")["factions"] == {"Toll Reeves": "n"}
+        {"campaign": "Fenmoor", "fingerprint": "f", "factions": {"Lamplighters": "n"}, "quests": {}}), encoding="utf-8")
+    assert lore_sync.load_cache("Fenmoor")["factions"] == {"Lamplighters": "n"}
 
 
 def test_lore_endpoint_accepts_a_list_of_earlier_helper_notes(display):
     module, client = display
-    r = client.post("/stats/lore", json={"campaign": "Test", "factions": {"Reeves": "new"},
-                                         "previous": {"factions": {"Reeves": ["older", "old helper note"]}}})
+    r = client.post("/stats/lore", json={"campaign": "Test", "factions": {"Lamplighters": "new"},
+                                         "previous": {"factions": {"Lamplighters": ["older", "old helper note"]}}})
     assert r.status_code == 204
     f = {x["name"]: x for x in module._current_stats["factions"]}
-    assert f["Reeves"]["detail"] == "new"
+    assert f["Lamplighters"]["detail"] == "new"
 
 
 # ── codex binary and failure log ─────────────────────────────────────────────

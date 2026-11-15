@@ -189,11 +189,11 @@ class RoadCliTests(unittest.TestCase):
 STATE = """# Campaign
 
 ## Next Hooks
-- Brinewick: the cooper is short of hoops and will pay for a crate carried from Ashbridge.
-- The Reeves want the burned wagon at the crossroads explained.
+- Gullmere: the boatwright is out of pitch and will pay for two pots carried from Reedhythe.
+- The Lamplighters want the sunk barge at the old sluice explained.
 
 ## Clocks
-- 18 Duskfall 1247: the Reeves impound unregistered wagons at Ashbridge (seen by: carters turning back on the road)
+- 12 Mistmonth 1312: the Lamplighters seal the oil stores at Reedhythe (seen by: bargemen poling home empty)
 
 ## Campaign Arc
 ```yaml
@@ -223,11 +223,11 @@ def test_campaign_road_reads_flags_hooks_and_clocks():
     road = oracle.read_road_context(STATE)
     assert road["pacing"] == "adventure"
     assert road["difficulty"] == "standard"
-    assert any("cooper" in hook for hook in road["hooks"])
+    assert any("boatwright" in hook for hook in road["hooks"])
     clock = road["clocks"][0]
-    assert clock["date"] == "18 Duskfall 1247"
-    assert "impound" in clock["what"]
-    assert clock["seen_by"] == "carters turning back on the road"
+    assert clock["date"] == "12 Mistmonth 1312"
+    assert "seal the oil stores" in clock["what"]
+    assert clock["seen_by"] == "bargemen poling home empty"
 
 
 def test_story_days_come_from_hooks_and_clocks():
@@ -238,8 +238,8 @@ def test_story_days_come_from_hooks_and_clocks():
         day = oracle.road_day(rng=rng, pacing="adventure", context=context)
         if day["kind"] == "story":
             texts.add(day["text"])
-    assert any("cooper" in t for t in texts)
-    assert any("impound" in t for t in texts)
+    assert any("boatwright" in t for t in texts)
+    assert any("seal the oil stores" in t for t in texts)
 
 
 def test_travellers_sometimes_bring_clock_news():
@@ -247,8 +247,8 @@ def test_travellers_sometimes_bring_clock_news():
     rng = random.Random(2)
     travellers = [d["text"] for d in (oracle.road_day(rng=rng, context=context) for _ in range(400))
                   if d["kind"] == "traveller"]
-    assert any("carters turning back" in t for t in travellers)
-    assert any("carters turning back" not in t and "cooper" not in t and "Reeves" not in t for t in travellers)
+    assert any("bargemen poling home" in t for t in travellers)
+    assert any("bargemen poling home" not in t and "boatwright" not in t and "Lamplighters" not in t for t in travellers)
 
 
 def test_road_log_prevents_immediate_repeats(campaign):
@@ -281,10 +281,10 @@ def test_no_example_repeats_within_ten_days_at_any_pacing(pacing):
 
 
 def test_one_hook_is_not_reused_as_story_then_traveller_within_ten_days():
-    context = {"pacing": "adventure", "hooks": ["Brinewick: the cooper needs a crate carried"], "clocks": []}
+    context = {"pacing": "adventure", "hooks": ["Gullmere: the boatwright needs pitch carried"], "clocks": []}
     for seed in range(40):
         days = oracle.roll_road(30, rng=random.Random(seed), context=context)
-        hits = [i for i, d in enumerate(days) if "cooper" in d["text"]]
+        hits = [i for i, d in enumerate(days) if "boatwright" in d["text"]]
         for a, b in zip(hits, hits[1:]):
             assert b - a > 10, (seed, hits)
 
@@ -335,7 +335,7 @@ def test_seeded_npc_is_stable_and_written_to_npcs_md(tmp_path):
     folder = make_campaign(tmp_path)
     (folder / "npcs.md").write_text(
         "# NPCs\n\n| Name | Role |\n|---|---|\n| Agnes Shaw | trader |\n\n"
-        "### Garrick Marsh\n- **Role:** ferryman\n- Tells dry jokes.\n", encoding="utf-8")
+        "### Garrick Marsh\n- **Role:** ferryman\n- Hums while he poles.\n", encoding="utf-8")
     first = run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "Agnes Shaw", "--trader")
     assert first.returncode == 0, first.stderr
     second = run_oracle(tmp_path, "npc", "--campaign", "Roadtest", "--name", "agnes  shaw", "--trader")
@@ -346,7 +346,7 @@ def test_seeded_npc_is_stable_and_written_to_npcs_md(tmp_path):
     assert text.count("### Agnes Shaw") == 1
     assert text.count("**Temperament:**") == 1
     assert "**Wants now:**" in text and "**Trades:**" in text
-    assert "### Garrick Marsh\n- **Role:** ferryman\n- Tells dry jokes." in text
+    assert "### Garrick Marsh\n- **Role:** ferryman\n- Hums while he poles." in text
 
 
 def test_seeded_npc_updates_an_existing_entry_in_place(tmp_path):
@@ -385,18 +385,18 @@ def test_npc_exact_heading_wins_over_an_annotated_one(tmp_path):
 def test_npc_note_appends_a_line_to_the_entry(tmp_path):
     folder = make_campaign(tmp_path)
     (folder / "calendar.json").write_text(json.dumps(
-        {"day": 17, "month": 8, "year": 1247, "months": ["a", "b", "c", "d", "e", "f", "g", "Duskfall"]}),
+        {"day": 10, "month": 8, "year": 1312, "months": ["a", "b", "c", "d", "e", "f", "g", "Mistmonth"]}),
         encoding="utf-8")
     (folder / "npcs.md").write_text(
         "# NPCs\n\n### Agnes Shaw\n- **Role:** trader\n\n### Personality\n- sly\n\n### Garrick Marsh\n- **Role:** ferryman\n",
         encoding="utf-8")
-    note = "Sold 4 blankets at 18. Thinks they drive a hard bargain."
+    note = "Bought 6 candles at 2 sp. Counts the coins twice."
     result = run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Agnes Shaw", note)
     assert result.returncode == 0, result.stderr
-    run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Agnes Shaw", "Paid them to carry a crate.")
+    run_oracle(tmp_path, "npc", "note", "--campaign", "Roadtest", "--name", "Agnes Shaw", "Paid them to carry a pot of pitch.")
     text = (folder / "npcs.md").read_text(encoding="utf-8")
     agnes, garrick = text.split("### Garrick Marsh")
-    assert f"- Party note (17 Duskfall 1247): {note}\n- Party note (17 Duskfall 1247): Paid them to carry a crate." in agnes
+    assert f"- Party note (10 Mistmonth 1312): {note}\n- Party note (10 Mistmonth 1312): Paid them to carry a pot of pitch." in agnes
     assert "Party note" not in garrick
 
 

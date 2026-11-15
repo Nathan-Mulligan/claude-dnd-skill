@@ -26,7 +26,7 @@ def fenmoor(tmp_path):
     return folder
 
 
-def card(folder, party_input="[Corin Ashby]: We ask Rosa about cargo."):
+def card(folder, party_input="[Corin Ashby]: We ask Effie about cargo."):
     return turn_card.build(folder, party_input)
 
 
@@ -42,15 +42,15 @@ def test_fenmoor_card_carries_the_scene_beat_hooks_clock_trade_and_people(fenmoo
     assert text.startswith("[[Turn card, hidden from players: ") and text.endswith("]] ")
     assert "roll mode" not in text
     assert "\n" not in text
-    assert "Where: Brinewick, Rosa Whitlow’s bakery, 16 Leaffall 1247, morning" in text
-    assert 'Beat 1b "Broken Ledgers": Bring the couple back toward Ashbridge' in text
-    assert "Tamsin Cole needs barrel hoops" in text and "Reeve courier with a lame horse" in text
-    assert "Ilsa quietly asks Corin" not in text
-    assert "auditor reaches the Ashbridge tollhouse" in text and "[in 2 days]" in text
-    assert "bridge closes to loaded wagons" not in text
-    assert "Trade policy (apply it without asking): aim for a 20% margin" in text
-    assert "People here: Rosa Whitlow (Brinewick baker whose shop is by the market well)" in text
-    assert "Ilsa Brook" not in text
+    assert "Where: Reedhythe, Effie Cobb’s candle shop, 9 Mistmonth 1312, morning" in text
+    assert 'Beat 1b "Fish Oil and Smoke": Steer the cousins to Gullmere' in text
+    assert "apprentice is buying every candle" in text and "eel barge has run onto the mudflats" in text
+    assert "lend the cousins his fast skiff" not in text
+    assert "eel barges try the night crossing" in text and "[in 2 days]" in text
+    assert "fever house burns its last lamp oil" not in text
+    assert "Trade policy (apply it without asking): aim for a 25% margin" in text
+    assert "People here: Effie Cobb (Reedhythe candle-maker whose shop faces the fish quay)" in text
+    assert "Maud Pellow" not in text
     assert "rolls: players roll" in text
     for rule in ("never a bare \"what do you do?\"", "name the DC and the stake", "Never decide for the player characters"):
         assert rule in text
@@ -70,11 +70,11 @@ def test_table_settings_from_the_display_reach_the_dm(fenmoor):
 
 def test_clock_window_includes_overdue_and_skips_far_off(fenmoor):
     calendar = json.loads((fenmoor / "calendar.json").read_text(encoding="utf-8"))
-    calendar["day"] = 20
+    calendar["day"] = 13
     (fenmoor / "calendar.json").write_text(json.dumps(calendar), encoding="utf-8")
     text = card(fenmoor)
-    assert "auditor reaches the Ashbridge tollhouse" in text and "[overdue]" in text
-    assert "bridge closes to loaded wagons" in text and "[in 1 day]" in text
+    assert "eel barges try the night crossing" in text and "[overdue]" in text
+    assert "fever house burns its last lamp oil" in text and "[in 1 day]" in text
     calendar["day"] = 1
     (fenmoor / "calendar.json").write_text(json.dumps(calendar), encoding="utf-8")
     assert "Clocks due" not in card(fenmoor)
@@ -82,10 +82,10 @@ def test_clock_window_includes_overdue_and_skips_far_off(fenmoor):
 
 def test_npc_named_in_the_party_input_is_listed_with_attitude(fenmoor):
     (fenmoor / "npcs.md").write_text(
-        "| Name | Role | Attitude |\n|---|---|---|\n| Bram Tully | Toll clerk | unfriendly |\n\n"
-        "### Bram Tully\n- **Demeanor:** jumpy, over-polite\n- **Attitude toward party:** unfriendly\n", encoding="utf-8")
-    text = card(fenmoor, "[Wren Talley]: I ask Bram for the ledger.")
-    assert "People here: Bram Tully (jumpy, over-polite; unfriendly)" in text
+        "| Name | Role | Attitude |\n|---|---|---|\n| Silas Crane | Oil factor | unfriendly |\n\n"
+        "### Silas Crane\n- **Demeanor:** jumpy, over-polite\n- **Attitude toward party:** unfriendly\n", encoding="utf-8")
+    text = card(fenmoor, "[Wren Talley]: I ask Silas for the manifest.")
+    assert "People here: Silas Crane (jumpy, over-polite; unfriendly)" in text
 
 
 def test_npc_is_matched_by_their_name_not_a_title_or_role_word(fenmoor):
@@ -122,9 +122,9 @@ def test_npc_saved_by_the_oracle_shows_temperament_and_want(fenmoor):
     oracle_spec = importlib.util.spec_from_file_location("oracle_for_card", REPO / "skills/dnd/scripts/oracle.py")
     oracle = importlib.util.module_from_spec(oracle_spec)
     oracle_spec.loader.exec_module(oracle)
-    oracle.save_npc_fields(fenmoor / "npcs.md", "Rosa Whitlow",
-                           [("Temperament", "brisk, counts twice (ordinary)"), ("Wants now", "flour before the frost")])
-    assert "People here: Rosa Whitlow (brisk, counts twice (ordinary); wants flour before the frost)" in card(fenmoor)
+    oracle.save_npc_fields(fenmoor / "npcs.md", "Effie Cobb",
+                           [("Temperament", "brisk, counts twice (ordinary)"), ("Wants now", "beeswax before the fair")])
+    assert "People here: Effie Cobb (brisk, counts twice (ordinary); wants beeswax before the fair)" in card(fenmoor)
 
 
 def test_missing_sections_are_skipped(tmp_path):
@@ -166,9 +166,9 @@ def test_broken_files_never_raise(fenmoor, damage):
 
 
 def test_control_characters_never_reach_the_terminal(fenmoor):
-    edit_state(fenmoor, "Brinewick, Rosa", "Salt\x00mere\x1b[2J, Rosa")
+    edit_state(fenmoor, "Reedhythe, Effie", "Reed\x00hythe\x1b[2J, Effie")
     text = card(fenmoor)
-    assert "Salt mere [2J, Rosa" in text
+    assert "Reed hythe [2J, Effie" in text
     assert not any(ord(ch) < 32 or ord(ch) == 127 for ch in text)
 
 
@@ -184,9 +184,9 @@ def test_card_does_not_save_the_steering_count(fenmoor):
 
 def test_steering_nudge_takes_the_beat_line(fenmoor):
     (fenmoor / "arc_pulse.json").write_text(json.dumps({"beat": "1b", "turns": 3}), encoding="utf-8")
-    text, pulse = turn_card.prepare(fenmoor, "[Corin Ashby]: We load the wagon.")
+    text, pulse = turn_card.prepare(fenmoor, "[Corin Ashby]: We load the punt.")
     assert pulse.directive and "DM steering, mandatory this turn" in text
-    assert 'Beat 1b "Broken Ledgers":' not in text
+    assert 'Beat 1b "Fish Oil and Smoke":' not in text
 
 
 def test_every_card_asks_for_narration_first_and_a_one_word_close(fenmoor):

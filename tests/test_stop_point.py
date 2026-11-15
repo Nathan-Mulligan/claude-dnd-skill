@@ -30,26 +30,26 @@ def stop_point(root, *args, stdin=""):
 def exchanges(count):
     turns = []
     for number in range(1, count + 1):
-        turns.append({"who": "Players", "text": f"Turn {number}: Wren asks Rosa about the ledger."})
-        turns.append({"who": "DM", "text": f"Turn {number}: Rosa’s floury hands stop on the dough."})
+        turns.append({"who": "Players", "text": f"Turn {number}: Wren asks Effie about the wax order."})
+        turns.append({"who": "DM", "text": f"Turn {number}: Effie’s waxy hands stop on the wick."})
     return turns
 
 
 def test_wrap_up_keeps_the_last_exchanges_verbatim_and_the_resumed_dm_reads_them(fenmoor):
     root = fenmoor.parent.parent
-    turns = exchanges(6) + [{"who": "DM", "text": "Rosa slides the ledger across. Wren, roll Insight."}]
+    turns = exchanges(6) + [{"who": "DM", "text": "Effie slides the order book across. Wren, roll Insight."}]
     result = stop_point(root, "write", "--campaign", "Fenmoor",
-                        "--where", "In Rosa's bakery, Brinewick, morning of 16 Leaffall; Rosa has just shown the ledger.",
-                        "--waiting", "Wren's Insight roll on Rosa (DC 13)", stdin=json.dumps(turns))
+                        "--where", "In Effie's candle shop, Reedhythe, morning of 9 Mistmonth; Effie has just shown the order book.",
+                        "--waiting", "Wren's Insight roll on Effie (DC 13)", stdin=json.dumps(turns))
     assert result.returncode == 0, result.stderr
     text = (fenmoor / "session-tail.md").read_text(encoding="utf-8")
     assert text.startswith("# Where we stopped\n")
-    assert "Rosa has just shown the ledger." in text
-    assert "**Waiting on:** Wren's Insight roll on Rosa (DC 13)" in text
-    assert "**DM:** Rosa slides the ledger across. Wren, roll Insight." in text
-    assert "Rosa’s floury hands" in text
+    assert "Effie has just shown the order book." in text
+    assert "**Waiting on:** Wren's Insight roll on Effie (DC 13)" in text
+    assert "**DM:** Effie slides the order book across. Wren, roll Insight." in text
+    assert "Effie’s waxy hands" in text
     assert text.split("## Last exchanges")[1].count("\n**") == 8
-    assert "Turn 3: Wren" not in text and "Turn 3: Rosa" in text
+    assert "Turn 3: Wren" not in text and "Turn 3: Effie" in text
     shown = stop_point(root, "show", "--campaign", "Fenmoor")
     assert shown.returncode == 0 and shown.stdout.strip() == text.strip()
 
@@ -58,12 +58,12 @@ def test_show_falls_back_to_the_display_tail_when_no_stop_point_was_written(fenm
     root = fenmoor.parent.parent
     (fenmoor / "session-tail.md").write_text("# Old snapshot\n" + "x" * 50000, encoding="utf-8")
     tail = [{"text": f"Narration {n}"} for n in range(25)]
-    tail += [{"player": "Wren Talley", "text": "I check the wagon."}, {"dice": True, "text": "d20 = 14"}]
+    tail += [{"player": "Wren Talley", "text": "I check the punt."}, {"dice": True, "text": "d20 = 14"}]
     (fenmoor / "session_tail.json").write_text(json.dumps(tail), encoding="utf-8")
     shown = stop_point(root, "show", "--campaign", "Fenmoor")
     assert shown.returncode == 0
     assert "x" * 100 not in shown.stdout
-    assert "**Wren Talley:** I check the wagon." in shown.stdout
+    assert "**Wren Talley:** I check the punt." in shown.stdout
     assert "**Dice:** d20 = 14" in shown.stdout
     assert "Narration 18" not in shown.stdout and "Narration 19" in shown.stdout
 
@@ -75,9 +75,9 @@ def test_show_without_any_record_says_so(fenmoor):
 
 
 @pytest.mark.parametrize("stdin, where", [
-    ("not json", "At the bakery."),
-    (json.dumps({"who": "DM", "text": "x"}), "At the bakery."),
-    (json.dumps([{"who": "DM"}]), "At the bakery."),
+    ("not json", "At the candle shop."),
+    (json.dumps({"who": "DM", "text": "x"}), "At the candle shop."),
+    (json.dumps([{"who": "DM"}]), "At the candle shop."),
     (json.dumps([{"who": "DM", "text": "x"}]), "  "),
 ])
 def test_bad_input_leaves_the_previous_stop_point_alone(fenmoor, stdin, where):
@@ -94,16 +94,16 @@ def test_unknown_campaign_is_refused(tmp_path):
 
 def test_display_lines_after_the_stop_point_are_shown_as_newer(fenmoor):
     root = fenmoor.parent.parent
-    tail = [{"text": "Rosa slides the ledger across. Wren, roll Insight."}]
+    tail = [{"text": "Effie slides the order book across. Wren, roll Insight."}]
     (fenmoor / "session_tail.json").write_text(json.dumps(tail), encoding="utf-8")
-    turns = [{"who": "DM", "text": "Rosa slides the ledger across. Wren, roll Insight."}]
-    assert stop_point(root, "write", "--campaign", "Fenmoor", "--where", "At the bakery.",
+    turns = [{"who": "DM", "text": "Effie slides the order book across. Wren, roll Insight."}]
+    assert stop_point(root, "write", "--campaign", "Fenmoor", "--where", "At the candle shop.",
                       "--waiting", "Wren's Insight roll", stdin=json.dumps(turns)).returncode == 0
     shown = stop_point(root, "show", "--campaign", "Fenmoor").stdout
     assert "Since then" not in shown
-    tail += [{"dice": True, "text": "Wren rolls Insight: 17"}, {"text": "Rosa's eyes flick to the door."}]
+    tail += [{"dice": True, "text": "Wren rolls Insight: 17"}, {"text": "Effie's eyes flick to the door."}]
     (fenmoor / "session_tail.json").write_text(json.dumps(tail), encoding="utf-8")
     shown = stop_point(root, "show", "--campaign", "Fenmoor").stdout
     newer = shown.split("## Since then")[1]
-    assert "**Dice:** Wren rolls Insight: 17" in newer and "**DM:** Rosa's eyes flick to the door." in newer
-    assert "Rosa slides the ledger" not in newer
+    assert "**Dice:** Wren rolls Insight: 17" in newer and "**DM:** Effie's eyes flick to the door." in newer
+    assert "Effie slides the order book" not in newer

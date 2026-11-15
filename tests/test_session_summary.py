@@ -17,10 +17,10 @@ STATE = """# Campaign: Test
 **Created:** 2026-01-01  **Last session:** 2026-11-01  **Session count:** 7
 
 ## Next Hooks
-- SECRET-HOOK: the courier carries the auditor's notice.
+- SECRET-HOOK: the eel-pot holds the oil manifest.
 
 ## Clocks
-- SECRET-CLOCK: the bridge closes on the 21st.
+- SECRET-CLOCK: the fever house runs dry on the 14th.
 
 ## Story So Far
 *(One paragraph, at most 150 words, for everything older than the Continuity Archive.)*
@@ -28,22 +28,22 @@ STATE = """# Campaign: Test
 ## Continuity Archive
 *Compressed note stays.*
 
-### Session 1 — 2026-01-01 — Ashbridge
+### Session 1 — 2026-01-01 — Reedhythe
 - Met Hobb the ferryman.
 
-### Session 2 — 2026-01-08 — The toll road
-- Paid the Reeves 4 gp.
+### Session 2 — 2026-01-08 — The causeway
+- Paid the Lamplighters 4 gp.
 
 ## Recent Events
-- Sold the flour to Marta at 18 sp.
+- Sold the eel to Marta at 12 sp.
 
 ## DM Notes (hidden from players)
-SECRET-NOTE: Marta is the auditor's sister.
+SECRET-NOTE: Marta is the factor's sister.
 """
 
 SESSION_6 = """## Session 6 — 2026-11-01
 ### Recap
-The party reached Ashbridge and met Marta.
+The party reached Reedhythe and met Marta.
 
 ### DM Calibration
 - **What worked:** SECRET-CALIBRATION pacing.
@@ -65,7 +65,7 @@ They crossed the fen with Hobb.
 LOG_TWO = LOG.replace("## Session 7", SESSION_6 + "## Session 7")
 
 TAIL_NOTE = """# Where we stopped
-At the Ashbridge mill.
+At the Reedhythe weir.
 
 **Waiting on:** nothing
 
@@ -78,14 +78,14 @@ At the Ashbridge mill.
 
 OLD_LINE = {"text": "They crossed the fen.", "_camp": "test"}
 NEW_LINES = [
-    {"player": "Corin", "text": "I ask the miller about the toll."},
-    {"text": "The miller, Corwin Ash, wipes flour from his hands and names the price: 3 gp a wagon."},
-    {"npc": "Corwin Ash", "text": "Three gold, and the Reeves take a third."},
+    {"player": "Corin", "text": "I ask the weir-master about the fee."},
+    {"text": "The weir-master, Corwin Ash, wipes river weed from his hands and names the price: 3 gp a barge."},
+    {"npc": "Corwin Ash", "text": "Three gold, and the Lamplighters take a third."},
 ]
 
 GOOD = {
-    "recap": "Corin asked Corwin Ash about the toll. Corwin named 3 gp a wagon and said the Reeves take a third.",
-    "key_events": ["Corwin Ash charges 3 gp a wagon.", "The Reeves take a third of the toll."],
+    "recap": "Corin asked Corwin Ash about the fee. Corwin named 3 gp a barge and said the Lamplighters take a third.",
+    "key_events": ["Corwin Ash charges 3 gp a barge.", "The Lamplighters take a third of the fee."],
     "archived": [],
     "story_so_far": "",
 }
@@ -132,9 +132,9 @@ def read(folder, name):
 def test_prompt_holds_this_sessions_lines_and_no_dm_secrets(tmp_path, monkeypatch):
     folder = campaign(tmp_path)
     [prompt], _ = run(folder, monkeypatch)
-    assert "Corwin Ash" in prompt and "names the price: 3 gp a wagon" in prompt
-    assert "Corin: I ask the miller" in prompt
-    assert "Sold the flour to Marta" in prompt  # Recent Events is party-known
+    assert "Corwin Ash" in prompt and "names the price: 3 gp a barge" in prompt
+    assert "Corin: I ask the weir-master" in prompt
+    assert "Sold the eel to Marta" in prompt  # Recent Events is party-known
     assert "They crossed the fen with Hobb." in prompt  # last recap, marked as already recorded
     assert "They crossed the fen.\n" not in prompt  # display line from before the last saved stop point
     assert "SECRET" not in prompt
@@ -155,20 +155,20 @@ def test_a_new_session_entry_gets_the_recap_and_key_events(tmp_path, monkeypatch
     log = read(folder, "session-log.md")
     assert log.startswith(LOG.rstrip("\n"))
     new = log[log.index("## Session 8 — 2026-11-14"):]
-    assert "### Recap\nCorin asked Corwin Ash about the toll." in new
-    assert "### Key Events\n- Corwin Ash charges 3 gp a wagon.\n- The Reeves take a third of the toll." in new
+    assert "### Recap\nCorin asked Corwin Ash about the fee." in new
+    assert "### Key Events\n- Corwin Ash charges 3 gp a barge.\n- The Lamplighters take a third of the fee." in new
 
 
 def test_an_open_entry_for_this_session_is_filled_in_place(tmp_path, monkeypatch):
-    open_entry = LOG + "\n## Session 8 — 2026-11-14\n**Location:** Ashbridge\n\n### Turns\n- Corin asked about the toll.\n"
+    open_entry = LOG + "\n## Session 8 — 2026-11-14\n**Location:** Reedhythe\n\n### Turns\n- Corin asked about the fee.\n"
     folder = campaign(tmp_path, log=open_entry)
     [prompt], _ = run(folder, monkeypatch)
-    assert "- Corin asked about the toll." in prompt
+    assert "- Corin asked about the fee." in prompt
     log = read(folder, "session-log.md")
     assert log.count("## Session 8") == 1
     entry = log[log.index("## Session 8"):]
-    assert entry.index("**Location:** Ashbridge") < entry.index("### Recap\nCorin asked") < entry.index("### Turns")
-    assert "- Corin asked about the toll." in entry
+    assert entry.index("**Location:** Reedhythe") < entry.index("### Recap\nCorin asked") < entry.index("### Turns")
+    assert "- Corin asked about the fee." in entry
 
 
 def test_a_placeholder_recap_is_replaced(tmp_path, monkeypatch):
@@ -178,7 +178,7 @@ def test_a_placeholder_recap_is_replaced(tmp_path, monkeypatch):
     entry = read(folder, "session-log.md").split("## Session 8")[1]
     assert "<3-5 sentence" not in entry
     assert entry.count("### Recap") == 1 and entry.count("### Key Events") == 1
-    assert "- Corwin Ash charges 3 gp a wagon." in entry
+    assert "- Corwin Ash charges 3 gp a barge." in entry
 
 
 def test_a_missing_session_log_is_created(tmp_path, monkeypatch):
@@ -198,13 +198,13 @@ def test_nothing_new_this_session_writes_nothing(tmp_path, monkeypatch):
 
 # ── archive rotation and the Story So Far fold ──────────────────────────────
 
-ARCHIVED = {"session": 6, "label": "Ashbridge", "bullets": ["The party reached Ashbridge.", "They met Marta."]}
+ARCHIVED = {"session": 6, "label": "Reedhythe", "bullets": ["The party reached Reedhythe.", "They met Marta."]}
 
 
 def test_entries_older_than_the_newest_two_move_to_the_archive(tmp_path, monkeypatch):
     folder = campaign(tmp_path, log=LOG_TWO)
     [prompt], _ = run(folder, monkeypatch, dict(GOOD, archived=[ARCHIVED]))
-    assert "Session 6" in prompt and "The party reached Ashbridge and met Marta." in prompt
+    assert "Session 6" in prompt and "The party reached Reedhythe and met Marta." in prompt
     assert "SECRET" not in prompt
     log = read(folder, "session-log.md")
     assert "## Session 6" not in log and "## Session 7" in log and "## Session 8" in log
@@ -212,7 +212,7 @@ def test_entries_older_than_the_newest_two_move_to_the_archive(tmp_path, monkeyp
     assert "## Session 6 — 2026-11-01" in archive and "SECRET-CALIBRATION" in archive  # moved whole, never lost
     state = read(folder, "state.md")
     section = state[state.index("## Continuity Archive"):state.index("## Recent Events")]
-    assert "### Session 6 — 2026-11-01 — Ashbridge\n- The party reached Ashbridge.\n- They met Marta." in section
+    assert "### Session 6 — 2026-11-01 — Reedhythe\n- The party reached Reedhythe.\n- They met Marta." in section
     assert section.index("### Session 2") < section.index("### Session 6")
     assert "*Compressed note stays.*" in section
 
@@ -221,7 +221,7 @@ def test_archive_beyond_five_folds_into_story_so_far(tmp_path, monkeypatch):
     sessions = "".join(f"### Session {n} — 2026-0{n}-01 — Place {n}\n- Fact {n}.\n\n" for n in range(1, 6))
     state = STATE.replace(STATE[STATE.index("### Session 1"):STATE.index("## Recent Events")], sessions)
     folder = campaign(tmp_path, state=state, log=LOG_TWO)
-    story = "Hobb ferried the party across the fen, and the Reeves took their toll at Ashbridge."
+    story = "Hobb ferried the party across the fen, and the Lamplighters took their cut at Reedhythe."
     [prompt], _ = run(folder, monkeypatch, dict(GOOD, archived=[ARCHIVED], story_so_far=story))
     assert "- Fact 1." in prompt
     state = read(folder, "state.md")
@@ -238,7 +238,7 @@ def test_a_missing_continuity_archive_is_created_after_story_so_far(tmp_path, mo
     run(folder, monkeypatch, dict(GOOD, archived=[ARCHIVED]))
     state = read(folder, "state.md")
     assert state.index("## Story So Far") < state.index("## Continuity Archive\n") < state.index("## Recent Events")
-    assert "### Session 6 — 2026-11-01 — Ashbridge" in state
+    assert "### Session 6 — 2026-11-01 — Reedhythe" in state
 
 
 # ── replies that are refused ────────────────────────────────────────────────
@@ -275,7 +275,7 @@ def test_a_long_story_so_far_is_refused(tmp_path, monkeypatch):
 
 def test_a_name_the_material_never_mentions_is_refused(tmp_path, monkeypatch):
     folder = campaign(tmp_path)
-    invented = dict(GOOD, recap="Corin asked Corwin Ash about the toll, and Lady Veyra watched from the bridge.")
+    invented = dict(GOOD, recap="Corin asked Corwin Ash about the fee, and Lady Veyra watched from the bridge.")
     stub_helper(monkeypatch, invented)
     with pytest.raises(ValueError, match="Veyra"):
         summary.prepare(folder, summary.display_mark(folder), ("codex", "m"))
@@ -284,14 +284,14 @@ def test_a_name_the_material_never_mentions_is_refused(tmp_path, monkeypatch):
 @pytest.mark.parametrize("apostrophe", ["’", "'"])
 def test_a_name_the_material_gives_only_in_the_possessive_is_not_invented(tmp_path, monkeypatch, apostrophe):
     # A real close was refused: the material named someone only as "X’s yard" and the reply said "X".
-    state = STATE.replace("Sold the flour to Marta at 18 sp.", f"Paid the salt debt at Brannoch Tull{apostrophe}s yard.")
+    state = STATE.replace("Sold the eel to Marta at 12 sp.", f"Paid the rope debt at Brannoch Tull{apostrophe}s yard.")
     reply = dict(GOOD, recap=GOOD["recap"] + " They had also repaid Brannoch Tull.")
     run(campaign(tmp_path, state=state), monkeypatch, reply)
     assert "repaid Brannoch Tull." in read(tmp_path / "test", "session-log.md")
 
 
 def test_possessives_in_capitals_still_match():
-    assert summary.invented(["They paid at TULL'S yard and thanked Tull."], "the salt sat in TULL'S YARD") == []
+    assert summary.invented(["They paid at TULL'S yard and thanked Tull."], "the rope sat in TULL'S YARD") == []
 
 
 @pytest.mark.parametrize("apostrophe", ["’", "'"])
@@ -301,7 +301,7 @@ def test_a_possessive_in_the_material_does_not_excuse_a_shortened_name(apostroph
 
 def test_ordinary_sentence_openers_are_not_mistaken_for_names(tmp_path, monkeypatch):
     folder = campaign(tmp_path)
-    reply = dict(GOOD, recap="Meanwhile Corin asked Corwin Ash about the toll. Afterwards they waited.")
+    reply = dict(GOOD, recap="Meanwhile Corin asked Corwin Ash about the fee. Afterwards they waited.")
     run(folder, monkeypatch, reply)
     assert "Meanwhile Corin asked" in read(folder, "session-log.md")
 
@@ -346,10 +346,10 @@ def test_ask_uses_the_shared_helper_with_the_summary_schema(monkeypatch):
 def test_dm_only_lines_in_moving_text_stay_out_of_the_prompt_but_are_kept(tmp_path, monkeypatch):
     sessions = "".join(f"### Session {n} — Place {n}\n- Fact {n}.\n\n" for n in range(2, 6))
     secret_fold = ("### Session 1 — Place 1\n- Fact 1.\n- DM note: SECRET-FOLD-A.\n- Off-screen, SECRET-FOLD-B.\n"
-                   "- The Reeves' faction move: SECRET-FOLD-C.\n\n")
+                   "- The Lamplighters' faction move: SECRET-FOLD-C.\n\n")
     state = STATE.replace(STATE[STATE.index("### Session 1"):STATE.index("## Recent Events")], secret_fold + sessions)
-    log = LOG_TWO.replace("The party reached Ashbridge and met Marta.",
-                          "The party reached Ashbridge and met Marta.\nHidden from the party: SECRET-ROTATE.")
+    log = LOG_TWO.replace("The party reached Reedhythe and met Marta.",
+                          "The party reached Reedhythe and met Marta.\nHidden from the party: SECRET-ROTATE.")
     folder = campaign(tmp_path, state=state, log=log)
     [prompt], _ = run(folder, monkeypatch, dict(GOOD, archived=[ARCHIVED], story_so_far="Fact 1 came first."))
     assert "SECRET" not in prompt and "- Fact 1." in prompt
@@ -379,7 +379,7 @@ def test_the_whole_session_comes_from_the_display_text_log(tmp_path, monkeypatch
 
 def test_a_number_the_material_never_gives_is_refused(tmp_path, monkeypatch):
     folder = campaign(tmp_path)
-    stub_helper(monkeypatch, dict(GOOD, key_events=["Corwin Ash charges 300 gp a wagon."]))
+    stub_helper(monkeypatch, dict(GOOD, key_events=["Corwin Ash charges 300 gp a barge."]))
     with pytest.raises(ValueError, match="300"):
         summary.prepare(folder, summary.display_mark(folder), ("codex", "m"))
 
@@ -389,17 +389,17 @@ def test_a_number_the_material_never_gives_is_refused(tmp_path, monkeypatch):
 TURNS_7 = "## Session 7 · 2026-11-08\n\n### 20:00 · The fen\n\n**DM:** TURNLOG-SEVEN Hobb poles the ferry.\n"
 TURNS_8 = """## Session 8 · 2026-11-14
 
-### 21:04 · Ashbridge mill · 18 Duskfall 1247
+### 21:04 · Reedhythe weir · 12 Mistmonth 1312
 
-**Corin:** I ask the miller about the toll.
+**Corin:** I ask the weir-master about the fee.
 
-**DM:** The miller, Corwin Ash, wipes flour from his hands and names the price: 3 gp a wagon.
+**DM:** The weir-master, Corwin Ash, wipes river weed from his hands and names the price: 3 gp a barge.
 
-**Corwin Ash:** Three gold, and the Reeves take a third.
+**Corwin Ash:** Three gold, and the Lamplighters take a third.
 
 **DM hint:** TUTOR-LINE a check would help.
 """
-TURNS_8_LATER = "## Session 8 · 2026-11-14\n\n### 23:30 · Ashbridge mill\n\n**DM:** AFTER-THE-BREAK the mill falls quiet.\n"
+TURNS_8_LATER = "## Session 8 · 2026-11-14\n\n### 23:30 · Reedhythe weir\n\n**DM:** AFTER-THE-BREAK the weir falls quiet.\n"
 
 
 def turn_log(folder, *sections, older_than_log=False):
@@ -415,8 +415,8 @@ def test_this_sessions_turns_come_from_the_turn_log(tmp_path, monkeypatch):
     folder = campaign(tmp_path, lines=[])  # the display's own log shows nothing new
     turn_log(folder, TURNS_7, TURNS_8)
     [prompt], _ = run(folder, monkeypatch)
-    assert "Corwin Ash: Three gold, and the Reeves take a third." in prompt
-    assert "Corin: I ask the miller about the toll." in prompt
+    assert "Corwin Ash: Three gold, and the Lamplighters take a third." in prompt
+    assert "Corin: I ask the weir-master about the fee." in prompt
     assert "TURNLOG-SEVEN" not in prompt and "TUTOR-LINE" not in prompt
     log = read(folder, "session-log.md")
     assert log.count("## Session 8") == 1 and "## Session 8 — 2026-11-14\n\n### Recap\nCorin asked" in log
@@ -457,7 +457,7 @@ def test_a_turn_log_older_than_the_last_summary_is_not_reused(tmp_path, monkeypa
     folder = campaign(tmp_path)  # the display showed this session's lines
     turn_log(folder, TURNS_7, older_than_log=True)
     [prompt], _ = run(folder, monkeypatch)
-    assert "TURNLOG-SEVEN" not in prompt and "Corin: I ask the miller" in prompt
+    assert "TURNLOG-SEVEN" not in prompt and "Corin: I ask the weir-master" in prompt
     assert "## Session 8 — 2026-11-14" in read(folder, "session-log.md")
 
 
@@ -485,15 +485,15 @@ def test_send_and_summary_agree_on_the_session_number(tmp_path, monkeypatch):
     monkeypatch.setenv("DND_ACTIVE_CAMPAIGN", "test")
     monkeypatch.setattr(summary.records.npc_describe, "kick", lambda: None)
     now = 1_800_000_000.0
-    shown = [{"kind": "player", "name": "Corin", "text": "I ask the miller about the toll."},
-             {"text": "The miller, Corwin Ash, names the price: 3 gp a wagon."}]
-    assert summary.records.record_send(shown, place="Ashbridge mill", now=now) is None
+    shown = [{"kind": "player", "name": "Corin", "text": "I ask the weir-master about the fee."},
+             {"text": "The weir-master, Corwin Ash, names the price: 3 gp a barge."}]
+    assert summary.records.record_send(shown, place="Reedhythe weir", now=now) is None
     assert "\n## Session 8 · " in read(folder, "turn-log.md")
     assert summary.session_number(folder) == 8
     stamp = (folder / "session-log.md").stat().st_mtime_ns + 10_000_000_000
     os.utime(folder / "turn-log.md", ns=(stamp, stamp))
-    reply = dict(GOOD, recap="Corin asked Corwin Ash about the toll. Corwin named 3 gp a wagon.",
-                 key_events=["Corwin Ash charges 3 gp a wagon."])
+    reply = dict(GOOD, recap="Corin asked Corwin Ash about the fee. Corwin named 3 gp a barge.",
+                 key_events=["Corwin Ash charges 3 gp a barge."])
     run(folder, monkeypatch, reply)
     assert "## Session 8 — 2026-11-14" in read(folder, "session-log.md")
     assert summary.records.record_send([{"text": "Next week, the road."}], now=now + 4 * 3600) is None
@@ -537,13 +537,13 @@ def test_a_resume_closed_without_play_does_not_use_up_a_session_number(tmp_path,
     summary.records.record_send([{"text": "RESUME-RECAP Last time, they crossed the fen with Hobb."}], now=now)
     summary.records.end_session(folder)  # closed again with no party reply: no summary written
     summary.records.mark_played(folder)  # the next real session: the party replies
-    shown = [{"kind": "player", "name": "Corin", "text": "I ask the miller about the toll."},
-             {"text": "The miller, Corwin Ash, names the price: 3 gp a wagon."}]
-    summary.records.record_send(shown, place="Ashbridge mill", now=now + 3600)
+    shown = [{"kind": "player", "name": "Corin", "text": "I ask the weir-master about the fee."},
+             {"text": "The weir-master, Corwin Ash, names the price: 3 gp a barge."}]
+    summary.records.record_send(shown, place="Reedhythe weir", now=now + 3600)
     assert read(folder, "turn-log.md").count("## Session 8 · ") == 2
     assert summary.session_number(folder) == 8
-    reply = dict(GOOD, recap="Corin asked Corwin Ash about the toll. Corwin named 3 gp a wagon.",
-                 key_events=["Corwin Ash charges 3 gp a wagon."])
+    reply = dict(GOOD, recap="Corin asked Corwin Ash about the fee. Corwin named 3 gp a barge.",
+                 key_events=["Corwin Ash charges 3 gp a barge."])
     run(folder, monkeypatch, reply)
     log = read(folder, "session-log.md")
     assert log.count("## Session 8") == 1 and "## Session 9" not in log
@@ -557,7 +557,7 @@ def test_mid_session_key_events_are_replaced_with_the_whole_sessions(tmp_path, m
     run(folder, monkeypatch)
     entry = read(folder, "session-log.md").split("## Session 8")[1]
     assert "DM-SWITCH-EVENT" not in entry and entry.count("### Key Events") == 1
-    assert "- Corwin Ash charges 3 gp a wagon." in entry
+    assert "- Corwin Ash charges 3 gp a barge." in entry
 
 
 def test_a_failed_write_puts_back_what_it_already_wrote(tmp_path, monkeypatch):

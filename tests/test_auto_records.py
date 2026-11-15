@@ -23,13 +23,13 @@ REAL_KICK = npc_describe.kick
 NOW = 1_800_000_000.0
 
 TURN = """@player Everybody
-We hand over the satchel.
+We show her the cask brand.
 @narration
-The clerk breaks the seal. Odile Varn, broad-shouldered and grey at the temples, taps the ledger with an ink-stained finger.
-@npc Odile Varn voice=bf_alice
-"Twenty silver, or the wagon stays."
+The keeper pries the bung loose. Maud Pellow, wiry and wind-burned under a sealskin hood, rubs the oil between two tar-black fingers.
+@npc Maud Pellow voice=bf_alice
+"Smell that? Fish. I will not light the tower with it."
 @tutor
-Twenty silver is 2 gp.
+Clean lamp oil is 1 sp a flask.
 """
 
 
@@ -39,12 +39,12 @@ def camp(tmp_path, monkeypatch):
     folder = root / "campaigns" / "Fenmoor"
     folder.mkdir(parents=True)
     runtime.mkdir()
-    (folder / "state.md").write_text("# Campaign: Fenmoor\n\n## Current Situation\n- **Location:** Ashbridge, the toll road\n",
+    (folder / "state.md").write_text("# Campaign: Fenmoor\n\n## Current Situation\n- **Location:** Gullmere, the beacon stair\n",
                                      encoding="utf-8")
-    (folder / "session-log.md").write_text("# Session Log\n\n## Session 6 — 2026-11-07\n### Recap\nThey left Brinewick.\n",
+    (folder / "session-log.md").write_text("# Session Log\n\n## Session 6 — 2026-11-07\n### Recap\nThey left Reedhythe.\n",
                                            encoding="utf-8")
-    (folder / "calendar.json").write_text(json.dumps({"day": 18, "month": 2, "year": 1247,
-                                                      "months": ["Thawmoon", "Duskfall"]}), encoding="utf-8")
+    (folder / "calendar.json").write_text(json.dumps({"day": 12, "month": 2, "year": 1312,
+                                                      "months": ["Thawmoon", "Mistmonth"]}), encoding="utf-8")
     monkeypatch.setenv("DND_CAMPAIGN_ROOT", str(root))
     monkeypatch.setenv("DND_RUNTIME_DIR", str(runtime))
     monkeypatch.setenv("DND_ACTIVE_CAMPAIGN", "Fenmoor")
@@ -71,15 +71,15 @@ def log_text(folder):
 # ── the turn log ─────────────────────────────────────────────────────────────
 
 def test_a_send_is_logged_word_for_word_under_this_session(camp):
-    assert records.record_send(blocks(), place="Ashbridge toll gate", now=NOW) is None
+    assert records.record_send(blocks(), place="Gullmere beacon stair", now=NOW) is None
     text = log_text(camp)
     assert text.startswith("# Turn log\n")
     assert "\n## Session 7 · " in text
-    assert "· Ashbridge toll gate · 18 Duskfall 1247\n" in text
-    assert "**Everybody:** We hand over the satchel." in text
-    assert "**DM:** The clerk breaks the seal. Odile Varn, broad-shouldered" in text
-    assert '**Odile Varn:** "Twenty silver, or the wagon stays."' in text
-    assert "**DM hint:** Twenty silver is 2 gp." in text
+    assert "· Gullmere beacon stair · 12 Mistmonth 1312\n" in text
+    assert "**Everybody:** We show her the cask brand." in text
+    assert "**DM:** The keeper pries the bung loose. Maud Pellow, wiry and wind-burned" in text
+    assert '**Maud Pellow:** "Smell that? Fish. I will not light the tower with it."' in text
+    assert "**DM hint:** Clean lamp oil is 1 sp a flask." in text
 
 
 def test_later_sends_join_the_same_session_until_a_long_gap(camp):
@@ -94,15 +94,15 @@ def test_later_sends_join_the_same_session_until_a_long_gap(camp):
 def test_a_replayed_send_is_not_logged_twice(camp):
     records.record_send(blocks(), now=NOW)
     records.record_send([b for b in blocks() if b["kind"] is None], now=NOW + 60)
-    assert log_text(camp).count("The clerk breaks the seal") == 1
+    assert log_text(camp).count("The keeper pries the bung loose") == 1
 
 
 def test_place_falls_back_to_state_md_and_session_to_the_count(camp):
     (camp / "session-log.md").write_text("# Session Log\n\n## Session X — <date>\n", encoding="utf-8")
-    (camp / "state.md").write_text("**Session count:** 2\n## Current Situation\n- **Location:** Brinewick docks\n",
+    (camp / "state.md").write_text("**Session count:** 2\n## Current Situation\n- **Location:** Reedhythe docks\n",
                                    encoding="utf-8")
     records.record_send(blocks("Gulls wheel.\n"), now=NOW)
-    assert "## Session 3 · " in log_text(camp) and "· Brinewick docks · " in log_text(camp)
+    assert "## Session 3 · " in log_text(camp) and "· Reedhythe docks · " in log_text(camp)
 
 
 def test_a_heading_inside_narration_cannot_start_a_section(camp):
@@ -111,8 +111,8 @@ def test_a_heading_inside_narration_cannot_start_a_section(camp):
 
 
 def test_awards_are_logged(camp):
-    records.record_send([], awards=[("XP", "Wren, Corin — 250 XP (Toll paid)")], now=NOW)
-    assert "**XP:** Wren, Corin — 250 XP (Toll paid)" in log_text(camp)
+    records.record_send([], awards=[("XP", "Wren, Corin — 250 XP (Beacon relit)")], now=NOW)
+    assert "**XP:** Wren, Corin — 250 XP (Beacon relit)" in log_text(camp)
 
 
 def test_no_campaign_means_no_files(camp, monkeypatch):
@@ -131,18 +131,18 @@ def test_the_display_campaign_is_used_without_an_active_campaign(camp, monkeypat
 # ── NPC records ──────────────────────────────────────────────────────────────
 
 def test_a_new_npc_gets_where_they_were_met_and_their_voice(camp):
-    records.record_send(blocks(), place="Ashbridge toll gate", now=NOW)
+    records.record_send(blocks(), place="Gullmere beacon stair", now=NOW)
     text = (camp / "npcs.md").read_text(encoding="utf-8")
-    assert "### Odile Varn\n" in text
-    assert "- **Met:** Ashbridge toll gate, session 7 (18 Duskfall 1247)" in text
+    assert "### Maud Pellow\n" in text
+    assert "- **Met:** Gullmere beacon stair, session 7 (12 Mistmonth 1312)" in text
     assert "- **Voice:** bf_alice" in text
 
 
 def test_the_dms_own_lines_are_never_changed(camp):
-    dm_entry = ("# NPCs\n\n### Odile Varn\n- **Role:** toll clerk\n- **Voice:** gravel and patience\n"
-                "- **Demeanor:** tired, exact\n\n- **Wants:** a quiet audit\n\n### Aldo Kerr\n- **Role:** carter\n")
+    dm_entry = ("# NPCs\n\n### Maud Pellow\n- **Role:** beacon keeper\n- **Voice:** gravel and patience\n"
+                "- **Demeanor:** tired, exact\n\n- **Wants:** a clean cask of oil\n\n### Aldo Kerr\n- **Role:** carter\n")
     (camp / "npcs.md").write_text(dm_entry, encoding="utf-8")
-    records.record_send(blocks(), place="Ashbridge toll gate", now=NOW)
+    records.record_send(blocks(), place="Gullmere beacon stair", now=NOW)
     records.record_send(blocks(TURN.replace("voice=bf_alice", "voice=af_heart")), place="Elsewhere", now=NOW + 60)
     text = (camp / "npcs.md").read_text(encoding="utf-8")
     for line in dm_entry.splitlines():
@@ -153,14 +153,14 @@ def test_the_dms_own_lines_are_never_changed(camp):
 
 
 @pytest.mark.parametrize("history", [
-    "Runs the ferry inn; lets the yard for a few coppers.",
-    "- Party note (16 Duskfall 1247): Took the hoop order.",
-    "- **Role:** toll clerk, first seen in session 4",
+    "Mends nets on the jetty; sells bait by the bucket.",
+    "- Party note (11 Mistmonth 1312): Agreed to carry the pitch.",
+    "- **Role:** beacon keeper, first seen in session 4",
 ])
 def test_someone_known_from_before_gets_no_new_met(camp, history):
-    (camp / "npcs.md").write_text(f"# NPCs\n\n## Odile Varn\n{history}\n", encoding="utf-8")
+    (camp / "npcs.md").write_text(f"# NPCs\n\n## Maud Pellow\n{history}\n", encoding="utf-8")
     with open(camp / "session-log.md", "a", encoding="utf-8") as log:
-        log.write("Odile Varn let them stable the mule.\n")
+        log.write("Maud Pellow let them shelter in the lamp room.\n")
     records.record_send(blocks(), place="Gate", now=NOW)
     text = (camp / "npcs.md").read_text(encoding="utf-8")
     assert "- **Met:**" not in text
@@ -168,12 +168,12 @@ def test_someone_known_from_before_gets_no_new_met(camp, history):
 
 
 @pytest.mark.parametrize("heading, speaker, logged", [
-    ("Odile Varn", "Odile Varn", "Odile let them stable the mule."),
-    ("Odile Varn", "Odile Varn", "They accepted Odile's offer of lodging."),
+    ("Maud Pellow", "Maud Pellow", "Maud let them shelter in the lamp room."),
+    ("Maud Pellow", "Maud Pellow", "They accepted Maud's offer of a bunk."),
     ("Brother Aldous", "Brother Aldous", "Aldous let them sleep in the abbey."),
 ])
 def test_a_written_up_npc_the_logs_know_by_first_name_gets_no_new_met(camp, heading, speaker, logged):
-    (camp / "npcs.md").write_text(f"# NPCs\n\n## {heading}\nKeeps the gate; hides a timber advance.\n", encoding="utf-8")
+    (camp / "npcs.md").write_text(f"# NPCs\n\n## {heading}\nKeeps the beacon; hides an empty purse.\n", encoding="utf-8")
     with open(camp / "session-log.md", "a", encoding="utf-8") as log:
         log.write(logged + "\n")
     records.record_send(blocks(f'@npc {speaker}\n"Next."\n'), place="Gate", now=NOW)
@@ -189,19 +189,19 @@ def test_a_title_alone_in_the_logs_is_not_a_meeting(camp):
 
 
 def test_a_written_up_npc_the_logs_never_mention_still_gets_met(camp):
-    (camp / "npcs.md").write_text("# NPCs\n\n## Odile Varn\nToll clerk; hides a timber advance.\n", encoding="utf-8")
+    (camp / "npcs.md").write_text("# NPCs\n\n## Maud Pellow\nBeacon keeper; hides an empty purse.\n", encoding="utf-8")
     records.record_send(blocks(), place="Gate", now=NOW)
     assert "- **Met:** Gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_a_new_npc_with_only_a_profile_still_gets_met(camp):
-    (camp / "npcs.md").write_text("# NPCs\n\n## Odile Varn\n- **Temperament:** tired (ordinary)\n"
-                                  "- **Wants now:** a quiet audit\n", encoding="utf-8")
+    (camp / "npcs.md").write_text("# NPCs\n\n## Maud Pellow\n- **Temperament:** tired (ordinary)\n"
+                                  "- **Wants now:** a clean cask of oil\n", encoding="utf-8")
     records.record_send(blocks(), place="Gate", now=NOW)
     assert "- **Met:** Gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("label", ["Warden rider", "Auditor", "Warden auditor", "Traveller", "Man at the barrier",
+@pytest.mark.parametrize("label", ["Warden rider", "Auditor", "Warden auditor", "Traveller", "Man at the sluice",
                                    "Grey-cloaked rider", "The Ferryman", "Warden Rider", "Bridge Keeper", "Toll Clerk",
                                    "Watch Captain"])
 def test_an_unnamed_speaker_gets_no_entry(camp, label):
@@ -210,7 +210,7 @@ def test_an_unnamed_speaker_gets_no_entry(camp, label):
     assert f"**{label}:** \"Move along.\"" in log_text(camp)
 
 
-@pytest.mark.parametrize("name", ["Tova Lind", "Brother Aldous", "Anselm of Ashbridge", "Tam O'Rourke"])
+@pytest.mark.parametrize("name", ["Tova Lind", "Brother Aldous", "Anselm of Reedhythe", "Tam O'Rourke"])
 def test_a_named_newcomer_gets_an_entry(camp, name):
     records.record_send(blocks(f'@npc {name}\n"Move along."\n'), place="Road", now=NOW)
     assert f"### {name}\n" in (camp / "npcs.md").read_text(encoding="utf-8")
@@ -223,24 +223,24 @@ def test_a_role_label_that_has_an_entry_is_still_filled(camp):
 
 
 def test_a_first_name_finds_the_one_entry_it_belongs_to(camp):
-    (camp / "npcs.md").write_text("# NPCs\n\n### Odile Varn\n- **Role:** toll clerk\n", encoding="utf-8")
-    records.record_send(blocks('@npc Odile\n"Next."\n'), place="Gate", now=NOW)
+    (camp / "npcs.md").write_text("# NPCs\n\n### Maud Pellow\n- **Role:** beacon keeper\n", encoding="utf-8")
+    records.record_send(blocks('@npc Maud\n"Next."\n'), place="Gate", now=NOW)
     text = (camp / "npcs.md").read_text(encoding="utf-8")
-    assert "### Odile\n" not in text and "- **Met:** Gate, session 7" in text
+    assert "### Maud\n" not in text and "- **Met:** Gate, session 7" in text
 
 
 def test_the_voice_the_table_hears_comes_from_the_cast(camp):
-    (camp / "cast.json").write_text(json.dumps({"odile varn": "bf_emma"}), encoding="utf-8")
-    records.record_send(blocks('@npc Odile Varn\n"Next."\n'), now=NOW)
+    (camp / "cast.json").write_text(json.dumps({"maud pellow": "bf_emma"}), encoding="utf-8")
+    records.record_send(blocks('@npc Maud Pellow\n"Next."\n'), now=NOW)
     assert "- **Voice:** bf_emma" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_an_entry_kept_in_npcs_full_is_filled_there(camp):
-    (camp / "npcs.md").write_text("# NPCs\n\n| Name | Role |\n|---|---|\n| Odile Varn | clerk |\n", encoding="utf-8")
-    (camp / "npcs-full.md").write_text("# NPCs\n\n### Odile Varn\n- **Role:** toll clerk\n", encoding="utf-8")
+    (camp / "npcs.md").write_text("# NPCs\n\n| Name | Role |\n|---|---|\n| Maud Pellow | keeper |\n", encoding="utf-8")
+    (camp / "npcs-full.md").write_text("# NPCs\n\n### Maud Pellow\n- **Role:** beacon keeper\n", encoding="utf-8")
     records.record_send(blocks(), now=NOW)
     assert "- **Met:**" in (camp / "npcs-full.md").read_text(encoding="utf-8")
-    assert "### Odile Varn" not in (camp / "npcs.md").read_text(encoding="utf-8")
+    assert "### Maud Pellow" not in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_a_lower_case_speaker_is_not_given_an_entry(camp):
@@ -252,7 +252,7 @@ def test_a_broken_npc_file_never_fails_the_send(camp):
     (camp / "npcs.md").mkdir()
     problem = records.record_send(blocks(), now=NOW)
     assert problem and "not written" in problem
-    assert "We hand over the satchel." in log_text(camp)
+    assert "We show her the cask brand." in log_text(camp)
 
 
 # ── looks and manner, copied by the helper model ─────────────────────────────
@@ -261,8 +261,8 @@ def test_the_helper_is_asked_once_for_an_npc_without_a_look(camp, monkeypatch):
     monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
     records.record_send(blocks(), now=NOW)
     rows = npc_describe._read_queue()
-    assert [r["name"] for r in rows] == ["Odile Varn"]
-    assert "broad-shouldered" in rows[0]["text"] and "Twenty silver" not in rows[0]["text"]
+    assert [r["name"] for r in rows] == ["Maud Pellow"]
+    assert "wind-burned" in rows[0]["text"] and "Smell that" not in rows[0]["text"]
 
 
 def test_no_helper_means_no_queue(camp, monkeypatch):
@@ -273,7 +273,7 @@ def test_no_helper_means_no_queue(camp, monkeypatch):
 
 def test_an_npc_the_dm_already_described_is_not_queued(camp, monkeypatch):
     monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
-    (camp / "npcs.md").write_text("# NPCs\n\n### Odile Varn\n- **Look:** tall, scarred\n", encoding="utf-8")
+    (camp / "npcs.md").write_text("# NPCs\n\n### Maud Pellow\n- **Look:** tall, scarred\n", encoding="utf-8")
     records.record_send(blocks(), now=NOW)
     assert npc_describe._read_queue() == []
 
@@ -285,15 +285,15 @@ def _answer(phrases):
 def test_only_phrases_copied_from_the_narration_are_kept_and_added_on_the_next_send(camp, monkeypatch):
     monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
     import lore_sync
-    monkeypatch.setattr(lore_sync, "ask", _answer(["broad-shouldered and grey at the temples",
+    monkeypatch.setattr(lore_sync, "ask", _answer(["wiry and wind-burned under a sealskin hood",
                                                   "a kind smile",  # invented: not in the narration
-                                                  "taps the ledger with an ink-stained finger"]))
+                                                  "rubs the oil between two tar-black fingers"]))
     records.record_send(blocks(), place="Gate", now=NOW)
     assert npc_describe.process(npc_describe._take_queue()) == 1
     assert "As seen" not in (camp / "npcs.md").read_text(encoding="utf-8")  # the DM's next send applies it
     records.record_send(blocks("The gate creaks.\n"), now=NOW + 60)
     text = (camp / "npcs.md").read_text(encoding="utf-8")
-    assert ("- **As seen:** broad-shouldered and grey at the temples; taps the ledger with an ink-stained finger"
+    assert ("- **As seen:** wiry and wind-burned under a sealskin hood; rubs the oil between two tar-black fingers"
             in text)
     assert "kind smile" not in text
     records.record_send(blocks(), now=NOW + 120)
@@ -306,7 +306,7 @@ def test_nothing_said_means_nothing_written_and_tries_are_capped(camp, monkeypat
     asked = []
     monkeypatch.setattr(lore_sync, "ask", lambda *a, **k: asked.append(1) or {"phrases": []})
     for i in range(npc_describe.MAX_TRIES + 2):
-        records.record_send(blocks(TURN.replace("Twenty", f"Twenty{i}")), now=NOW + i)
+        records.record_send(blocks(TURN.replace("Fish", f"Fish{i}")), now=NOW + i)
         npc_describe.process(npc_describe._take_queue())
     assert len(asked) == npc_describe.MAX_TRIES
     assert "As seen" not in (camp / "npcs.md").read_text(encoding="utf-8")
@@ -315,7 +315,7 @@ def test_nothing_said_means_nothing_written_and_tries_are_capped(camp, monkeypat
 def test_a_look_the_dm_wrote_meanwhile_wins_over_the_helper(camp, monkeypatch):
     monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
     import lore_sync
-    monkeypatch.setattr(lore_sync, "ask", _answer(["broad-shouldered and grey at the temples"]))
+    monkeypatch.setattr(lore_sync, "ask", _answer(["wiry and wind-burned under a sealskin hood"]))
     records.record_send(blocks(), now=NOW)
     npc_describe.process(npc_describe._take_queue())
     path = camp / "npcs.md"
@@ -365,39 +365,39 @@ def _send(argv, body, ok=lambda payload: True):
 
 def test_send_logs_the_turn_after_it_reaches_the_display(camp):
     _send([], TURN)
-    assert "**Everybody:** We hand over the satchel." in log_text(camp)
+    assert "**Everybody:** We show her the cask brand." in log_text(camp)
     assert "- **Voice:** bf_alice" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_send_does_not_log_a_block_the_display_never_got(camp):
     _send([], TURN, ok=lambda payload: not payload.get("npc"))
     text = log_text(camp)
-    assert "We hand over the satchel." in text and "Twenty silver, or" not in text
+    assert "We show her the cask brand." in text and "Smell that? Fish" not in text
     assert not (camp / "npcs.md").exists()
 
 
 def test_send_records_the_scene_place(camp):
     from scene_engine import SceneContext
     sender = load_sender()
-    scene = SceneContext.parse({"key": "ashbridge-gate", "label": "Ashbridge toll gate", "description": "dusk"})
+    scene = SceneContext.parse({"key": "gullmere-beacon", "label": "Gullmere beacon stair", "description": "dusk"})
     derived = mock.Mock(setting="town", mood="tense", scene=scene)
-    with mock.patch.object(sys, "argv", ["send.py", "--scene", "Ashbridge toll gate: dusk"]), \
+    with mock.patch.object(sys, "argv", ["send.py", "--scene", "Gullmere beacon stair: dusk"]), \
          mock.patch.object(sys, "stdin", io.StringIO(TURN)), \
          mock.patch.object(sender, "_post", return_value=True), \
          mock.patch.object(sender, "_ensure_active_campaign", lambda: None), \
          mock.patch.object(sender, "_derive_scene", return_value=(derived, False)):
         sender.main()
-    assert "- **Met:** Ashbridge toll gate, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
+    assert "- **Met:** Gullmere beacon stair, session 7" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_send_flag_form_npc_is_recorded_too(camp):
-    _send(["--npc", "Aldo Kerr", "--npc-voice", "bm_lewis"], '"The auditor. Nobody else."\n')
+    _send(["--npc", "Aldo Kerr", "--npc-voice", "bm_lewis"], '"The headman. Nobody else."\n')
     assert "- **Voice:** bm_lewis" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_send_logs_an_xp_award(camp):
-    _send(["--xp-award", json.dumps({"names": ["Wren"], "xp": 50, "reason": "Toll paid"})], "")
-    assert "**XP:** Wren — 50 XP (Toll paid)" in log_text(camp)
+    _send(["--xp-award", json.dumps({"names": ["Wren"], "xp": 50, "reason": "Beacon relit"})], "")
+    assert "**XP:** Wren — 50 XP (Beacon relit)" in log_text(camp)
 
 
 def test_a_records_failure_is_one_quiet_line_and_the_send_still_succeeds(camp, capsys):
@@ -410,7 +410,7 @@ def test_a_records_failure_is_one_quiet_line_and_the_send_still_succeeds(camp, c
 def test_the_worker_drains_the_queue_and_a_second_one_stands_aside(camp, monkeypatch):
     monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
     import lore_sync
-    monkeypatch.setattr(lore_sync, "ask", _answer(["broad-shouldered and grey at the temples"]))
+    monkeypatch.setattr(lore_sync, "ask", _answer(["wiry and wind-burned under a sealskin hood"]))
     kicks = []
     monkeypatch.setattr(npc_describe, "kick", lambda: kicks.append(1))
     records.record_send(blocks(), now=NOW)
@@ -444,8 +444,8 @@ def test_a_held_lock_delays_the_send_only_briefly(camp, monkeypatch):
 
 
 def test_identical_awards_are_both_logged(camp):
-    records.record_send([], awards=[("XP", "Wren — 50 XP (Toll paid)")], now=NOW)
-    records.record_send([], awards=[("XP", "Wren — 50 XP (Toll paid)")], now=NOW + 60)
+    records.record_send([], awards=[("XP", "Wren — 50 XP (Beacon relit)")], now=NOW)
+    records.record_send([], awards=[("XP", "Wren — 50 XP (Beacon relit)")], now=NOW + 60)
     assert log_text(camp).count("**XP:** Wren — 50 XP") == 2
 
 
@@ -464,7 +464,7 @@ def test_the_shown_part_of_a_long_block_is_logged_when_its_last_chunk_fails(camp
 def test_a_description_survives_a_failed_npc_write(camp, monkeypatch):
     monkeypatch.setattr(npc_describe, "_choice", lambda: ("codex", "gpt-6-luna"))
     import lore_sync
-    monkeypatch.setattr(lore_sync, "ask", _answer(["broad-shouldered and grey at the temples"]))
+    monkeypatch.setattr(lore_sync, "ask", _answer(["wiry and wind-burned under a sealskin hood"]))
     records.record_send(blocks(), now=NOW)
     npc_describe.process(npc_describe._take_queue())
     real = records._add_lines
@@ -478,12 +478,12 @@ def test_a_description_survives_a_failed_npc_write(camp, monkeypatch):
     records.record_send(blocks("The gate creaks.\n"), now=NOW + 60)
     monkeypatch.setattr(records, "_add_lines", real)
     records.record_send(blocks("The gate groans.\n"), now=NOW + 120)
-    assert "- **As seen:** broad-shouldered and grey at the temples" in (camp / "npcs.md").read_text(encoding="utf-8")
+    assert "- **As seen:** wiry and wind-burned under a sealskin hood" in (camp / "npcs.md").read_text(encoding="utf-8")
 
 
 def test_a_phrase_must_be_whole_words_from_the_narration():
-    narration = "Odile is unscarred and unarmed, with Grey eyes."
-    kept = npc_describe.copied_phrases({"phrases": ["scarred", "armed", "grey eyes"]}, narration, "Odile")
+    narration = "Maud is unscarred and unarmed, with Grey eyes."
+    kept = npc_describe.copied_phrases({"phrases": ["scarred", "armed", "grey eyes"]}, narration, "Maud")
     assert kept == ["Grey eyes"]
 
 
@@ -496,7 +496,7 @@ def test_the_claude_helper_sends_utf8_whatever_the_locale(monkeypatch):
         return lore_sync.subprocess.CompletedProcess(cmd, 0, json.dumps({"structured_output": {"phrases": []}}), "")
 
     monkeypatch.setattr(lore_sync.subprocess, "run", run)
-    lore_sync._ask_claude("Odile wears 羊毛 — and a scarf.", "haiku", npc_describe.SCHEMA)
+    lore_sync._ask_claude("Maud wears 羊毛 — and a scarf.", "haiku", npc_describe.SCHEMA)
     assert seen.get("encoding") == "utf-8"
 
 
@@ -527,9 +527,9 @@ def test_a_failed_model_call_does_not_use_up_a_try(camp, monkeypatch):
 
     monkeypatch.setattr(lore_sync, "ask", boom)
     for i in range(npc_describe.MAX_TRIES + 1):
-        records.record_send(blocks(TURN.replace("Twenty", f"Twenty{i}")), now=NOW + i)
+        records.record_send(blocks(TURN.replace("Fish", f"Fish{i}")), now=NOW + i)
         npc_describe.process(npc_describe._take_queue())
-    monkeypatch.setattr(lore_sync, "ask", _answer(["broad-shouldered and grey at the temples"]))
+    monkeypatch.setattr(lore_sync, "ask", _answer(["wiry and wind-burned under a sealskin hood"]))
     records.record_send(blocks(), now=NOW + 60)
     assert npc_describe.process(npc_describe._take_queue()) == 1
 

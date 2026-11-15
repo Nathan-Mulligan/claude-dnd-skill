@@ -115,13 +115,13 @@ The ledger owns each character's items and coins (`characters/<sheet>.inventory.
 I="python3 ${CLAUDE_SKILL_DIR}/scripts/inventory.py"
 $I show    --campaign $CAMP [--character Wren]          # every character without --character
 $I buy     --campaign $CAMP --character Wren "Lantern" --price "5 gp" [--qty 1]
-$I sell    --campaign $CAMP --character Corin "Blanket" --price "24 sp" [--qty 4]
+$I sell    --campaign $CAMP --character Corin "Candle" --price "2 sp" [--qty 6]
 $I spend   --campaign $CAMP --character Corin "3 sp"     # tolls, rent, bribes: makes change
-$I earn    --campaign $CAMP --character Corin "26 sp"
+$I earn    --campaign $CAMP --character Corin "12 sp"
 $I add     --campaign $CAMP --character Wren "Iron key" [--qty 1] [--category gear] [--notes "..."]
 $I remove  --campaign $CAMP --character Wren "Torch" [--qty 1 | --all]
 $I equip   --campaign $CAMP --character Wren "Shield"     # unequip to take off
-$I cargo   --campaign $CAMP add|remove|show "Sack of salt" [--qty 3] [--notes "..."]
+$I cargo   --campaign $CAMP add|remove|show "Cask of lamp oil" [--qty 3] [--notes "..."]
 $I migrate --campaign $CAMP --character Wren [--write]    # prose section → ledger; dry run first
 $I sync    --campaign $CAMP                                # regenerate sections and push
 ```
@@ -374,11 +374,11 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/calendar.py -c $CAMP events
 **Road days.** In an improvised campaign (`type: dynamic` or `type: sandbox` in `## Campaign Arc`), `advance` also prints one road-day roll for each whole day that passes (`oracle.py road`, below), so travel events arrive without a separate call. Prebuilt (`structured`) campaigns get nothing extra. When days pass without travel (waiting in town, recovering, a week of downtime), add `--no-road`. Rests use `rest short` / `rest long`, which never roll the road. Example:
 
 ```
-  +3 days → Moonday, 18 Duskfall 1247 — morning (hour 8)
+  +3 days → Moonday, 18 Harvestmoon 1247 — morning (hour 8)
 On the road: one roll per travel day (improvised campaign). Not travelling? Ignore these, and use --no-road for rests, waiting in town or downtime.
-Day 1 of 3 (16 Duskfall 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Investigating costs time; ignoring it may cost later.
-Day 2 of 3 (17 Duskfall 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it one vivid line and move on.
-Day 3 of 3 (18 Duskfall 1247): danger. Wolves circling the camp at dusk, bold with hunger. Telegraph the threat, and let talk, flight or a fight all work.
+Day 1 of 3 (16 Harvestmoon 1247): discovery. Fresh tracks of several riders leaving the road for the woods. Investigating costs time; ignoring it may cost later.
+Day 2 of 3 (17 Harvestmoon 1247): quiet. Cart ruts, a milestone with a worn name, smoke from a farmhouse chimney. Give it one vivid line and move on.
+Day 3 of 3 (18 Harvestmoon 1247): danger. Wolves circling the camp at dusk, bold with hunger. Telegraph the threat, and let talk, flight or a fight all work.
     Encounter budget (medium for 2 characters of level 1): about 100 XP. Roughly 1 × CR 1/4 (wolf), 2 × CR 1/8 (bandit) or 4 × CR 0 (jackal).
 ```
 
@@ -451,13 +451,13 @@ Nothing to run: `send.py` keeps both after each send reaches the display. A bloc
 
     ## Session 7 · 2026-11-14
 
-    ### 21:04 · Ashbridge toll gate · 18 Duskfall 1247
+    ### 21:04 · Gullmere beacon stair · 12 Harvestmoon 1247
 
-    **Everybody:** We hand over the satchel.
+    **Everybody:** We show her the cask brand.
 
-    **DM:** The clerk breaks the seal.
+    **DM:** The keeper pries the bung loose.
 
-    **Odile Varn:** "Twenty silver, or the wagon stays."
+    **Maud Pellow:** "Smell that? Fish. I will not light the tower with it."
 
 - A `## Session N · <date>` section starts after the portal's Save & close, or after three hours without a send. N is one more than the newest `## Session N` in `session-log.md`, `session-log-archive.md` or `state.md`. At Save & close the portal's notes helper (`display/session_summary.py`) writes `## Session N` in `session-log.md` from every section numbered N, so the next session's number follows on.
 - One `###` entry per send: the real time, the place (the last `--scene` place, else `state.md`'s Location) and the in-world date.
@@ -479,10 +479,10 @@ The scripts only ever add a line the entry lacks. They never change or remove on
 Writes and shows `<campaign>/session-tail.md`: one line on where play stopped, the open question or pending roll, and the last eight exchanges word for word. Every portal save requires a fresh one, and a resumed DM reads it first. Without one, `show` prints the last eight entries of the display's `session_tail.json`.
 
 ```bash
-echo '[{"who":"Players","text":"We ask Rosa about the ledger."},{"who":"DM","text":"Rosa slides it across. Wren, roll Insight."}]' |
+echo '[{"who":"Players","text":"We ask Effie about the wax order."},{"who":"DM","text":"Effie slides the order book across. Wren, roll Insight."}]' |
   python3 ${CLAUDE_SKILL_DIR}/scripts/stop_point.py write --campaign $CAMP \
-    --where "Rosa's bakery, Brinewick, morning of 16 Leaffall; Rosa has just shown the ledger." \
-    --waiting "Wren's Insight roll on Rosa (DC 13)"
+    --where "Effie's candle shop, Reedhythe, morning of 9 Harvestmoon; Effie has just shown the order book." \
+    --waiting "Wren's Insight roll on Effie (DC 13)"
 python3 ${CLAUDE_SKILL_DIR}/scripts/stop_point.py show --campaign $CAMP
 ```
 
@@ -502,8 +502,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py chaos adjust --campaign $CAMP --pc
 
 # Improvised campaigns only (Standard 16): a new NPC's temperament, and what each travel day brings.
 # npc with --campaign and --name is seeded from the name (same name, same person) and saves to npcs.md.
-python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --campaign $CAMP --name "Agnes Shaw" --trader
-python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc note --campaign $CAMP --name "Agnes Shaw" "Sold 4 blankets at 18. Thinks they drive a hard bargain."
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc --campaign $CAMP --name "Effie Cobb" --trader
+python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py npc note --campaign $CAMP --name "Effie Cobb" "Bought 6 candles at 2 sp. Counts the coins twice."
 # road prints a skip notice for prebuilt (structured) campaigns. calendar.py advance runs it for you.
 python3 ${CLAUDE_SKILL_DIR}/scripts/oracle.py road --campaign $CAMP --days 3
 
@@ -543,14 +543,14 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py status  --campaign <name>
 # The current beat's change has landed: mark it complete, move to the next beat and act
 python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py advance --campaign <name> [--beat 1b]
 # The beat no longer fits where the party is: give it a new pressure, change or steering
-python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b --pressure "Bram panics as the auditor arrives on 18 Duskfall" [--what-changes "..."] [--steering "..."]
+python3 ${CLAUDE_SKILL_DIR}/scripts/arc.py revise  --campaign <name> --beat 1b --pressure "Silas hides the manifest as the night barges set out" [--what-changes "..."] [--steering "..."]
 ```
 
 `advance` clears `steering_notes`, so write fresh steering for the new beat with `revise --steering`. For a structured campaign, `advance` ticks the chapter's next key beat off `outstanding_beats`; moving to a new chapter still means reading `arc.md`. `revise` refuses completed beats and logs each change in `revision_log`. Both rewrite only the YAML block under `## Campaign Arc` (comments inside it are dropped) and leave the rest of `state.md` as it was.
 
 **Turn prep** (`scripts/turn_prep.py`). When the party's reply plainly starts a fight, a trade or a journey, the card gets one `Prepared …` line, worked out by script while the card is built: for a fight, the SRD stat block (AC, HP, speed, initiative, CR and attacks) of up to two creatures the party names; for a trade, the SRD list prices of up to four items named, and each character's purse from the inventory ledger; for a journey in an improvised campaign, the next road day, rolled once and kept (see `road` above). Only one prep a turn, fight before trade before journey, and nothing when no creature, item or improvised road applies. It supplies numbers only. Notes in `[[…]]` never trigger it. To see what it would print: `python3 ${CLAUDE_SKILL_DIR}/scripts/turn_prep.py <campaign-dir> "<party input>"` (a journey check keeps the roll it makes).
 
-**`## Clocks`** in `state.md`: one bullet per dated event, `- 18 Duskfall 1247: <what happens> (seen by: <how the party could notice>)`. Dates use the campaign calendar's month names (`calendar.json`); a clock whose date can't be read is left off the card. Remove a clock once it has played out.
+**`## Clocks`** in `state.md`: one bullet per dated event, `- 12 Harvestmoon 1247: <what happens> (seen by: <how the party could notice>)`. Dates use the campaign calendar's month names (`calendar.json`); a clock whose date can't be read is left off the card. Remove a clock once it has played out.
 
 ---
 
@@ -639,8 +639,8 @@ Open the browser tab and Chromecast it *before* running `/dm:dnd load` so the br
 **Scene cue.** Send one when the party arrives somewhere new, or when a place's mood truly changes. Bundle it with the first narration there:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/display/send.py --scene "Brinewick, Rosa's bakery: haggling over flour by the ovens" << 'DNDEND'
-Warm bread and woodsmoke fill the little shop.
+python3 ${CLAUDE_SKILL_DIR}/display/send.py --scene "Reedhythe, Effie's candle shop: haggling over beeswax by the dipping vats" << 'DNDEND'
+Warm wax and woodsmoke fill the little shop.
 DNDEND
 ```
 
@@ -648,7 +648,7 @@ Write the place, a colon, then what the party sees happening. Add `--mood calm|c
 
 - **Key:** taken from the place alone, so the same place always gets the same key. A cue for the place already on screen changes nothing and prints `scene unchanged`, unless `--mood` or the world era differs.
 - **Setting:** keyword mapping of the place to one of the 18 broad settings (`inn` to tavern, `bakery` to city, `cavern` to cave). If the place has no keyword, the activity words are tried, then the current setting, then `city`.
-- **Place theme:** a place named in the world notes takes its saved path and mood. Two formats are read: `Town: [{"name":"Town","mood":"tense"}]. Gate: child {"name":"Gate"}` lines, and `Scene theme: Region (warm) → Place (curious)` lines. A named place with extra words (`Brinewick docks`) becomes a child of that place. An unknown place becomes a child of the current outer region.
+- **Place theme:** a place named in the world notes takes its saved path and mood. Two formats are read: `Town: [{"name":"Town","mood":"tense"}]. Gate: child {"name":"Gate"}` lines, and `Scene theme: Region (warm) → Place (curious)` lines. A named place with extra words (`Reedhythe docks`) becomes a child of that place. An unknown place becomes a child of the current outer region.
 - **Era:** an `Era:` or `Established era:` line in the world notes, else a `Setting type:` naming medieval, renaissance, ancient, modern or futuristic, else the current scene's era, else medieval.
 - **Mood:** `--mood`, else the nearest saved place mood, else the setting's usual tone.
 - **Prompts:** the music and the background illustration are both written by `display/scene_engine.py` from that one scene.

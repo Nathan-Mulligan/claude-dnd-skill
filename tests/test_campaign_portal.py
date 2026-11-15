@@ -221,7 +221,7 @@ def test_long_input_reaches_the_dm_as_one_bracketed_paste(monkeypatch):
     calls = []
     monkeypatch.setattr(portal, "run", tmux_recorder(calls))
     monkeypatch.setattr(portal.time, "sleep", lambda _: None)
-    text = "[[Turn card, hidden from players: " + "Brinewick, the flour cart. " * 80 + ']] Input: "We go."'
+    text = "[[Turn card, hidden from players: " + "Reedhythe, the eel cart. " * 80 + ']] Input: "We go."'
     assert len(text) > 2000
     assert portal.submit_to_dm(text) and portal.submit_to_dm("second")
     load, paste, enter, second = calls[:4]
@@ -326,7 +326,7 @@ def play_turn(monkeypatch, mode="resume", campaign="Fenmoor"):
     if not folder.exists():
         shutil.copytree(REPO / "tests/fixtures/fenmoor", folder)
     portal.META_FILE.write_text(json.dumps({"campaign": campaign, "mode": mode}), encoding="utf-8")
-    (portal.RUNTIME / ".input_queue").write_text("[Corin Ashby]: We ask Rosa about cargo.", encoding="utf-8")
+    (portal.RUNTIME / ".input_queue").write_text("[Corin Ashby]: We ask Effie about cargo.", encoding="utf-8")
     calls = []
 
     def fake_run(*args, **kwargs):
@@ -362,19 +362,19 @@ def test_a_reply_from_the_portal_box_marks_the_session_played(client, monkeypatc
     portal.records.end_session(folder)
     monkeypatch.setattr(portal, "running", lambda: True)
     monkeypatch.setattr(portal, "submit_to_dm", lambda text: True)
-    response = api(client, "/api/send", method="post", data={"text": "We ask Rosa."})
+    response = api(client, "/api/send", method="post", data={"text": "We ask Effie."})
     assert response.status_code == 200 and portal.records.played(folder) is True
 
 
 def test_play_turn_carries_the_turn_card_instead_of_scene_protocol(client, monkeypatch):
     delivered, prompt, _ = play_turn(monkeypatch)
     assert delivered
-    assert prompt.startswith("[[Turn card, hidden from players: Where: Brinewick")
-    assert 'Beat 1b "Broken Ledgers"' in prompt and "Trade policy" in prompt
+    assert prompt.startswith("[[Turn card, hidden from players: Where: Reedhythe")
+    assert 'Beat 1b "Fish Oil and Smoke"' in prompt and "Trade policy" in prompt
     assert portal.SCENE_PROTOCOL not in prompt and "--scene-key" not in prompt
     assert "setup question" not in prompt
     assert "\n" not in prompt
-    assert prompt.endswith('Input: "[Corin Ashby]: We ask Rosa about cargo."')
+    assert prompt.endswith('Input: "[Corin Ashby]: We ask Effie about cargo."')
 
 
 def test_broken_state_still_delivers_the_reply(client, monkeypatch):
@@ -382,7 +382,7 @@ def test_broken_state_still_delivers_the_reply(client, monkeypatch):
     folder.mkdir(parents=True)
     (folder / "state.md").write_bytes(b"\xff\xfe\x00 not utf-8 ## Campaign Arc ```yaml [")
     delivered, prompt, _ = play_turn(monkeypatch)
-    assert delivered and "We ask Rosa about cargo" in prompt
+    assert delivered and "We ask Effie about cargo" in prompt
 
 
 def test_nul_in_state_still_delivers_the_reply(client, monkeypatch):
@@ -390,15 +390,15 @@ def test_nul_in_state_still_delivers_the_reply(client, monkeypatch):
     folder = portal.DATA_ROOT / "campaigns" / "Fenmoor"
     shutil.copytree(REPO / "tests/fixtures/fenmoor", folder)
     state = folder / "state.md"
-    state.write_text(state.read_text(encoding="utf-8").replace("Brinewick, Rosa", "Salt\x00mere, Rosa"), encoding="utf-8")
+    state.write_text(state.read_text(encoding="utf-8").replace("Reedhythe, Effie", "Reed\x00hythe, Effie"), encoding="utf-8")
     delivered, prompt, _ = play_turn(monkeypatch)
-    assert delivered and "We ask Rosa about cargo" in prompt
+    assert delivered and "We ask Effie about cargo" in prompt
 
 
 def test_card_failure_still_delivers_the_reply(client, monkeypatch):
     monkeypatch.setattr(portal.turn_card, "prepare", lambda *args: 1 / 0)
     delivered, prompt, _ = play_turn(monkeypatch)
-    assert delivered and prompt.startswith("Party Input") and "We ask Rosa about cargo" in prompt
+    assert delivered and prompt.startswith("Party Input") and "We ask Effie about cargo" in prompt
 
 
 def test_setup_note_stops_once_a_new_campaign_has_characters(client, monkeypatch):

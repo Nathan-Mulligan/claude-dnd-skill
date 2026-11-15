@@ -12,23 +12,23 @@ import sidebar_sync  # noqa: E402
 
 STATE = """# Campaign: Test
 ## World State
-- **Faction states:** SECRET-WORLD Toll Reeves skim the toll.
+- **Faction states:** SECRET-WORLD Lamplighters water the oil.
 ## Active Quests
-- **Wagon rental** (active): pay the 3 sp rental to its owner at the next market.
-- [resolved] Deliver the parcel to the cooperage.
-- Collect two crates of iron hoops from the forge on her account; inspect the packing and bring back the receipt.
+- **Skiff hire** (active): pay Ned 2 sp for the skiff before the ice.
+- [resolved] Deliver the parcel to the boatyard.
+- Carry six pots of pitch to the Gullmere boatyard on Perrin's account; test the seals and bring back his mark.
   - NESTED-NOTE a nested note is not a quest
 *(trading quests go here)*
 ## Faction Standings
-- **Toll Reeves**: Suspicious — they doubled the toll and won't say why.
-- Bakers' Guild: Friendly
+- **Lamplighters**: Suspicious — they rationed the beacon oil and won't say why.
+- Weir Union: Friendly
 ## Next Hooks
-- SECRET-HOOK: a courier carries the auditor's notice.
+- SECRET-HOOK: the eel-pot holds the oil manifest.
 ## Faction Moves
-- SECRET-MOVE: the Reeves sent an auditor.
+- SECRET-MOVE: the Lamplighters sent a factor.
 ## Live State Flags
 **Faction stances**:
-- SECRET-FLAG Toll Reeves: hostile
+- SECRET-FLAG Lamplighters: hostile
 ## DM Notes (hidden from players)
 - SECRET-NOTE
 """
@@ -36,25 +36,25 @@ STATE = """# Campaign: Test
 
 def test_quests_come_from_active_quests_with_name_status_and_detail():
     quests = sidebar_sync.lists(STATE)["quests"]
-    assert quests[0] == {"name": "Wagon rental", "status": "active",
-                         "detail": "pay the 3 sp rental to its owner at the next market."}
-    assert quests[1] == {"name": "Deliver the parcel to the cooperage.", "status": "resolved"}
+    assert quests[0] == {"name": "Skiff hire", "status": "active",
+                         "detail": "pay Ned 2 sp for the skiff before the ice."}
+    assert quests[1] == {"name": "Deliver the parcel to the boatyard.", "status": "resolved"}
     long = quests[2]
     assert long["status"] == "active" and len(long["name"]) <= 61 and long["name"].endswith("…")
-    assert long["detail"].startswith("Collect two crates") and long["detail"].endswith("the receipt.")
+    assert long["detail"].startswith("Carry six pots") and long["detail"].endswith("his mark.")
     assert len(quests) == 3 and "NESTED-NOTE" not in repr(quests)
 
 
 def test_factions_come_from_faction_standings():
     assert sidebar_sync.lists(STATE)["factions"] == [
-        {"name": "Toll Reeves", "standing": "Suspicious", "detail": "they doubled the toll and won't say why."},
-        {"name": "Bakers' Guild", "standing": "Friendly"},
+        {"name": "Lamplighters", "standing": "Suspicious", "detail": "they rationed the beacon oil and won't say why."},
+        {"name": "Weir Union", "standing": "Friendly"},
     ]
 
 
 @pytest.mark.parametrize("line, item", [
-    ("**Hoops**: [failed] lost them", {"name": "Hoops", "status": "failed", "detail": "lost them"}),
-    ("**Hoops** — fetch them", {"name": "Hoops", "status": "active", "detail": "fetch them"}),
+    ("**Pitch**: [failed] lost them", {"name": "Pitch", "status": "failed", "detail": "lost them"}),
+    ("**Pitch** — fetch them", {"name": "Pitch", "status": "active", "detail": "fetch them"}),
     ("Find the smith (done)", {"name": "Find the smith", "status": "resolved"}),
 ])
 def test_quest_line_forms(line, item):
@@ -64,8 +64,8 @@ def test_quest_line_forms(line, item):
 @pytest.mark.parametrize("line, item", [
     ("**Pale Court** — Hostile; they want the ring", {"name": "Pale Court", "standing": "Hostile",
                                                      "detail": "they want the ring"}),
-    ("Toll Reeves: Neutral (wary of us)", {"name": "Toll Reeves", "standing": "Neutral", "detail": "wary of us"}),
-    ("Toll Reeves keep the toll", None),
+    ("Lamplighters: Neutral (wary of us)", {"name": "Lamplighters", "standing": "Neutral", "detail": "wary of us"}),
+    ("Lamplighters keep the beacons", None),
 ])
 def test_faction_line_forms(line, item):
     assert sidebar_sync.faction(line) == item
@@ -127,7 +127,7 @@ def test_hostile_lines_parse_in_linear_time():
     import time
     pad = " " * 200_000
     text = ("## Active Quests\n- " + pad + "\n- x" + pad + "(\n- **A**" + pad + "\n" + "##" + pad + "\n"
-            "## Faction Standings\n- Reeves: Neutral" + pad + "x" + pad + "(\n- **B**:" + pad + "\n")
+            "## Faction Standings\n- Lamplighters: Neutral" + pad + "x" + pad + "(\n- **B**:" + pad + "\n")
     started = time.monotonic()
     sidebar_sync.lists(text)
     assert time.monotonic() - started < 1
@@ -165,26 +165,26 @@ def display(tmp_path, monkeypatch):
 
 def test_a_quest_change_in_state_md_reaches_the_sidebar_without_a_push(display):
     module, _, state, sent, kicks = display
-    state.write_text("## Active Quests\n- **Hoops** (active): fetch them.\n", encoding="utf-8")
+    state.write_text("## Active Quests\n- **Pitch** (active): fetch them.\n", encoding="utf-8")
     assert module._sync_sidebar_from_state() is True
-    assert module._current_stats["quests"] == [{"name": "Hoops", "status": "active", "detail": "fetch them."}]
-    assert sent[-1]["stats"]["quests"][0]["name"] == "Hoops"
+    assert module._current_stats["quests"] == [{"name": "Pitch", "status": "active", "detail": "fetch them."}]
+    assert sent[-1]["stats"]["quests"][0]["name"] == "Pitch"
     assert kicks == [1]
     assert module._sync_sidebar_from_state() is False  # unchanged: no broadcast, no helper run
     assert len(sent) == 1 and kicks == [1]
-    state.write_text("## Active Quests\n- **Hoops** (resolved): fetched.\n", encoding="utf-8")
+    state.write_text("## Active Quests\n- **Pitch** (resolved): fetched.\n", encoding="utf-8")
     assert module._sync_sidebar_from_state() is True
     assert module._current_stats["quests"][0]["status"] == "resolved"
 
 
 def test_a_dm_push_that_disagrees_with_state_md_is_put_right(display):
     module, client, state, _, _ = display
-    state.write_text("## Active Quests\n- Find a cargo.\n## Faction Standings\n- Reeves: Neutral\n",
+    state.write_text("## Active Quests\n- Find a cargo.\n## Faction Standings\n- Lamplighters: Neutral\n",
                      encoding="utf-8")
     client.post("/stats", json={"quests": [{"name": "Old quest", "status": "active"}]})
     assert module._sync_sidebar_from_state() is True
     assert [q["name"] for q in module._current_stats["quests"]] == ["Find a cargo."]
-    assert module._current_stats["factions"] == [{"name": "Reeves", "standing": "Neutral"}]
+    assert module._current_stats["factions"] == [{"name": "Lamplighters", "standing": "Neutral"}]
 
 
 def test_without_the_sections_the_dm_pushed_lists_stand(display):

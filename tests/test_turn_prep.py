@@ -61,10 +61,10 @@ def calendar(folder, *args):
     ("I draw my blade and attack the bandits", "fight"),
     ("We'd like to buy a rope and a hooded lantern", "trade"),
     ("How much for the blankets?", "trade"),
-    ("We set out for Ashbridge at first light", "journey"),
+    ("We set out for Gullmere at first light", "journey"),
     ("We head north along the river road", "journey"),
-    ("We ask Rosa how her daughter is keeping", None),
-    ("[[Pass the salt, please]]", None),
+    ("We ask Effie how her daughter is keeping", None),
+    ("[[Pass the bread, please]]", None),
     ("We will not set out until the messenger returns", None),
     ("We head out of the shop and cross the street to the inn", None),
     ("We refuse to attack the bandits", None),
@@ -84,23 +84,23 @@ def test_a_fight_preps_the_named_foes_stat_block(fenmoor):
 
 
 def test_a_fight_with_no_known_creature_preps_nothing(fenmoor):
-    assert prepared(card(fenmoor, "I attack Garrick before he can speak")) == []
+    assert prepared(card(fenmoor, "I attack Silas before he can speak")) == []
 
 
 def test_a_trade_preps_list_prices_and_the_purses(fenmoor):
     (fenmoor / "characters").mkdir()
     shutil.copy(SHEETS / "wynn-harrow.md", fenmoor / "characters/wynn-harrow.md")
-    ledger = {"version": 1, "coins": {"pp": 0, "gp": 32, "ep": 0, "sp": 8, "cp": 7}, "items": []}
+    ledger = {"version": 1, "coins": {"pp": 0, "gp": 27, "ep": 0, "sp": 4, "cp": 9}, "items": []}
     (fenmoor / "characters/wynn-harrow.inventory.json").write_text(json.dumps(ledger), encoding="utf-8")
     lines = prepared(card(fenmoor, "We'd like to buy a rope and a hooded lantern"))
     assert len(lines) == 1
     assert "Rope 1 gp" in lines[0] and "Lantern, Hooded 5 gp" in lines[0]
-    assert "Wynn Harrow 32 gp, 8 sp, 7 cp" in lines[0]
+    assert "Wynn Harrow 27 gp, 4 sp, 9 cp" in lines[0]
 
 
 def test_a_journey_preps_the_next_road_day_without_moving_time(fenmoor):
     calendar_before = (fenmoor / "calendar.json").read_text(encoding="utf-8")
-    lines = prepared(card(fenmoor, "We set out for Ashbridge at first light"))
+    lines = prepared(card(fenmoor, "We set out for Gullmere at first light"))
     assert len(lines) == 1
     pending = json.loads((fenmoor / oracle.ROAD_NEXT).read_text(encoding="utf-8"))
     assert pending["day"]["text"] in lines[0]
@@ -110,13 +110,13 @@ def test_a_journey_preps_the_next_road_day_without_moving_time(fenmoor):
 
 
 def test_asking_again_shows_the_same_road_day(fenmoor):
-    first = prepared(card(fenmoor, "We set out for Ashbridge"))
+    first = prepared(card(fenmoor, "We set out for Gullmere"))
     for _ in range(5):
-        assert prepared(card(fenmoor, "We set out for Ashbridge")) == first
+        assert prepared(card(fenmoor, "We set out for Gullmere")) == first
 
 
 def test_calendar_advance_uses_the_prepared_day_instead_of_rolling_again(fenmoor):
-    card(fenmoor, "We set out for Ashbridge")
+    card(fenmoor, "We set out for Gullmere")
     pending = json.loads((fenmoor / oracle.ROAD_NEXT).read_text(encoding="utf-8"))["day"]
     out = calendar(fenmoor, "advance", "2", "days")
     day_one = next(line for line in out.splitlines() if line.startswith("Day 1 of 2"))
@@ -128,14 +128,14 @@ def test_calendar_advance_uses_the_prepared_day_instead_of_rolling_again(fenmoor
 
 
 def test_oracle_road_uses_the_prepared_day_too(fenmoor):
-    card(fenmoor, "We set out for Ashbridge")
+    card(fenmoor, "We set out for Gullmere")
     pending = json.loads((fenmoor / oracle.ROAD_NEXT).read_text(encoding="utf-8"))["day"]
     assert oracle.campaign_road(fenmoor, 1)[0]["text"] == pending["text"]
     assert not (fenmoor / oracle.ROAD_NEXT).exists()
 
 
 def test_a_prepared_day_from_an_earlier_date_is_dropped(fenmoor):
-    card(fenmoor, "We set out for Ashbridge")
+    card(fenmoor, "We set out for Gullmere")
     calendar(fenmoor, "advance", "1", "days", "--no-road")
     assert (fenmoor / oracle.ROAD_NEXT).exists()
     fresh = oracle.campaign_road(fenmoor, 1, rng=random.Random(7))
@@ -147,14 +147,14 @@ def test_a_prepared_day_from_an_earlier_date_is_dropped(fenmoor):
 def test_a_prebuilt_campaign_gets_no_road_prep(fenmoor):
     path = fenmoor / "state.md"
     path.write_text(path.read_text(encoding="utf-8").replace("type: dynamic", "type: structured"), encoding="utf-8")
-    assert prepared(card(fenmoor, "We set out for Ashbridge")) == []
+    assert prepared(card(fenmoor, "We set out for Gullmere")) == []
     assert not (fenmoor / oracle.ROAD_NEXT).exists()
 
 
 @pytest.mark.parametrize("said", [
     "I draw my blade and attack the bandits",
     "We'd like to buy a rope and a hooded lantern",
-    "We set out for Ashbridge at first light",
+    "We set out for Gullmere at first light",
 ])
 def test_the_prep_is_one_short_line(fenmoor, said):
     text = card(fenmoor, said)
@@ -163,14 +163,14 @@ def test_the_prep_is_one_short_line(fenmoor, said):
 
 
 def test_no_signal_leaves_the_card_as_it_was(fenmoor):
-    assert prepared(card(fenmoor, "We ask Rosa how her daughter is keeping")) == []
+    assert prepared(card(fenmoor, "We ask Effie how her daughter is keeping")) == []
     assert not (fenmoor / oracle.ROAD_NEXT).exists()
 
 
 def test_a_haggle_with_no_listed_item_preps_nothing(fenmoor):
     (fenmoor / "characters").mkdir()
     shutil.copy(SHEETS / "wynn-harrow.md", fenmoor / "characters/wynn-harrow.md")
-    ledger = {"version": 1, "coins": {"pp": 0, "gp": 32, "ep": 0, "sp": 8, "cp": 7}, "items": []}
+    ledger = {"version": 1, "coins": {"pp": 0, "gp": 27, "ep": 0, "sp": 4, "cp": 9}, "items": []}
     (fenmoor / "characters/wynn-harrow.inventory.json").write_text(json.dumps(ledger), encoding="utf-8")
     assert prepared(card(fenmoor, "We'll do it, but we haggle for two more silver, paid up front")) == []
 
@@ -246,7 +246,7 @@ def test_the_portal_never_writes_the_road_prep_through_a_link_the_dm_placed(fenm
     target.write_text("keep\n", encoding="utf-8")
     (fenmoor / (oracle.ROAD_NEXT + ".tmp")).symlink_to(target)
     (fenmoor / oracle.ROAD_LOCK).symlink_to(elsewhere / "made-by-the-lock")
-    prepared(card(fenmoor, "We set out for Ashbridge at first light"))
+    prepared(card(fenmoor, "We set out for Gullmere at first light"))
     oracle.prepare_road(fenmoor)
     assert target.read_text(encoding="utf-8") == "keep\n"
     assert not (elsewhere / "made-by-the-lock").exists()
