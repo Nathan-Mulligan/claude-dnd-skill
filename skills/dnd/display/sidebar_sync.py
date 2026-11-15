@@ -35,9 +35,10 @@ _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _NONBLOCK = getattr(os, "O_NONBLOCK", 0)
 
 
-def read_state(path, limit: int = STATE_MAX_BYTES) -> "str | None":
+def read_state(path, limit: int = STATE_MAX_BYTES, *, single_link: bool = False) -> "str | None":
     """A file's text, or None. A sandboxed DM can write the campaign and runtime folders, so a link,
-    anything but a plain file (a FIFO would hang the reader) or a file over `limit` bytes is never read."""
+    anything but a plain file (a FIFO would hang the reader) or a file over `limit` bytes is never read.
+    `single_link` also refuses a hard link, for a reader that copies the text where the DM can read it."""
     if not _NOFOLLOW and os.path.islink(path):
         return None
     try:
@@ -46,7 +47,7 @@ def read_state(path, limit: int = STATE_MAX_BYTES) -> "str | None":
         return None
     try:
         info = os.fstat(fd)
-        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit or (single_link and info.st_nlink != 1):
             return None
         with os.fdopen(fd, "rb", closefd=False) as stream:
             text = stream.read(limit).decode("utf-8", errors="replace")

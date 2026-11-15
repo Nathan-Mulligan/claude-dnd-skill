@@ -133,6 +133,69 @@ class FlagAndMarkerTests(unittest.TestCase):
         runtime = pathlib.Path(os.environ["DND_RUNTIME_DIR"])
         self.assertTrue((runtime / "test-camp.autocheckpoint.md").exists())
 
+    # The hook runs outside the DM's sandbox, and the DM can write both the campaign and the runtime dir (#162).
+
+    def _outside(self, text="keep me"):
+        target = pathlib.Path(self.tmp) / "outside.txt"
+        target.write_text(text, encoding="utf-8")
+        return target
+
+    @unittest.skipIf(os.name == "nt", "links are POSIX-only")
+    def test_snapshot_replaces_a_planted_link_instead_of_writing_through_it(self):
+        self._write_state("autosave: on")
+        target = self._outside()
+        runtime = pathlib.Path(os.environ["DND_RUNTIME_DIR"])
+        runtime.mkdir(parents=True, exist_ok=True)
+        dest = runtime / "test-camp.autocheckpoint.md"
+        dest.symlink_to(target)
+        self.ac.snapshot("test-camp")
+        self.assertEqual(target.read_text(encoding="utf-8"), "keep me")
+        self.assertFalse(dest.is_symlink())
+        self.assertIn("autosave: on", dest.read_text(encoding="utf-8"))
+
+    @unittest.skipIf(os.name == "nt", "links are POSIX-only")
+    def test_snapshot_never_copies_a_linked_state_md(self):
+        secret = self._outside("SECRET-OUTSIDE")
+        (self.camp_dir / "state.md").symlink_to(secret)
+        self.ac.snapshot("test-camp")
+        dest = pathlib.Path(os.environ["DND_RUNTIME_DIR"]) / "test-camp.autocheckpoint.md"
+        self.assertFalse(dest.exists() and "SECRET-OUTSIDE" in dest.read_text(encoding="utf-8"))
+        self.assertFalse(self.ac.autosave_enabled("test-camp"))
+
+    @unittest.skipIf(os.name == "nt", "links are POSIX-only")
+    def test_turn_counter_is_not_written_through_a_link(self):
+        target = self._outside()
+        counter = self.ac._counter_path("sid", "test-camp")
+        counter.parent.mkdir(parents=True, exist_ok=True)
+        counter.symlink_to(target)
+        self.ac._save_counter(counter, 3, "test-camp")
+        self.assertEqual(target.read_text(encoding="utf-8"), "keep me")
+        self.assertFalse(counter.is_symlink())
+        self.assertEqual(self.ac._load_counter(counter), 3)
+
+    @unittest.skipIf(os.name == "nt", "links are POSIX-only")
+    def test_snapshot_never_copies_a_hard_linked_state_md(self):
+        secret = self._outside("SECRET-OUTSIDE")
+        os.link(secret, self.camp_dir / "state.md")
+        self.ac.snapshot("test-camp")
+        dest = pathlib.Path(os.environ["DND_RUNTIME_DIR"]) / "test-camp.autocheckpoint.md"
+        self.assertFalse(dest.exists())
+
+    def test_a_marker_naming_a_path_outside_the_campaigns_is_ignored(self):
+        runtime = pathlib.Path(os.environ["DND_RUNTIME_DIR"])
+        runtime.mkdir(parents=True, exist_ok=True)
+        for name in ("test-camp/escape", "../outside", ".."):
+            (runtime / self.ac.ACTIVE_MARKER).write_text(json.dumps({"name": name}), encoding="utf-8")
+            self.assertIsNone(self.ac.active_campaign(), name)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "no FIFOs on Windows")
+    def test_a_fifo_state_md_never_hangs_the_hook(self):
+        import subprocess
+        os.mkfifo(self.camp_dir / "state.md")
+        done = subprocess.run([sys.executable, str(SCRIPTS / "autosave_checkpoint.py"), "--campaign", "test-camp"],
+                              capture_output=True, text=True, encoding="utf-8", timeout=20, env=os.environ.copy())
+        self.assertEqual(done.returncode, 0, done.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
